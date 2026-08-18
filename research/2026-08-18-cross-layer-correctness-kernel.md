@@ -41,15 +41,26 @@ FAILED (failures=1)
 
 This demonstrates a composition failure even though the memory subsystem itself behaved correctly: the bug was ordering/authority misuse downstream.
 
+## Remote-audit defect found and corrected
+
+The first corrected kernel still had a cross-layer semantic-binding gap: it verified ledger IDs and claim-verifier objects separately, so a caller could reuse a valid ledger ID while supplying an `Evidence` object with fabricated requirement coverage or altered semantics.
+
+The fix binds verifier-view semantics back to the authoritative ledger body before claim verification:
+- evidence ID must resolve in the ledger and remain current;
+- kind, artifact digest, observed/trusted status and outcome must match the ledger observation;
+- requirement coverage is committed into the observation `output_digest` as a canonical digest and must match the verifier-side requirement tuple.
+
+A new regression case for a forged requirement mapping is rejected deterministically.
+
 ## Corrected invariant matrix
 
-Executed:
+Executed locally:
 
 ```bash
 python -m unittest discover -s experiments/correctness_kernel/tests -p 'test_*.py' -v
 ```
 
-Observed result: **10/10 tests passed**.
+Observed result after the audit fix: **11/11 tests passed**.
 
 Also executed:
 
@@ -57,7 +68,9 @@ Also executed:
 python -m compileall -q experiments/correctness_kernel
 ```
 
-Observed result: success.
+Observed result: success before publication; the updated Python remained syntactically valid in the local fixture tree.
+
+A direct `git clone` of the repository was attempted to run the final branch against an exact checkout, but this runtime's local container again could not resolve `github.com`. Therefore remote code/patch inspection through the GitHub connector is the exact-source audit path in this run; local execution uses interface-compatible copies of the already fetched experiment modules.
 
 Scenarios:
 
@@ -70,7 +83,8 @@ Scenarios:
 7. an obsolete fence after reroute cannot commit an external effect;
 8. restart/reload plus the same observations yields the same deterministic safe next action;
 9. narrative memory may influence planning but cannot satisfy completion evidence requirements;
-10. replay with the same effect key remains idempotent.
+10. replay with the same effect key remains idempotent;
+11. a valid ledger ID cannot be reused with fabricated verifier-side requirement semantics.
 
 ## Composition invariants
 
@@ -79,6 +93,7 @@ Scenarios:
 These are non-negotiable correctness/safety constraints:
 
 - terminal completion requires current valid ledger evidence **and** deterministic claim verification for the current artifact/requirements;
+- verifier-side evidence semantics must be bound to the authoritative ledger record, not caller-supplied narrative objects;
 - UNKNOWN side effects must be reconciled before retry/completion;
 - evidence invalidation/supersession propagates into completion decisions;
 - memory is advisory context, never proof that a side effect happened or a task completed;
@@ -107,6 +122,7 @@ durable state load/claim
   -> fenced/idempotent execution
   -> append observation/receipt
   -> resolve invalidation/supersession
+  -> bind verifier-view semantics to ledger record
   -> current-artifact claim verification
   -> terminal completion decision
 ```
@@ -117,19 +133,21 @@ The key lesson is that **authority flows downward, preferences do not flow upwar
 
 1. Reconciliation precedes evidence issuance: an UNKNOWN outcome is not evidence of success.
 2. Evidence validity is checked at decision time, not only when evidence was first observed.
-3. Escalation/authorization is evaluated before route/topology convenience.
-4. Capability fallback may change transport but not logical identity.
-5. New attempt/topology ownership must advance fencing before external mutation.
-6. Memory selection can suggest what to inspect or route, but cannot synthesize receipts or completion proof.
-7. Completion is derived, not sticky: invalidation makes a previously true completion decision false until re-verified.
+3. Claim/verifier semantics must be checked against the ledger record before requirement proof is accepted.
+4. Escalation/authorization is evaluated before route/topology convenience.
+5. Capability fallback may change transport but not logical identity.
+6. New attempt/topology ownership must advance fencing before external mutation.
+7. Memory selection can suggest what to inspect or route, but cannot synthesize receipts or completion proof.
+8. Completion is derived, not sticky: invalidation makes a previously true completion decision false until re-verified.
 
 ## Limits
 
 - The experiments remain standard-library/single-process reference mechanisms, not a production transactional system.
 - JSON/file stores demonstrate semantics but not distributed atomicity.
 - Restart determinism here assumes the same authoritative capability observations and policy inputs; changing observations should intentionally change the next action.
+- Exact-branch local checkout was unavailable because direct container DNS/network access to GitHub failed; exact-source validation is therefore connector patch audit plus interface-compatible local execution.
 - No claim is made that the kernel is a universal workflow architecture.
 
 ## Decision
 
-The lab now has evidence that its main correctness primitives can compose under a strict authority order. The next engineering question should shift from inventing more independent primitives to **production-grade atomic persistence/concurrency semantics** or **measured latency/cost overhead of the correctness kernel**, unless representative open-model serving hardware becomes available first.
+The lab now has evidence that its main correctness primitives can compose under a strict authority order and that semantic binding between layers is itself a first-class invariant. The next engineering question should shift from inventing more independent primitives to **production-grade atomic persistence/concurrency semantics** or **measured latency/cost overhead of the correctness kernel**, unless representative open-model serving hardware becomes available first.
