@@ -4,7 +4,7 @@ Last updated: 2026-08-18
 
 ## Active objective
 
-Continue the autonomous agenda after formalizing per-run capability negotiation and safe fallback planning. Next: test long-horizon memory representations for causal/current correctness under noise, stale facts, and supersession.
+Continue the autonomous agenda after completing the long-horizon memory benchmark. Next: compose the already-proven durability, verification, evidence, capability-fallback, and memory primitives into a full autonomous software-engineering lifecycle and measure its failure taxonomy.
 
 ## Active issue / branch / PR
 
@@ -16,41 +16,48 @@ Continue the autonomous agenda after formalizing per-run capability negotiation 
 - Completed: #11 LAB-006 end-to-end verification harness.
 - Completed: #12 LAB-007 append-only evidence ledger.
 - Completed: #14 LAB-008 capability negotiation and fallback planning.
-- Next: #16 LAB-009 long-horizon memory with causality and provenance benchmark — READY.
+- Completed: #16 LAB-009 long-horizon memory with causality/provenance benchmark.
+- Next: #18 LAB-010 autonomous software-engineering task loop — READY.
 
 ## Last completed step
 
-LAB-008 compared MCP capability negotiation/version handshake, Terraform plugin protocol compatibility selection, and Kubernetes discovery/resourceVersion freshness semantics. It then built a standard-library deterministic capability planner with versioned observations/requirements, hard constraints, weighted preferences, freshness rejection, evidence references, and stable decision explanations. Local deterministic validation observed 7/7 tests passing and compileall passing. PR #15 was remotely patch-audited and squash-merged.
+LAB-009 compared AMA-Bench/AMA-Agent, Supersede, Graphiti, and Causal Memory Intervention, then built a deterministic synthetic benchmark comparing recency, similarity proxy, typed temporal/provenance graph, and bounded hybrid retrieval on identical stale/superseded, distractor, causal-chain, objective-change, provenance-conflict, and long-horizon-noise cases.
+
+The first remote patch audit found that topical relevance was only implicit, so the benchmark was strengthened before merge with an explicit lexical surface-relevance metric and two additional metric-separation tests. Observed local validation was 9 tests total. PR #17 was remotely audited and squash-merged.
 
 ## Evidence produced
 
-- `experiments/capability_planner/planner.py`
-- `experiments/capability_planner/tests/test_planner.py`
-- `experiments/capability_planner/README.md`
-- `research/2026-08-18-capability-negotiation-fallback-planning.md`
-- LAB-008 merge: `b32f3911a387dae5f0db12a5de9c91554daaa468`.
-- Follow-up Issue #16 / LAB-009 created.
+- `experiments/long_horizon_memory/benchmark.py`
+- `experiments/long_horizon_memory/metrics.py`
+- `experiments/long_horizon_memory/tests/`
+- `research/2026-08-18-long-horizon-memory-causality-provenance.md`
+- `research/2026-08-18-long-horizon-memory-metric-separation.md`
+- LAB-009 merge: `7fcd7f03d75951cf569a2e6149208df64d9b924a`.
+- Follow-up Issue #18 / LAB-010 created.
 
 ## Findings carried forward
 
-- capability availability is a per-run observation with freshness, not a permanent tool property;
-- protocol/schema compatibility and freshness are eligibility gates;
-- hard safety/correctness requirements are checked before scoring preferences;
-- fallback equivalence is defined by required observable properties, not implementation similarity;
-- `no viable path` is a correct plan result and must not trigger unsafe downgrade;
-- planner decisions should reference durable observation/evidence IDs while remaining distinct from run state and the evidence ledger.
+- topical/surface relevance is not the same as current/causal correctness;
+- recency can lose authoritative facts after a long distractor tail;
+- similarity can recover the correct fact while simultaneously contaminating context with stale/superseded facts;
+- typed supersession/invalidation/currentness and causal links should act as eligibility structure before semantic/keyword ranking;
+- bounded hybrid retrieval is the preferred direction from this small benchmark;
+- memory must reference, not replace, LAB-005 authoritative run state and LAB-007 provenance/evidence;
+- LAB-005 already substantially covers the agenda's separate Failure Recovery / Side-Effect Fencing track, so starting a duplicate subsystem would violate the no-duplication rule.
 
 ## Known blockers / constraints
 
 - No current blocking issue is known.
 - Local filesystem, CLIs, network, connectors and permissions remain per-run capabilities.
+- LAB-009 is a deterministic synthetic benchmark; production memory extraction/ranking remains outside its evidence boundary.
 
 ## Exact next action
 
-Select Issue #16 / LAB-009. Research at least three current primary-source memory mechanisms/benchmarks. Build `experiments/long_horizon_memory/` with a deterministic synthetic corpus and compare transcript/recency, similarity proxy, typed event/provenance graph, and bounded hybrid retrieval on identical distractor, stale/superseded, causal-chain, objective-change, and provenance-conflict cases. Measure current/causal correctness separately from superficial relevance. Seed at least one naive-strategy failure, audit integration boundaries with LAB-005 run state and LAB-007 evidence, integrate safely, and update this state.
+Select Issue #18 / LAB-010. Research at least three current primary-source full-cycle software-agent/engineering harnesses or benchmarks. Build `experiments/software_engineering_loop/` as a deterministic lifecycle simulator that reuses the semantics established in LAB-005–009 rather than reimplementing new subsystems. Cover successful reproduce->patch->test->audit->evidence completion plus unreproduced patch, partial fix, stale test evidence, audit-discovered regression, safe capability fallback, and no-safe-validation-route cases. Measure a stable failure taxonomy, reject superficially plausible false success, audit the composition boundaries, integrate safely, and update this state.
 
 ## Backlog
 
-- #16 / LAB-009 — Long-horizon memory with causality and provenance benchmark — READY and next.
-- Failure Recovery and Side-Effect Fencing remains a later ranked agenda track unless LAB-009 exposes a higher-priority dependency.
-- Remaining tracks stay in `research/AGENDA.md` until dependencies/capacity justify issue creation.
+- #18 / LAB-010 — Autonomous software-engineering task loop with measured failure taxonomy — READY and next.
+- Agenda Track 6 / Failure Recovery and Side-Effect Fencing is treated as substantially satisfied by LAB-005 unless new evidence exposes an uncovered gap; do not create a duplicate implementation merely to follow numeric rank.
+- Memory Safety / Contamination Recovery and Human/Agent Escalation remain later ranked tracks.
+- Open-model serving and multi-agent topology remain lower priority until correctness instrumentation is stronger and suitable execution resources exist.
