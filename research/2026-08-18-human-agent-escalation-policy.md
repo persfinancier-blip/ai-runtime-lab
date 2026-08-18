@@ -48,7 +48,7 @@ The policy uses five explicit outcomes:
 - `PROCEED` — safe route, sufficient evidence, no human-only authority boundary;
 - `FALLBACK` — preferred route failed/unavailable, but an equivalent safe supported route exists;
 - `PROBE` — uncertainty/conflict/unknown outcome can be resolved by a cheap reversible observation or reconciliation step;
-- `ESCALATE` — human judgment or authorization is genuinely required: irreversible consequential action, explicit authority boundary, material evidence conflict without a resolving probe, or genuine product-direction fork;
+- `ESCALATE` — human judgment or authorization is genuinely required: irreversible consequential action, explicit authority boundary, material evidence conflict without a resolving probe, genuine product-direction fork, or available payment/legal/identity/secret authority that still requires a human decision;
 - `BLOCK` — no safe/authorized path exists in the current run. `BLOCK` is not an invitation to weaken constraints.
 
 ### Ordering rule
@@ -74,21 +74,13 @@ cd experiments/escalation_policy
 python -m unittest -v
 ```
 
-Observed result: **12/12 tests passed**.
+Initial result: **12/12 tests passed**.
 
-Covered cases:
-1. reversible technical choice -> `PROCEED`;
-2. preferred-tool failure + safe alternative -> `FALLBACK`;
-3. no safe route -> `BLOCK`;
-4. irreversible externally consequential action -> `ESCALATE`;
-5. unavailable payment/secret/identity authority -> `BLOCK`;
-6. high uncertainty + cheap reversible diagnostic -> `PROBE`;
-7. conflicting strong evidence without probe -> `ESCALATE`;
-8. conflicting evidence with probe -> `PROBE`;
-9. genuine product-direction fork -> `ESCALATE`;
-10. unknown external effect with reconciliation -> `PROBE`;
-11. unknown external effect without reconciliation -> `BLOCK`;
-12. explicit human authorization boundary -> `ESCALATE`.
+Remote patch audit then found an authority-boundary defect: a payment/legal/identity/secret gated action with technical access could fall through to ordinary policy if `requires_human_authorization` was not independently set. The policy was hardened so these categories always `ESCALATE` when authorization is available and `BLOCK` when it is unavailable. A regression test was added.
+
+Corrected result: **13/13 tests passed**.
+
+Covered cases include reversible technical choice, safe fallback, no safe route, irreversible external action, missing or available payment/secret/identity authority, high uncertainty with a cheap probe, conflicting evidence, product-direction fork, unknown side-effect reconciliation, and explicit human authorization.
 
 ## Seeded naive-policy failures
 
