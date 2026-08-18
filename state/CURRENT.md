@@ -10,11 +10,11 @@ Complete bootstrap of the durable autonomous research/runtime loop so future exe
 
 - Issue: `#1 [LAB-001] Bootstrap durable autonomous operating loop`
 - Branch: `lab/bootstrap-autonomous-runtime`
-- PR: pending creation
+- PR: `#5 [LAB-001] Bootstrap durable autonomous operating loop`
 
 ## Last completed step
 
-Created the operating contract, self-resume prompt, operating model, research/decision conventions, issue template, README, and initial GitHub task queue.
+Opened PR #5 and performed a separate patch audit. The bootstrap contains eight changed files and the PR is mergeable. The audit found one stale handoff field (`PR: pending creation`), which is corrected by this commit.
 
 ## Evidence produced
 
@@ -27,6 +27,7 @@ Created the operating contract, self-resume prompt, operating model, research/de
   - `#2` empirically baseline execution surface and hard limits — READY;
   - `#3` prove cross-run resumability — READY;
   - `#4` build/refine autonomous research agenda — READY.
+- PR #5 patch was inspected after creation; no blocking structural issue was found after correcting stale state.
 
 ## Known blockers / constraints
 
@@ -36,7 +37,7 @@ Created the operating contract, self-resume prompt, operating model, research/de
 
 ## Exact next action
 
-Open and audit the bootstrap PR. Once bootstrap is integrated, make `#2` the active issue and configure the recurring self-resume trigger to invoke `prompts/SELF_RESUME.md` semantics.
+Merge PR #5, close LAB-001 as complete, then make `#2` the active issue before enabling the recurring self-resume trigger.
 
 ## Backlog changes
 
