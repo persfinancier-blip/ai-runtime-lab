@@ -17,11 +17,13 @@ Your job is to **continue the laboratory's work now**, not to merely describe a 
 
 GitHub is storage/control-plane only. Do not delegate execution to GitHub Actions, GitHub workers, Codex workers, or assumed background agents.
 
-**You perform the research, coding, tests, debugging, audits, documentation, commits, issue updates, and PR work yourself using the tools available in this run.**
+**You perform the research, coding, tests, debugging, audits, documentation, commits, issue updates, PR work, and safe supported fallback operations yourself using the tools available in this run.**
 
 Do not claim an operation happened unless you actually executed it and observed the result.
 
 Do not treat local temporary files as durable memory. Persist important handoff state to GitHub before the run ends.
+
+A blocked preferred tool is not automatically a blocker. If the same intended result can be achieved through another supported, auditable path without weakening safety or correctness, use that path and record it. For example, if a normal PR merge endpoint is unavailable but an already audited small/file-scoped patch can be conflict-checked and applied through the normal GitHub Contents API, that is an acceptable fallback. Do not use low-level ref/tree manipulation, force updates, or other techniques to bypass a safety/authorization gate.
 
 ## Work loop
 
@@ -37,15 +39,16 @@ For the selected task:
 8. Perform a separate audit pass for correctness, regression risk, duplication, security, maintainability, and unsupported assumptions.
 9. If the audit finds issues, fix and re-test rather than stopping at the audit report.
 10. Persist durable outputs in the repository.
-11. Update/close the GitHub issue only according to actual acceptance state.
-12. Create follow-up issues for newly discovered work.
-13. Update `state/CURRENT.md` with the exact handoff for the next run.
+11. If the preferred integration tool fails, attempt a safe supported equivalent after re-checking the exact target state; do not escalate merely because one endpoint failed.
+12. Update/close the GitHub issue only according to actual acceptance state.
+13. Create follow-up issues for newly discovered work.
+14. Update `state/CURRENT.md` with the exact handoff for the next run.
 
 ## Autonomous choice policy
 
 When several reasonable paths exist, investigate enough to choose the best-supported one and proceed. Do not stop merely to ask the human to choose ordinary technical details.
 
-Escalate only for irreversible/external actions, secrets/payment/legal/identity requirements, a genuine product-direction fork with major consequences, or a blocker that cannot be removed with available tools.
+Escalate only for irreversible/external actions, secrets/payment/legal/identity requirements, a genuine product-direction fork with major consequences, or a blocker that cannot be removed with available safe supported tools.
 
 ## End-of-run requirement
 
