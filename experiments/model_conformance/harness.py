@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
-from experiments.state_space_kernel.model import State, step as model_step
+from experiments.state_space_kernel.model import ACTIONS, State, step as model_step
 from experiments.transactional_kernel.kernel import InvalidCompletion, Kernel, StaleFence
 
 WORK_ID = "work-1"
@@ -34,9 +34,7 @@ class KernelAdapter:
 
     def _evidence(self) -> tuple[bool, bool]:
         c = sqlite3.connect(self.db)
-        row = c.execute(
-            "SELECT valid FROM evidence WHERE evidence_id=?", (EVIDENCE_ID,)
-        ).fetchone()
+        row = c.execute("SELECT valid FROM evidence WHERE evidence_id=?", (EVIDENCE_ID,)).fetchone()
         c.close()
         return (row is not None, bool(row[0]) if row else False)
 
@@ -46,22 +44,14 @@ class KernelAdapter:
         if row["phase"] == "DONE":
             self.ever_done = True
         return State(
-            phase=row["phase"],
-            fence=row["fence"],
-            max_fence=row["fence"],
-            intent=row["effect_key"] is not None,
-            effect_count=self.effect_count,
-            confirmed=row["effect_receipt"] is not None,
-            evidence=evidence,
-            evidence_valid=evidence_valid,
-            ever_done=self.ever_done,
+            phase=row["phase"], fence=row["fence"], max_fence=row["fence"],
+            intent=row["effect_key"] is not None, effect_count=self.effect_count,
+            confirmed=row["effect_receipt"] is not None, evidence=evidence,
+            evidence_valid=evidence_valid, ever_done=self.ever_done,
         )
 
     def _raw(self, sql: str, args: tuple = ()) -> None:
-        c = sqlite3.connect(self.db)
-        c.execute(sql, args)
-        c.commit()
-        c.close()
+        c = sqlite3.connect(self.db); c.execute(sql, args); c.commit(); c.close()
 
     def step(self, action: str) -> State:
         before = self.observe()
@@ -73,8 +63,7 @@ class KernelAdapter:
             elif action in ("effect_ok", "effect_unknown"):
                 if before.intent and before.phase in ("INTENT", "UNKNOWN"):
                     if self.effect_count == 0:
-                        self.effect_count = 1
-                        self.external_receipt = "receipt-1"
+                        self.effect_count = 1; self.external_receipt = "receipt-1"
                     elif self.defect == "unknown_retry" and before.phase == "UNKNOWN":
                         self.effect_count += 1
                     if action == "effect_ok":
@@ -100,46 +89,39 @@ class KernelAdapter:
             elif action == "duplicate":
                 if self.defect == "reopen_done" and before.phase == "DONE":
                     self._raw("UPDATE work SET phase='INTENT' WHERE work_id=?", (WORK_ID,))
-                # Correct implementation treats duplicate delivery as observation/no-op.
             elif action == "stale_mutate":
                 if self.defect == "stale_fence" and before.max_fence > 0 and before.intent:
                     self._raw("UPDATE work SET effect_receipt='stale' WHERE work_id=?", (WORK_ID,))
                 elif before.max_fence > 0 and before.intent:
-                    try:
-                        self.kernel.confirm_effect(WORK_ID, OWNER, max(0, self.fence - 1), "stale")
-                    except StaleFence:
-                        pass
-        except InvalidCompletion:
-            # A rejected implementation transition corresponds to model no-op.
+                    self.kernel.confirm_effect(WORK_ID, OWNER, max(0, self.fence - 1), "stale")
+        except (InvalidCompletion, StaleFence):
+            # Rejected authoritative mutations correspond to abstract no-ops.
             pass
         return self.observe()
 
 
 def compare(trace: list[str], defect: str | None = None) -> dict:
-    model = State()
-    adapter = KernelAdapter(defect)
+    model = State(); adapter = KernelAdapter(defect)
     try:
         for index, action in enumerate(trace, 1):
-            model = model_step(model, action)
-            implementation = adapter.step(action)
+            model = model_step(model, action); implementation = adapter.step(action)
             if model != implementation:
-                fields = [
-                    field
-                    for field in State.__dataclass_fields__
-                    if getattr(model, field) != getattr(implementation, field)
-                ]
-                return {
-                    "ok": False,
-                    "step": index,
-                    "action": action,
-                    "fields": fields,
-                    "model": asdict(model),
-                    "implementation": asdict(implementation),
-                    "prefix": trace[:index],
-                }
+                fields = [f for f in State.__dataclass_fields__ if getattr(model, f) != getattr(implementation, f)]
+                return {"ok": False, "step": index, "action": action, "fields": fields,
+                        "model": asdict(model), "implementation": asdict(implementation), "prefix": trace[:index]}
         return {"ok": True, "steps": len(trace), "state": asdict(model)}
     finally:
         adapter.close()
+
+
+def bounded_traces(depth: int = 4) -> list[list[str]]:
+    """All action sequences through depth, used as executable conformance contracts."""
+    traces: list[list[str]] = [[]]
+    frontier: list[list[str]] = [[]]
+    for _ in range(depth):
+        frontier = [prefix + [action] for prefix in frontier for action in ACTIONS]
+        traces.extend(frontier)
+    return traces
 
 
 CORPUS = [
@@ -152,13 +134,10 @@ CORPUS = [
 
 
 def save_trace(path: str | Path, trace: list[str]) -> None:
-    Path(path).write_text(
-        json.dumps({"version": 1, "trace": trace}, sort_keys=True), encoding="utf-8"
-    )
+    Path(path).write_text(json.dumps({"version": 1, "trace": trace}, sort_keys=True), encoding="utf-8")
 
 
 def load_trace(path: str | Path) -> list[str]:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    if raw.get("version") != 1:
-        raise ValueError(f"unsupported trace version: {raw.get('version')}")
+    if raw.get("version") != 1: raise ValueError(f"unsupported trace version: {raw.get('version')}")
     return list(raw["trace"])
