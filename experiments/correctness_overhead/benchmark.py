@@ -28,12 +28,15 @@ def batched_two_tx_once(k, idx, payload):
     with k.tx() as c:
         c.execute('INSERT OR IGNORE INTO work(work_id) VALUES (?)',(wid,))
         r=c.execute('SELECT * FROM work WHERE work_id=?',(wid,)).fetchone()
+        if r['phase']=='DONE':
+            if r['effect_key']==effect:
+                return (time.perf_counter_ns()-t)/1e6
+            raise InvalidCompletion('terminal work cannot accept a new effect intent')
         nf=r['fence']+1; ng=r['generation']+1
-        c.execute('UPDATE work SET owner=?,lease_until=?,fence=?,generation=?,phase=?,effect_key=? WHERE work_id=? AND generation=?',
-                  (owner,now+30,nf,ng+1,'INTENT',effect,wid,r['generation']))
-        if c.total_changes < 2: raise Conflict('claim+intent CAS failed')
-        c.execute('INSERT INTO outbox(event_id,work_id,kind,dedupe_key,payload) VALUES (?,?,?,?,?)',(str(uuid.uuid4()),wid,'effect-intent',effect,'{}'))
-    # external effect is simulated as already succeeded and returned receipt here.
+        cur=c.execute('UPDATE work SET owner=?,lease_until=?,fence=?,generation=?,phase=?,effect_key=? WHERE work_id=? AND generation=?',
+                      (owner,now+30,nf,ng+1,'INTENT',effect,wid,r['generation']))
+        if cur.rowcount!=1: raise Conflict('claim+intent CAS failed')
+        c.execute('INSERT OR IGNORE INTO outbox(event_id,work_id,kind,dedupe_key,payload) VALUES (?,?,?,?,?)',(str(uuid.uuid4()),wid,'effect-intent',effect,'{}'))
     receipt=f'receipt:{effect}'
     # TX2: confirmation + evidence + fresh evidence check + terminal decision.
     with k.tx() as c:
@@ -60,7 +63,6 @@ def run_uncontended(variant, payload_size, repetitions=120):
         else:
             k=Kernel(path)
             fn=lambda i: (full_once(k,i,payload) if variant=='full' else batched_two_tx_once(k,i,payload))
-        # warmup is excluded from distributions and uses unique work ids.
         for i in range(10): fn(-1000-i)
         samples=[]; before=db_bytes(path)
         for i in range(repetitions): samples.append(fn(i))
