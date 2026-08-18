@@ -14,8 +14,12 @@ class MemorySafetyTests(unittest.TestCase):
     def test_later_evidence_retracts_false_memory(self):
         bad = self.store.add(Memory.make("owner", "Mallory", .9, trust="corroborated")); self.store.retract(bad.id, "ev:correction"); self.assertEqual(self.store.authoritative("owner"), [])
     def test_supersession_preserves_history(self):
-        old = self.store.add(Memory.make("status", "open", .8, trust="verified")); new = self.store.add(Memory.make("status", "closed", .8, trust="verified", supersedes=old.id))
+        old = self.store.add(Memory.make("status", "open", .8, trust="verified")); new = Memory.make("status", "closed", .8, trust="verified"); self.store.supersede(old.id, new)
         self.assertEqual(self.store.items[old.id].status, "SUPERSEDED"); self.assertEqual(self.store.authoritative("status")[0].id, new.id)
+    def test_untrusted_replacement_cannot_supersede_verified_history(self):
+        old = self.store.add(Memory.make("status", "open", .8, trust="verified")); bad = Memory.make("status", "pwned", 1.0, trust="untrusted")
+        with self.assertRaises(ValueError): self.store.supersede(old.id, bad)
+        self.assertEqual(self.store.authoritative("status")[0].id, old.id)
     def test_targeted_retraction_preserves_unrelated_history(self):
         bad = self.store.add(Memory.make("a", "bad", .8, trust="corroborated")); good = self.store.add(Memory.make("b", "good", .8, trust="verified")); self.store.retract(bad.id, "ev:x"); self.assertEqual(self.store.authoritative("b")[0].id, good.id)
     def test_similarity_cannot_beat_trust_eligibility(self):
