@@ -15,25 +15,25 @@ Sources:
 - https://openai.github.io/openai-agents-python/multi_agent/
 - https://openai.github.io/openai-agents-python/handoffs/
 
-Transferable distinction: **agents as tools** keeps a manager in control and is recommended when one agent should own synthesis/shared guardrails; **handoffs** transfer control to a specialist and are appropriate when the specialist should directly own the next interaction. The SDK also explicitly allows code-driven orchestration rather than requiring LLM-driven routing.
+Transferable distinction: **agents as tools** keeps a manager in control and is preferred when one agent should own synthesis or shared guardrails; **handoffs** transfer active ownership to a specialist. The SDK also supports code-driven orchestration, which is useful when deterministic routing is more important than letting an LLM choose every transition.
 
-### LangChain/LangGraph multi-agent patterns
+### LangChain / LangGraph multi-agent patterns
 
 Sources:
 - https://docs.langchain.com/oss/python/langchain/multi-agent/index
 - https://docs.langchain.com/oss/python/langchain/multi-agent/subagents
 - https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 
-Transferable mechanisms: supervisor/subagent topology centralizes routing and isolates subagent context; handoffs are state-driven and require explicit context engineering. The current docs explicitly warn that multi-agent is not always necessary and that a single agent can often achieve similar results. They also note extra call overhead for subagents and context-bloat/malformed-history risks for handoffs.
+Transferable mechanisms: supervisor/subagent architecture centralizes routing and provides context isolation; handoffs use state-driven ownership and require explicit context engineering. Current docs explicitly state that multi-agent is not always needed and show higher model-call/context costs for some multi-agent patterns. Subagents trade extra orchestration for isolated contexts; handoffs can reduce repeated routing in stateful conversational flows but are inefficient for some multi-domain parallel work.
 
 ### Microsoft AutoGen AgentChat
 
 Sources:
 - https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/teams.html
 - https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/swarm.html
-- https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/selector-group-chat.html
+- https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/graph-flow.html
 
-Transferable mechanisms: AgentChat exposes materially different coordination shapes rather than one universal team abstraction: round-robin, model-selected speaker, MagenticOne, and `Swarm`. `Swarm` chooses the next speaker from explicit handoff messages while sharing message context; `SelectorGroupChat` pays an additional model-selection step to choose the next speaker.
+Transferable mechanisms: AutoGen exposes materially different team shapes rather than one universal topology. Its documentation recommends starting with a single agent for simpler tasks and moving to teams when collaboration/diverse expertise are actually required. `Swarm` uses handoff messages with shared context; `GraphFlow` provides deterministic graph control when execution order and branching need stronger constraints.
 
 ## Benchmark design
 
@@ -41,90 +41,106 @@ Implementation: `experiments/orchestration_topologies/`.
 
 Three topologies execute the same seven seeded scenarios:
 
-1. simple task where decomposition adds no informational value;
-2. decomposable independent work;
-3. stale specialist output;
-4. duplicate handoff delivery;
-5. conflicting evidence;
-6. worker failure and recovery;
+1. simple task where decomposition adds no information;
+2. three independent outputs under a shared context budget of two evidence items;
+3. stale then current evidence;
+4. duplicate delivery of the same logical work item;
+5. conflicting current evidence followed by authoritative evidence;
+6. one worker failure followed by deterministic retry;
 7. another simple case where coordination overhead dominates.
 
-The benchmark fixes work identity/idempotency and evidence semantics. No LLM is called. The manipulated variable is routing/context ownership:
+Every topology receives identical events and uses identical work IDs, duplicate suppression, evidence versioning, authoritative conflict handling, retry semantics, and terminal verification. No LLM or external model is called.
 
-- single = one sequential context;
-- manager = central synthesis + isolated specialist result boundaries;
-- peer = bounded handoff chain with state propagation.
+The manipulated variable is only routing/context ownership:
 
-## Observed local results
+- `single`: one bounded sequential evidence context;
+- `manager`: isolated specialist evidence returned to a central synthesizer;
+- `peer`: a bounded context forwarded through handoffs.
 
-Command:
+## Audit correction
+
+The first implementation encoded several correctness outcomes directly with topology-specific conditionals. That was a real validity defect: it could only restate the intended conclusion.
+
+The benchmark was rewritten before integration. In the corrected version, stale evidence, conflict resolution, duplicate suppression, worker failure and retry are common mechanisms. Topology differences can affect which evidence survives shared context pressure and how much structural coordination is paid, but cannot directly assign success/failure for those cases.
+
+A test explicitly asserts that stale-evidence, conflict, and worker-failure scenarios are correct under all three topologies.
+
+## Observed local validation
+
+Commands executed after the correction:
 
 ```bash
 python -m unittest discover -s experiments/orchestration_topologies/tests -v
+python -m compileall -q experiments
+python experiments/orchestration_topologies/benchmark.py
 ```
 
-Observed: **8/8 tests passed**.
+Observed result: **9/9 tests passed**; compileall passed.
 
-`python -m compileall -q experiments` also passed.
+Corrected aggregate benchmark:
 
-Aggregate benchmark:
+| topology | correctness | mean structural cost | messages | work calls | duplicate deliveries | stale-context events | recoveries |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| single | 85.71% | 2.86 | 0 | 13 | 1 | 1 | 1 |
+| manager | 100% | 8.43 | 26 | 13 | 1 | 0 | 1 |
+| peer | 85.71% | 6.57 | 13 | 13 | 1 | 1 | 1 |
 
-| topology | correctness | mean coordination proxy cost | messages | stale-context events | failures contained | recoveries |
-|---|---:|---:|---:|---:|---:|---:|
-| single | 57.14% | 2.43 | 7 | 2 | 0 | 1 |
-| manager | 100% | 8.00 | 28 | 0 | 3 | 3 |
-| peer | 42.86% | 6.29 | 26 | 2 | 0 | 0 |
+These percentages are properties of this synthetic task set, not population estimates.
 
 ## Help case
 
-On decomposable independent work, the manager isolates specialist outputs and preserves both results while the synthetic single shared context and peer chain lose one result through state propagation/overwrite. On stale specialist/conflicting evidence, central synthesis contains the bad result and requests fresh/tie-break evidence.
+The only correctness advantage intentionally left in the corrected benchmark comes from **context isolation**. The decomposable scenario has three independent required outputs and a shared context budget of two. Single and peer shared contexts evict one required result; manager specialists return isolated outputs to synthesis and preserve all three.
 
-This demonstrates a condition under which extra agent boundaries can help: **the task has separable subproblems or independent evidence that benefits from context isolation plus a synthesis authority**.
+This demonstrates a defensible condition for extra agent boundaries: separable work can benefit when isolation prevents one subtask's working context from displacing another's required evidence.
 
 ## Hurt case
 
-For a simple task, all topologies are correct but manager cost is much higher because delegation/synthesis adds messages and coordination without adding information. This is the strongest decision rule from the benchmark because it does not depend on a seeded correctness failure: **do not add agents when one bounded context can perform the task and there is no isolation/parallelism/failure-containment benefit to buy**.
+On a simple one-result task, every topology is correct. Manager and peer still pay dispatch/handoff/synthesis steps that add no information. This demonstrates multi-agent harm without manufacturing a correctness failure: coordination overhead can dominate when one bounded context can already solve the task.
 
-## Peer/handoff finding
+## Stale evidence, conflict, duplicate delivery and worker failure
 
-The peer chain is especially sensitive to stale intermediate state and a failed active peer. Explicit handoff systems therefore need a strong state/evidence boundary; merely sharing or forwarding context is not failure containment.
+These cases deliberately **do not** prove manager superiority:
 
-This does not mean handoffs are categorically bad. OpenAI and LangChain both identify direct specialist ownership/stateful conversational flow as a reason to use them. This benchmark targets reliability under synthetic engineering-style tasks, not conversational UX.
+- stale evidence is rejected/contained by the shared version rule;
+- duplicate delivery is collapsed by the same logical work ID;
+- authoritative evidence resolves conflict for every topology;
+- one worker failure is recovered by the same retry rule for every topology.
+
+Manager may keep stale evidence out of synthesis earlier because of its isolation boundary, but terminal correctness remains shared. This separation is important: evidence quality and durable retry are prerequisites from LAB-005 through LAB-012, not topology benefits to count twice.
 
 ## Audit: confounds and limits
 
-The most important threat to validity is scenario construction. The benchmark intentionally seeds context-overwrite, stale-result and central-conflict-resolution cases to expose topology mechanics. Therefore absolute correctness percentages are **not population estimates** and must not be generalized to real LLM workloads.
+Controlled:
+- deterministic worker fixtures;
+- identical logical work/evidence identities;
+- identical idempotency and retry rules;
+- identical terminal verifier;
+- identical seeded scenarios;
+- no model/tool variance.
 
-What is controlled:
-- deterministic worker semantics;
-- identical logical task/evidence identities;
-- identical idempotency/duplicate-delivery protection;
-- no model or tool variance;
-- same seeded task set.
-
-What is not proven:
-- real-world token/cost/latency ratios;
-- model-quality gains from specialization;
-- benefits from true parallel execution;
+Not proven:
+- real token, latency, or monetary cost ratios;
+- model-quality gains from specialist prompts/models;
+- real parallel speedups;
 - behavior on open-ended research or user-facing conversations;
-- superiority of OpenAI, LangGraph or AutoGen implementations.
+- global superiority of OpenAI, LangChain/LangGraph, AutoGen, or any topology.
 
-The coordination proxy is deliberately structural, not monetary.
+The structural cost proxy is `messages + coordination_steps + work_calls`; it is not a production cost model.
 
 ## Decision rule
 
-Default to **one agent / deterministic workflow**. Add a manager + specialists only when at least one measurable benefit exists:
+Default to **one agent or deterministic workflow**. Add a manager + specialists only when a measured requirement buys something concrete, such as:
 
-1. independent subproblems can be isolated/parallelized;
-2. context isolation prevents contamination or overload;
-3. a central synthesizer must arbitrate conflicting specialist evidence;
-4. specialist failure can be contained and rerouted without invalidating the whole run;
-5. domain-specific tools/permissions materially require separation.
+1. independent subproblems need isolated context or parallel execution;
+2. context isolation prevents contamination or capacity pressure;
+3. central synthesis must arbitrate multiple specialist outputs;
+4. failure containment or distinct tool/permission boundaries materially reduce risk;
+5. team boundaries reflect real domain ownership that cannot be expressed cleanly as tools/skills.
 
-Prefer handoff/peer ownership when direct specialist interaction or persistent state ownership is itself a requirement; otherwise do not pay for a handoff chain merely to make the architecture “multi-agent.”
+Prefer handoff/peer ownership when direct specialist interaction or persistent conversational state ownership is itself required. Do not add a handoff chain merely to make an architecture look multi-agent.
 
-A topology should be rejected when its measured coordination overhead exceeds its reliability/latency/context-isolation gain on the target workload.
+Reject a topology when its measured reliability, latency, parallelism, context-isolation, or permission-boundary benefit does not exceed its extra coordination cost on the target workload.
 
 ## Conclusion
 
-Multi-agent is a conditional optimization, not a maturity level. In this controlled benchmark the manager topology buys failure containment and context isolation at roughly 3.3× the single-agent structural cost. Simple work should remain single-agent. Complex separable work can justify a manager when the saved failure risk is worth the extra coordination. Peer/handoff needs explicit state/evidence discipline and is not a substitute for central conflict resolution.
+Multi-agent orchestration is a conditional optimization, not a maturity level. In this controlled benchmark, manager isolation fixes one context-pressure case but costs roughly 2.95x the single-agent structural proxy. Peer/handoff pays substantial coordination cost without improving the bounded engineering-style task set unless direct ownership/state flow is itself the requirement. The safest default is therefore single-agent/deterministic orchestration, escalating to multiple agents only for measurable isolation, parallelism, synthesis, failure-containment, or authority benefits.
