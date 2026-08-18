@@ -4,51 +4,54 @@ Last updated: 2026-08-18
 
 ## Active objective
 
-Continue the autonomous correctness agenda after proving memory contamination recovery. Next: formalize the human/agent escalation boundary so reversible technical uncertainty is handled autonomously while genuinely consequential or unauthorized choices escalate or block.
+Continue the autonomous correctness agenda after formalizing the human/agent escalation boundary. The next executable remaining agenda item is a controlled comparison of orchestration topologies under fixed evidence, recovery, memory, capability, and escalation rules.
 
 ## Active issue / branch / PR
 
-- Completed: #1 LAB-001 through #20 LAB-011 correctness sequence.
-- Completed: #20 LAB-011 memory contamination, quarantine, and retraction recovery.
-- Next: #22 LAB-012 human/agent escalation policy with uncertainty and reversibility gates — READY.
+- Completed: LAB-001 through LAB-012 correctness sequence.
+- Completed: #22 LAB-012 human/agent escalation policy.
+- Next: #24 LAB-013 multi-agent orchestration topology benchmark — READY.
+- Active branch/PR: none yet for LAB-013.
 
 ## Last completed step
 
-LAB-011 compared OWASP ASI06 Memory & Context Poisoning, C2PA 2.4 trust/validation/revocation semantics, and NIST AI 600-1 data-poisoning/RAG risk controls. It built a deterministic memory-safety layer with ACTIVE, QUARANTINED, RETRACTED, and SUPERSEDED lifecycle states plus trust-first authoritative retrieval. The intentionally naive similarity-only policy selected a contaminated high-similarity fact; corrected retrieval excluded it. Initial local failure matrix passed 7/7 scenarios.
+LAB-012 compared current OpenAI agent-intervention guidance, NIST AI RMF human-oversight controls, EU AI Act Article 14, and the OpenAI Operator system-card reversibility/risk pattern. It built an explicit `PROCEED / FALLBACK / PROBE / ESCALATE / BLOCK` policy and seeded a deliberately naive confidence-first policy.
 
-Remote patch audit found a real defect: the first supersession implementation let any newly added memory, including an untrusted one, mark trusted history SUPERSEDED. The implementation was corrected so supersession is an explicit operation and the replacement must satisfy the trust eligibility threshold. The corrected semantics were re-exercised locally. PR #21 was squash-merged.
+The initial deterministic suite passed 12/12 cases. Remote patch audit found a real authority-boundary defect: payment/legal/identity/secret gated actions with technical access could fall through unless another flag separately required human authorization. The policy was corrected so those categories always `ESCALATE` when authority is available and `BLOCK` when it is unavailable; the corrected suite passed 13/13 tests.
+
+The normal PR #23 merge endpoint was externally blocked before execution. The final three-file patch was re-audited, all paths were confirmed absent in `main`, and the exact audited files were integrated through the approved GitHub Contents API fallback. PR #23 was closed as manually integrated and Issue #22 was closed DONE.
 
 ## Evidence produced
 
-- `experiments/memory_safety/memory_safety.py`
-- `experiments/memory_safety/test_memory_safety.py`
-- `experiments/memory_safety/README.md`
-- `research/2026-08-18-memory-contamination-recovery.md`
-- LAB-011 merge: `5d343a8db99217c1668af532b45a8ec493c79246`.
-- Follow-up Issue #22 / LAB-012 created.
+- `experiments/escalation_policy/policy.py`
+- `experiments/escalation_policy/test_policy.py`
+- `research/2026-08-18-human-agent-escalation-policy.md`
+- main commits: `455f7d36189dc7ed22066c26f64ac0833d6366e2`, `f14a0ceeddae3a90123dffddfce6ae8acbbb1c65`, `0e6618d9ca8f30a855274fee3d3e58cd2e1cd586`.
+- Follow-up Issue #24 / LAB-013 created.
 
 ## Findings carried forward
 
-- persistent memory is a security-relevant control surface, not merely retrieval context;
-- trust/currentness/lifecycle eligibility must run before similarity ranking;
-- quarantine preserves inspectability while preventing authoritative use;
-- retraction and supersession preserve history rather than deleting it;
-- provenance/integrity is not equivalent to truth, and a correction reference must be independently verifiable;
-- an untrusted replacement must never be able to supersede trusted history merely by being newer or more similar;
-- memory trust, evidence truth/provenance, and durable execution state remain separate contracts.
+- confidence is not a safe autonomy boundary;
+- hard authority/safety constraints precede confidence and preferences;
+- ordinary reversible uncertainty should use safe `PROBE` or `FALLBACK` before human escalation;
+- `ESCALATE` means a real human judgment/authorization boundary exists;
+- `BLOCK` means no safe authorized path exists and must not trigger constraint weakening;
+- payment/legal/identity/secret gates remain human-authority boundaries even when technical access exists;
+- LAB-012 consumes LAB-005 side-effect state, LAB-006 evidence quality, and LAB-008 safe-route availability rather than duplicating them.
 
 ## Known blockers / constraints
 
 - No current blocking issue is known.
 - Local filesystem, CLIs, network, connectors and permissions remain per-run capabilities.
-- The JSON prototype demonstrates semantics, not transactional production persistence or a truth oracle.
+- Open-model serving remains resource-dependent and is deferred until a representative target runtime/hardware is available.
+- Multi-agent topology must be measured under fixed evidence/recovery assumptions so coordination effects are not confused with model/tool quality.
 
 ## Exact next action
 
-Select Issue #22 / LAB-012. Research at least three current primary-source escalation/autonomy/risk-control mechanisms. Build `experiments/escalation_policy/` with explicit PROCEED / FALLBACK / PROBE / ESCALATE / BLOCK decisions. Seed both over-escalation and dangerous under-escalation cases, compose with LAB-005 side-effect state, LAB-006 evidence quality, and LAB-008 capability safety rather than duplicating them, run deterministic tests, audit residual human judgment boundaries, integrate safely, and update this state.
+Select Issue #24 / LAB-013. Research at least three current primary-source orchestration/handoff mechanisms. Build `experiments/orchestration_topologies/` with identical deterministic seeded tasks across single-agent sequential, manager-specialist, and peer/handoff topologies. Measure correctness, coordination steps/messages, duplicated work, stale-context propagation, failure containment, and recovery. Demonstrate at least one case where multiple agents help and one where they hurt. Audit for confounding with model/tool/evidence behavior, integrate safely, and update this state.
 
 ## Backlog
 
-- #22 / LAB-012 — Human/agent escalation policy — READY and next.
-- Agenda Track 6 / Failure Recovery and Side-Effect Fencing remains substantially satisfied by LAB-005; do not duplicate it without evidence of a new gap.
-- Open-model serving and multi-agent topology remain lower priority until correctness instrumentation is stronger and suitable execution resources exist.
+- #24 / LAB-013 — multi-agent orchestration topology benchmark — READY and next.
+- Open-model serving efficiency remains deferred pending suitable representative execution resources.
+- Revisit the agenda after LAB-013 to identify newly exposed correctness/performance gaps before adding broader autonomous features.
