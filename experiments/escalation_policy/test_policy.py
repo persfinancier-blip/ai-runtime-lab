@@ -41,6 +41,10 @@ class PolicyTests(unittest.TestCase):
         ctx = base(legal_identity_payment_secret_gate=True, authorization_available=False)
         self.assertEqual(decide(ctx).decision, Decision.BLOCK)
 
+    def test_payment_or_secret_gate_with_access_still_escalates(self):
+        ctx = base(legal_identity_payment_secret_gate=True, authorization_available=True)
+        self.assertEqual(decide(ctx).decision, Decision.ESCALATE)
+
     def test_high_uncertainty_cheap_probe_before_escalation(self):
         ctx = base(uncertainty=0.90, cheap_reversible_probe=True)
         self.assertEqual(decide(ctx).decision, Decision.PROBE)
