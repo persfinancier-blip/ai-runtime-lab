@@ -36,8 +36,10 @@ class Result:
 
 
 def decide(ctx: Context) -> Result:
-    if ctx.legal_identity_payment_secret_gate and not ctx.authorization_available:
-        return Result(Decision.BLOCK, "required_authorization_or_secret_unavailable")
+    if ctx.legal_identity_payment_secret_gate:
+        if not ctx.authorization_available:
+            return Result(Decision.BLOCK, "required_authorization_or_secret_unavailable")
+        return Result(Decision.ESCALATE, "payment_legal_identity_or_secret_requires_human_authority")
 
     if ctx.side_effect_outcome_unknown:
         if ctx.cheap_reversible_probe:
