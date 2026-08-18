@@ -4,55 +4,62 @@ Last updated: 2026-08-18
 
 ## Active objective
 
-Move from individually validated correctness primitives to composition correctness. LAB-005 through LAB-013 now cover durable execution, verification, evidence, capability fallback, memory/currentness, engineering lifecycle, memory quarantine, escalation, and topology choice separately. The next risk is cross-layer ordering and invariant failure when these mechanisms interact.
+Move from composition correctness to transactional correctness. LAB-014 proved that the main correctness primitives compose under an explicit authority order, but also exposed two composition-only defects that individual component tests did not catch. The next highest-value gap is atomic persistence and multi-worker concurrency at the storage boundary.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-013.
-- Completed: #24 / LAB-013 multi-agent orchestration topology benchmark.
-- LAB-013 PR #25 squash-merged as `8f3957cca0b22f96af3cae82f9180a64b6df4c2a`.
-- Next: #26 / LAB-014 cross-layer correctness-kernel composition and invariant stress test — READY.
-- Active branch/PR for LAB-014: none yet.
+- Completed: LAB-001 through LAB-014.
+- Completed: #26 / LAB-014 cross-layer correctness-kernel composition and invariant stress test.
+- LAB-014 PR #27 squash-merged as `f5cb4ccf1e71eb70ace69a14d464e35df68bb7c0`.
+- Next: #28 / LAB-015 transactional correctness kernel — READY.
+- Active branch/PR for LAB-015: none yet.
 
 ## Last completed step
 
-LAB-013 compared current OpenAI Agents SDK manager-as-tools/handoffs, LangChain/LangGraph subagent/handoff patterns, and Microsoft AutoGen team/swarm/graph patterns. A deterministic benchmark compared single, manager-specialist, and peer/handoff topologies under fixed worker/evidence/idempotency/recovery rules.
+LAB-014 built `experiments/correctness_kernel/` as a thin deterministic composition layer over existing LAB-005/006/007/008/011/012 interfaces, with topology constrained to an optimization input rather than an authority source.
 
-The first branch implementation was rejected during audit because several correctness outcomes were directly hardcoded by topology. It was rewritten so stale evidence, conflict resolution, duplicate suppression, worker failure/retry, and terminal verification are shared across all topologies. The corrected suite passed 9/9 tests and `python -m compileall -q experiments` passed.
+The deliberately unsafe composition trusted advisory narrative memory (`done successfully`) as completion authority; the expected-safety test failed as intended. The corrected matrix initially passed, then remote audit found two composition defects before merge:
 
-Corrected aggregate on the synthetic seeded set: single 85.71% correctness / mean structural cost 2.86; manager 100% / 8.43; peer 85.71% / 6.57. The only correctness benefit left intentionally arises from context isolation under bounded context pressure; simple tasks demonstrate multi-agent harm through extra coordination cost rather than manufactured failure.
+1. ledger/verifier semantic-binding gap — a valid ledger ID could be paired with a caller-fabricated verifier-side requirement mapping;
+2. restart memory-state gap — the kernel constructed a fresh `MemoryStore` instead of loading persisted quarantine/retraction state.
+
+Both were fixed. Requirement coverage is now committed into authoritative observation digest material and verifier-side semantics are checked against the ledger record; restart uses `MemoryStore.load(...)`.
+
+The final local interface-compatible suite passed 12/12 tests and `python -m compileall -q experiments/correctness_kernel` passed. A direct exact repository clone was attempted but the local container could not resolve `github.com`, so exact-source validation used GitHub connector patch/file inspection. PR #27 was remote-audited, mergeable at the audited HEAD, and squash-merged.
 
 ## Evidence produced
 
-- `experiments/orchestration_topologies/benchmark.py`
-- `experiments/orchestration_topologies/tests/test_benchmark.py`
-- `experiments/orchestration_topologies/README.md`
-- `research/2026-08-18-multi-agent-orchestration-topology-benchmark.md`
-- Issue #24 closed DONE.
-- PR #25 merged: `8f3957cca0b22f96af3cae82f9180a64b6df4c2a`.
-- New follow-up Issue #26 / LAB-014 created.
+- `experiments/correctness_kernel/kernel.py`
+- `experiments/correctness_kernel/tests/test_kernel.py`
+- `experiments/correctness_kernel/tests/unsafe_seed_expected_failure.py`
+- `experiments/correctness_kernel/README.md`
+- `research/2026-08-18-cross-layer-correctness-kernel.md`
+- Issue #26 closed DONE.
+- PR #27 merged: `f5cb4ccf1e71eb70ace69a14d464e35df68bb7c0`.
+- New follow-up Issue #28 / LAB-015 created.
 
 ## Findings carried forward
 
-- multi-agent is a conditional optimization, not a maturity level;
-- default to one agent/deterministic workflow unless isolation, parallelism, synthesis, failure-containment, domain/tool/permission boundaries, or direct specialist ownership provide measurable value;
-- stale evidence, retry, idempotency and verification are correctness primitives and must not be double-counted as topology benefits;
-- synthetic topology benchmarks must not encode success/failure directly by topology;
-- all major correctness mechanisms have now been validated separately, but composition invariants are not yet proven.
+- authority order is part of correctness: durable state/memory reconstruction -> reconciliation -> escalation/authority policy -> trusted advisory-memory filter -> capability selection -> topology optimization -> fenced/idempotent execution -> append evidence -> invalidation/supersession resolution -> ledger-bound verifier semantics -> terminal completion;
+- authority flows downward; preferences (route score, topology, similarity) cannot flow upward and weaken safety constraints;
+- verifier-side semantic views must be bound to authoritative ledger records, not merely share an ID;
+- durable safety metadata such as quarantine/retraction must be reconstructed on restart before decisions;
+- completion is derived and revocable, not a sticky boolean;
+- file-backed semantics still do not prove atomic multi-worker behavior.
 
 ## Known blockers / constraints
 
 - No current blocking issue is known.
-- Local filesystem, CLIs, network, connectors and permissions remain per-run capabilities.
-- Open-model serving efficiency remains deferred until representative target hardware/runtime is available; a decorative benchmark without realistic concurrency is not acceptable.
-- LAB-014 should reuse existing experiment mechanisms where practical rather than create a parallel duplicate architecture.
+- Direct container network/DNS to GitHub remained unavailable in the LAB-014 run; use connector-first exact-source audit and treat local network as a per-run capability.
+- Open-model serving efficiency remains deferred until representative target hardware/runtime is available; decorative benchmarking remains disallowed.
+- SQLite may be used in LAB-015 only as an executable approximation of SQL transaction semantics; do not claim it is equivalent to PostgreSQL or a distributed lease service.
 
 ## Exact next action
 
-Select Issue #26 / LAB-014. Inspect the existing LAB-005 through LAB-013 experiment interfaces and identify the minimum reusable seams. Build `experiments/correctness_kernel/` as a deterministic cross-layer harness that machine-checks terminal evidence validity, UNKNOWN reconciliation, invalidation propagation, memory non-authority, capability fallback identity preservation, escalation dominance, topology non-bypass, stale-fence rejection, and restart determinism. Seed at least one ordering/composition bug, observe it fail, correct it, run the full failure matrix, perform remote patch audit, integrate safely, and update this state.
+Select Issue #28 / LAB-015. Research primary-source transaction/concurrency mechanisms, then build `experiments/transactional_kernel/` with explicit SQL schema and transaction boundaries. Seed an unsafe split-transaction/lost-update or invalid-DONE race, observe it fail, then implement atomic claim/fence/generation/evidence/completion semantics. Cover at least the 10 required concurrency/failure scenarios, run deterministic tests and compile/static checks, perform a separate remote patch audit, integrate safely, and update this state.
 
 ## Backlog
 
-- #26 / LAB-014 — cross-layer correctness-kernel composition/invariant stress test — READY and next.
+- #28 / LAB-015 — transactional correctness kernel: atomic persistence, leases and concurrent completion — READY and next.
+- Correctness-kernel latency/cost overhead benchmark — candidate after LAB-015 establishes a transactional prototype.
 - Open-model serving efficiency — DEFERRED pending representative hardware/runtime.
-- After LAB-014, reassess whether the lab needs a production-storage prototype, latency/cost benchmarking, or a representative open-model serving environment before expanding scope.
