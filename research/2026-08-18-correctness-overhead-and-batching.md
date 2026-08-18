@@ -11,7 +11,7 @@ How much local execution overhead is introduced by LAB-015 correctness controls,
 
 The benchmark uses the existing standard-library SQLite transactional kernel. Environment observed in this run: Python 3.13.5, SQLite 3.46.1, Linux x86_64, 5 visible CPUs. SQLite WAL mode is used by the kernel. Results are local-runtime measurements only.
 
-A pilot run was discarded during audit because each measured task recreated `Kernel(path)` and re-ran schema initialization. The corrected benchmark moves setup and warmup outside the measured task path. The committed results are from that corrected run only.
+A pilot run was discarded during audit because each measured task recreated `Kernel(path)` and re-ran schema initialization. The corrected benchmark moves setup and warmup outside the measured task path. A later remote patch audit then found a correctness defect in the first batching candidate: a late duplicate could reopen terminal `DONE` as `INTENT`. That candidate and its measurements were also discarded. The committed results are from the corrected terminal-monotonic implementation only.
 
 Uncontended cases use 120 measured tasks after 10 warmups. Contention uses 4 worker threads × 30 tasks. Payloads are 32 bytes and 65,536 bytes. Metrics include median/p95 task latency, known write-transaction count, conflict/retry count and approximate database/WAL/SHM byte growth.
 
@@ -33,33 +33,33 @@ PostgreSQL documentation likewise distinguishes durable synchronous commit from 
 
 | payload | minimal (1 tx) | full (6 tx) | batched2 (2 tx) | batched2 vs full |
 |---|---:|---:|---:|---:|
-| 32 B | 1.58 ms | 16.51 ms | 6.57 ms | -60.2% |
-| 64 KiB | 1.93 ms | 15.36 ms | 5.94 ms | -61.3% |
+| 32 B | 1.60 ms | 16.87 ms | 5.09 ms | -69.8% |
+| 64 KiB | 1.83 ms | 21.32 ms | 6.42 ms | -69.9% |
 
-The full correctness path is about 10.5× the unsafe minimal median for 32 B and 8.0× for 64 KiB in this environment. Most of that gap is fixed transaction/connection/commit work rather than evidence payload size.
+The full correctness path is about 10.6× the unsafe minimal median for 32 B and 11.6× for 64 KiB in this environment. The safe two-transaction path retains correctness boundaries while eliminating four commit/lock boundaries.
 
 ### Four-worker contention
 
-| payload | full throughput | batched2 throughput | gain | full p95 | batched2 p95 |
-|---|---:|---:|---:|---:|---:|
-| 32 B | 94.5 tasks/s | 266.2 tasks/s | 2.82× | 40.30 ms | 12.61 ms |
-| 64 KiB | 93.3 tasks/s | 213.4 tasks/s | 2.29× | 37.81 ms | 21.75 ms |
+| payload | full throughput | batched2 throughput | gain | full p95 | batched2 p95 | conflicts |
+|---|---:|---:|---:|---:|---:|---:|
+| 32 B | 123.4 tasks/s | 291.9 tasks/s | 2.37× | 25.03 ms | 41.50 ms | 6 → 2 |
+| 64 KiB | 82.9 tasks/s | 173.1 tasks/s | 2.09× | 226.81 ms | 62.35 ms | 11 → 2 |
 
-Observed lock/conflict retries fell from 5→1 for 32 B and 6→1 for 64 KiB. SQLite scheduling/WAL effects make contended per-task medians non-comparable to uncontended medians; throughput, p95 and retry counts are the useful contention signals here.
+The optimization is therefore **not uniformly better on every latency statistic**. Throughput, mean latency, median latency and retry count improved in both contention cases, while the 32 B p95 became worse in this run. That tail result prevents claiming a universal latency win and is a reason to repeat the experiment on PostgreSQL/representative infrastructure before production tuning.
 
-Approximate database growth was dominated by the 64 KiB evidence payload itself. Both correctness variants wrote essentially the same payload bytes; safe batching mainly reduced commit/lock boundaries, not logical data volume.
+Approximate database growth was dominated by the 64 KiB evidence payload itself. Both correctness variants wrote essentially the same logical payload volume; safe batching mainly reduced commit/lock boundaries, not authoritative data.
 
 ## Optimization decision
 
-**Supported:** collapse the current six-transaction local path into two authoritative transaction phases when the surrounding adapter can preserve the external-effect boundary:
+**Supported, with scope:** collapse the current six-transaction local path into two authoritative transaction phases when the surrounding adapter can preserve the external-effect boundary:
 
 1. transaction A: claim/fence + durable intent + outbox identity; commit;
 2. perform/reconcile external side effect with stable idempotency identity;
 3. transaction B: confirm receipt + append evidence + read authoritative evidence validity + terminal completion; commit.
 
-This preserved the tested invariants and materially reduced local overhead.
+The candidate materially improved local throughput and uncontended median while preserving tested invariants. Tail latency remains workload/runtime dependent.
 
-**Rejected:** one transaction spanning the whole workflow. Keeping a database transaction open across an external side effect is both operationally expensive and semantically wrong for recovery; alternatively committing only after the side effect loses durable intent before an `UNKNOWN` outcome.
+**Rejected:** one transaction spanning the whole workflow. Keeping a database transaction open across an external side effect is operationally expensive and semantically wrong for recovery; alternatively committing only after the side effect loses durable intent before an `UNKNOWN` outcome.
 
 **Rejected:** caching evidence validity or fence ownership across the terminal decision. These are authoritative commit-time checks and must be fresh in transaction B.
 
@@ -70,9 +70,10 @@ The safe batching candidate has explicit tests for:
 - durable `INTENT` existing before confirmation;
 - valid evidence completing in transaction B;
 - invalid evidence causing transaction-B rollback back to `INTENT`;
-- stale fence rejection.
+- stale fence rejection;
+- late duplicate delivery preserving terminal `DONE`.
 
-Observed: 4/4 tests passed. `python -m compileall -q experiments/correctness_overhead` also passed.
+Observed final result: 5/5 tests passed. `python -m compileall -q experiments/correctness_overhead` also passed.
 
 ## Non-negotiable commit-time invariants
 
@@ -85,8 +86,17 @@ Observed: 4/4 tests passed. `python -m compileall -q experiments/correctness_ove
 
 ## Limits
 
-SQLite has a different concurrency and WAL implementation from PostgreSQL and effectively serializes writers more aggressively. Hardware, filesystem, fsync policy, connection pooling and PostgreSQL row-level locking will change absolute and relative costs. The result supports the **transaction-boundary hypothesis**, not a production latency claim.
+SQLite has a different concurrency and WAL implementation from PostgreSQL and effectively serializes writers more aggressively. Hardware, filesystem, fsync policy, connection pooling and PostgreSQL row-level locking will change absolute and relative costs. The result supports the **transaction-boundary hypothesis**, not a production latency claim. `db_bytes_delta` is an approximate file-growth signal, not a precise WAL/write-amplification counter.
+
+## Audit findings
+
+Two issues were found and corrected before integration:
+
+1. benchmark setup/schema initialization was inside the timed task path;
+2. the initial batched transaction A could reopen `DONE` during late duplicate delivery.
+
+Both affected versions/results were discarded rather than averaged into the final data.
 
 ## Stop-condition assessment
 
-Stable local measurements were obtained, a safe batching candidate was validated against explicit invariants, and a tempting one-transaction optimization was rejected on correctness grounds. LAB-016 can close after repository patch audit/integration.
+Stable local measurements were obtained, a safe batching candidate was validated against explicit invariants, a tempting one-transaction optimization was rejected on correctness grounds, and negative tail-latency evidence was retained rather than hidden. LAB-016 can close after final remote patch audit/integration.
