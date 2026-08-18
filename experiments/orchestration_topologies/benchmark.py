@@ -1,173 +1,206 @@
 from __future__ import annotations
+from collections import deque
 from dataclasses import dataclass, field, asdict
 from typing import Literal
 
-Topology = Literal['single','manager','peer']
+Topology = Literal["single", "manager", "peer"]
+
+@dataclass(frozen=True)
+class Evidence:
+    eid: str
+    key: str
+    value: str
+    version: int
+    current_version: int
+    valid: bool = True
+    authoritative: bool = False
+
+    @property
+    def stale(self) -> bool:
+        return self.version != self.current_version
+
+@dataclass(frozen=True)
+class Event:
+    work_id: str
+    evidence: Evidence | None = None
+    fail_once: bool = False
 
 @dataclass(frozen=True)
 class Scenario:
     name: str
-    kind: str
+    expected: dict[str, str]
+    events: tuple[Event, ...]
+    context_budget: int = 4
 
-SCENARIOS = [
-    Scenario('simple','simple'),
-    Scenario('decomposable','decomposable'),
-    Scenario('stale_specialist','stale'),
-    Scenario('duplicate_handoff','duplicate'),
-    Scenario('conflicting_evidence','conflict'),
-    Scenario('worker_failure','failure'),
-    Scenario('overhead_dominates','overhead'),
-]
+def ev(eid, key, value, version=1, current=1, authoritative=False, work_id=None):
+    return Event(work_id or eid, Evidence(eid, key, value, version, current, True, authoritative))
+
+SCENARIOS = (
+    Scenario("simple", {"a": "A"}, (ev("e1", "a", "A"),), 4),
+    Scenario(
+        "decomposable_context_pressure",
+        {"a": "A", "b": "B", "c": "C"},
+        (ev("e1", "a", "A"), ev("e2", "b", "B"), ev("e3", "c", "C")),
+        2,
+    ),
+    Scenario(
+        "stale_specialist",
+        {"a": "A2"},
+        (ev("e1", "a", "A1", 1, 2), ev("e2", "a", "A2", 2, 2)),
+        4,
+    ),
+    Scenario(
+        "duplicate_handoff",
+        {"a": "A"},
+        (ev("e1", "a", "A", work_id="w1"), ev("e1-dup", "a", "A", work_id="w1")),
+        4,
+    ),
+    Scenario(
+        "conflicting_evidence",
+        {"a": "GOOD"},
+        (
+            ev("e1", "a", "BAD"),
+            ev("e2", "a", "GOOD"),
+            ev("e3", "a", "GOOD", authoritative=True),
+        ),
+        4,
+    ),
+    Scenario(
+        "worker_failure",
+        {"a": "A"},
+        (Event("w1", ev("tmp", "a", "A").evidence, fail_once=True),),
+        4,
+    ),
+    Scenario("overhead_dominates", {"a": "A"}, (ev("e1", "a", "A"),), 4),
+)
 
 @dataclass
 class Metrics:
     scenario: str
     topology: Topology
-    correct: bool = True
+    correct: bool = False
     messages: int = 0
     coordination_steps: int = 0
     work_calls: int = 0
-    duplicated_work: int = 0
+    duplicate_deliveries: int = 0
     stale_context_events: int = 0
     failures_contained: int = 0
     recoveries: int = 0
-    evidence_conflicts: int = 0
+    surfaced_evidence: int = 0
     notes: list[str] = field(default_factory=list)
 
     @property
     def cost(self) -> int:
-        return self.messages + self.coordination_steps + self.work_calls + self.duplicated_work
+        return self.messages + self.coordination_steps + self.work_calls
 
+def _verify(expected: dict[str, str], evidence: list[Evidence]) -> bool:
+    by_key: dict[str, list[Evidence]] = {}
+    for item in evidence:
+        if not item.valid or item.stale:
+            continue
+        by_key.setdefault(item.key, []).append(item)
 
-def _work(m: Metrics, n: int = 1):
-    m.work_calls += n
+    for key, wanted in expected.items():
+        candidates = by_key.get(key, [])
+        if not candidates:
+            return False
+        authoritative = [item for item in candidates if item.authoritative]
+        chosen = authoritative[-1] if authoritative else candidates[-1]
+        if chosen.value != wanted:
+            return False
+        values = {item.value for item in candidates}
+        if len(values) > 1 and not authoritative:
+            return False
+    return True
 
+def _execute_event(event: Event, seen_work: set[str], metrics: Metrics) -> Evidence | None:
+    if event.work_id in seen_work:
+        metrics.duplicate_deliveries += 1
+        return None
+    seen_work.add(event.work_id)
+    metrics.work_calls += 1
+    if event.fail_once:
+        metrics.recoveries += 1
+        metrics.failures_contained += 1
+        metrics.work_calls += 1
+    return event.evidence
 
-def run_scenario(s: Scenario, topology: Topology) -> Metrics:
-    m = Metrics(s.name, topology)
-    if topology == 'single':
-        m.messages = 1
-    elif topology == 'manager':
-        m.messages = 2; m.coordination_steps = 2
+def run_scenario(scenario: Scenario, topology: Topology) -> Metrics:
+    metrics = Metrics(scenario.name, topology)
+    seen_work: set[str] = set()
+
+    if topology == "single":
+        context: deque[Evidence] = deque(maxlen=scenario.context_budget)
+        for event in scenario.events:
+            item = _execute_event(event, seen_work, metrics)
+            if item is not None:
+                if item.stale:
+                    metrics.stale_context_events += 1
+                context.append(item)
+        surfaced = list(context)
+        metrics.coordination_steps = 1
+
+    elif topology == "manager":
+        isolated: dict[str, Evidence] = {}
+        for event in scenario.events:
+            metrics.messages += 2
+            metrics.coordination_steps += 1
+            item = _execute_event(event, seen_work, metrics)
+            if item is None:
+                continue
+            if item.stale:
+                metrics.failures_contained += 1
+                continue
+            isolated[item.eid] = item
+        surfaced = list(isolated.values())
+        metrics.coordination_steps += 1
+
+    elif topology == "peer":
+        context = deque(maxlen=scenario.context_budget)
+        metrics.messages += 1
+        metrics.coordination_steps += 1
+        for index, event in enumerate(scenario.events):
+            if index:
+                metrics.messages += 1
+                metrics.coordination_steps += 1
+            item = _execute_event(event, seen_work, metrics)
+            if item is not None:
+                if item.stale:
+                    metrics.stale_context_events += 1
+                context.append(item)
+        surfaced = list(context)
+        metrics.coordination_steps += 1
+
     else:
-        m.messages = 2; m.coordination_steps = 1
+        raise ValueError(topology)
 
-    if s.kind in {'simple','overhead'}:
-        _work(m)
-        if topology != 'single':
-            m.messages += 2
-            m.coordination_steps += 1
-            m.notes.append('decomposition added no informational value')
-        return m
-
-    if s.kind == 'decomposable':
-        if topology == 'manager':
-            _work(m, 2)
-            m.messages += 2
-            m.notes.append('isolated specialist contexts preserve both independent results')
-        elif topology == 'single':
-            _work(m, 2)
-            m.correct = False
-            m.stale_context_events = 1
-            m.notes.append('shared sequential scratch state overwrote one independent result')
-        else:
-            _work(m, 2)
-            m.messages += 2
-            m.stale_context_events = 1
-            m.correct = False
-            m.notes.append('handoff chain propagated intermediate state and lost one independent result')
-        return m
-
-    if s.kind == 'stale':
-        _work(m)
-        if topology == 'manager':
-            m.evidence_conflicts = 1
-            m.failures_contained = 1
-            m.recoveries = 1
-            _work(m)
-            m.messages += 2
-            m.notes.append('manager rejected stale specialist evidence and requested fresh work')
-        elif topology == 'single':
-            m.stale_context_events = 1
-            m.correct = False
-            m.notes.append('stale local context was reused without an isolation boundary')
-        else:
-            m.stale_context_events = 1
-            m.correct = False
-            m.messages += 1
-            m.notes.append('stale output propagated to next peer before synthesis')
-        return m
-
-    if s.kind == 'duplicate':
-        _work(m)
-        # Fixed idempotency/evidence rules prevent duplicated side effects for every topology.
-        if topology == 'single':
-            m.notes.append('duplicate delivery collapsed by shared work id')
-        else:
-            m.messages += 2
-            m.duplicated_work = 0
-            m.notes.append('duplicate handoff detected by the same work-id/idempotency rule')
-        return m
-
-    if s.kind == 'conflict':
-        _work(m, 2)
-        m.evidence_conflicts = 1
-        if topology == 'manager':
-            m.failures_contained = 1
-            m.recoveries = 1
-            _work(m)
-            m.messages += 2
-            m.notes.append('central synthesizer preserved conflict and requested tie-break evidence')
-        elif topology == 'single':
-            m.correct = False
-            m.notes.append('sequential last-write-wins discarded the first conflicting observation')
-        else:
-            m.correct = False
-            m.messages += 2
-            m.notes.append('peer chain forwarded latest claim without central conflict resolution')
-        return m
-
-    if s.kind == 'failure':
-        _work(m)
-        if topology == 'manager':
-            m.failures_contained = 1
-            m.recoveries = 1
-            _work(m)
-            m.messages += 2
-            m.notes.append('manager rerouted failed bounded subtask to alternate specialist')
-        elif topology == 'single':
-            m.recoveries = 1
-            _work(m)
-            m.notes.append('single agent retried locally and recovered')
-        else:
-            m.correct = False
-            m.messages += 1
-            m.notes.append('active peer failed before producing a valid handoff')
-        return m
-
-    raise ValueError(s.kind)
-
+    metrics.surfaced_evidence = len(surfaced)
+    metrics.correct = _verify(scenario.expected, surfaced)
+    if topology != "single" and len(scenario.events) == 1:
+        metrics.notes.append("agent boundary added coordination without additional information")
+    return metrics
 
 def benchmark() -> list[Metrics]:
-    return [run_scenario(s, t) for s in SCENARIOS for t in ('single','manager','peer')]
-
+    return [run_scenario(scenario, topology) for scenario in SCENARIOS for topology in ("single", "manager", "peer")]
 
 def aggregate(rows: list[Metrics]) -> dict[str, dict[str, float]]:
-    out: dict[str, dict[str, float]] = {}
-    for t in ('single','manager','peer'):
-        xs = [r for r in rows if r.topology == t]
-        out[t] = {
-            'correct_rate': sum(r.correct for r in xs)/len(xs),
-            'mean_cost': sum(r.cost for r in xs)/len(xs),
-            'messages': sum(r.messages for r in xs),
-            'work_calls': sum(r.work_calls for r in xs),
-            'stale_context_events': sum(r.stale_context_events for r in xs),
-            'failures_contained': sum(r.failures_contained for r in xs),
-            'recoveries': sum(r.recoveries for r in xs),
+    output: dict[str, dict[str, float]] = {}
+    for topology in ("single", "manager", "peer"):
+        selected = [row for row in rows if row.topology == topology]
+        output[topology] = {
+            "correct_rate": sum(row.correct for row in selected) / len(selected),
+            "mean_cost": sum(row.cost for row in selected) / len(selected),
+            "messages": sum(row.messages for row in selected),
+            "work_calls": sum(row.work_calls for row in selected),
+            "duplicate_deliveries": sum(row.duplicate_deliveries for row in selected),
+            "stale_context_events": sum(row.stale_context_events for row in selected),
+            "failures_contained": sum(row.failures_contained for row in selected),
+            "recoveries": sum(row.recoveries for row in selected),
         }
-    return out
+    return output
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import json
+
     rows = benchmark()
-    print(json.dumps({'aggregate': aggregate(rows), 'rows':[asdict(r)|{'cost':r.cost} for r in rows]}, indent=2))
+    print(json.dumps({"aggregate": aggregate(rows), "rows": [asdict(row) | {"cost": row.cost} for row in rows]}, indent=2))
