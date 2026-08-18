@@ -75,7 +75,7 @@ class CorrectnessKernelTests(unittest.TestCase):
         self.assertIsNotNone(receipt_id)
         self.assertEqual(self.kernel.effects.apply_count, 1)
         test_id, test_evidence = self.kernel.add_test_evidence("a1")
-        side_effect = Evidence(receipt_id, "receipt", "a1", True, "pass", ("done",))
+        side_effect = Evidence(receipt_id, "side_effect", "a1", True, "pass", ())
         self.assertTrue(
             self.kernel.completion(
                 "a1", ("done",), (receipt_id, test_id), (side_effect, test_evidence)
@@ -155,6 +155,15 @@ class CorrectnessKernelTests(unittest.TestCase):
         )
         self.assertTrue(self.kernel.naive_done_from_narrative("status"))
         self.assertFalse(self.kernel.completion("a1", ("done",), (), ()).done)
+
+    def test_fabricated_claim_semantics_rejected(self):
+        evidence_id, _ = self.kernel.add_test_evidence("a1", ("done",))
+        forged = Evidence(evidence_id, "test", "a1", True, "pass", ("done", "extra"))
+        self.assertFalse(
+            self.kernel.completion(
+                "a1", ("done", "extra"), (evidence_id,), (forged,)
+            ).done
+        )
 
     def test_duplicate_replay_effect_idempotent(self):
         state = self.kernel.start("w", "a1")
