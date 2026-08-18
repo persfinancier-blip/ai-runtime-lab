@@ -6,25 +6,25 @@ Branch: `lab/014-correctness-kernel`
 
 ## Question
 
-Do the individually validated correctness mechanisms from LAB-005 through LAB-013 remain safe when combined, or do ordering/authority mistakes create new failure modes?
+Do the independently validated correctness mechanisms from LAB-005 through LAB-013 remain safe when combined, or do ordering/authority mistakes create new failure modes?
 
 ## Method
 
-This issue does not add another donor survey. It composes already accepted mechanisms and stress-tests their boundaries. The kernel imports existing experiment interfaces where practical rather than re-implementing their semantics.
+This issue composes already accepted mechanisms and stress-tests their boundaries rather than adding another donor survey. The kernel imports existing experiment interfaces where practical instead of re-implementing their semantics.
 
 Reused directly:
 - LAB-005 durable run state, UNKNOWN reconciliation, idempotency and fencing;
 - LAB-006 claim/evidence verifier;
 - LAB-007 append-only evidence ledger, invalidation and supersession checks;
 - LAB-008 capability planner and hard-before-preference route filtering;
-- LAB-011 memory trust/quarantine filter;
+- LAB-011 memory trust/quarantine/restart persistence;
 - LAB-012 escalation policy.
 
-LAB-013 topology is represented only as a selected routing mode. The point of LAB-014 is to prove topology cannot become an authority bypass; its internal benchmark logic is not duplicated.
+LAB-013 topology is represented only as a selected routing mode. Its benchmark logic is not duplicated because LAB-014 tests that topology cannot become an authority bypass.
 
 ## Seeded composition bug
 
-An intentionally unsafe downstream check treated a highly trusted memory narrative containing `done successfully` as sufficient completion authority.
+An intentionally unsafe downstream check treated a memory narrative containing `done successfully` as sufficient completion authority.
 
 Executed:
 
@@ -39,18 +39,26 @@ AssertionError: True is not false : seeded bug: downstream completion trusted ad
 FAILED (failures=1)
 ```
 
-This demonstrates a composition failure even though the memory subsystem itself behaved correctly: the bug was ordering/authority misuse downstream.
+The memory subsystem itself behaved as designed; the composition error was downstream authority misuse.
 
-## Remote-audit defect found and corrected
+## Audit defects found and corrected
 
-The first corrected kernel still had a cross-layer semantic-binding gap: it verified ledger IDs and claim-verifier objects separately, so a caller could reuse a valid ledger ID while supplying an `Evidence` object with fabricated requirement coverage or altered semantics.
+### 1. Ledger/verifier semantic-binding gap
 
-The fix binds verifier-view semantics back to the authoritative ledger body before claim verification:
+The first corrected kernel verified ledger IDs and claim-verifier objects separately. A caller could therefore reuse a valid ledger ID while supplying a verifier-side `Evidence` object with fabricated requirement coverage or altered semantics.
+
+Fix:
 - evidence ID must resolve in the ledger and remain current;
 - kind, artifact digest, observed/trusted status and outcome must match the ledger observation;
 - requirement coverage is committed into the observation `output_digest` as a canonical digest and must match the verifier-side requirement tuple.
 
-A new regression case for a forged requirement mapping is rejected deterministically.
+A forged requirement mapping is now rejected deterministically.
+
+### 2. Restart dropped memory quarantine state
+
+The initial composition constructed `MemoryStore(path)` on restart instead of using LAB-011's durable `MemoryStore.load(path)`. That discarded persisted quarantine/retraction state from the in-memory view and could change later decisions.
+
+Fix: kernel startup now loads the durable memory store. A restart regression proves a quarantined record remains quarantined and excluded from authoritative memory after reconstruction.
 
 ## Corrected invariant matrix
 
@@ -60,7 +68,7 @@ Executed locally:
 python -m unittest discover -s experiments/correctness_kernel/tests -p 'test_*.py' -v
 ```
 
-Observed result after the audit fix: **11/11 tests passed**.
+Observed result after both audit fixes: **12/12 tests passed**.
 
 Also executed:
 
@@ -68,23 +76,24 @@ Also executed:
 python -m compileall -q experiments/correctness_kernel
 ```
 
-Observed result: success before publication; the updated Python remained syntactically valid in the local fixture tree.
+Observed result: success.
 
-A direct `git clone` of the repository was attempted to run the final branch against an exact checkout, but this runtime's local container again could not resolve `github.com`. Therefore remote code/patch inspection through the GitHub connector is the exact-source audit path in this run; local execution uses interface-compatible copies of the already fetched experiment modules.
+A direct `git clone` was attempted to execute the final branch against an exact checkout, but this runtime's local container could not resolve `github.com`. Exact-source validation therefore uses GitHub connector file/patch inspection; local execution uses interface-compatible copies of the already fetched experiment modules.
 
 Scenarios:
 
 1. UNKNOWN side effect is reconciled before receipt evidence can support completion;
-2. currently accepted evidence invalidated later revokes the completion decision;
+2. currently accepted evidence invalidated later revokes completion;
 3. quarantined memory cannot enter authoritative control context;
 4. capability fallback preserves work/artifact/idempotency/evidence identity;
 5. payment/legal/identity/secret authority boundary dominates an available preferred route;
 6. manager/handoff topology cannot bypass BLOCK/ESCALATE semantics;
 7. an obsolete fence after reroute cannot commit an external effect;
-8. restart/reload plus the same observations yields the same deterministic safe next action;
-9. narrative memory may influence planning but cannot satisfy completion evidence requirements;
-10. replay with the same effect key remains idempotent;
-11. a valid ledger ID cannot be reused with fabricated verifier-side requirement semantics.
+8. persisted memory quarantine survives restart/reload;
+9. restart plus the same authoritative observations yields the same deterministic safe next action;
+10. narrative memory may influence planning but cannot satisfy completion evidence requirements;
+11. a valid ledger ID cannot be reused with fabricated verifier-side requirement semantics;
+12. replay with the same effect key remains idempotent.
 
 ## Composition invariants
 
@@ -93,9 +102,10 @@ Scenarios:
 These are non-negotiable correctness/safety constraints:
 
 - terminal completion requires current valid ledger evidence **and** deterministic claim verification for the current artifact/requirements;
-- verifier-side evidence semantics must be bound to the authoritative ledger record, not caller-supplied narrative objects;
+- verifier-side evidence semantics must be bound to the authoritative ledger record;
 - UNKNOWN side effects must be reconciled before retry/completion;
 - evidence invalidation/supersession propagates into completion decisions;
+- durable quarantine/retraction state must survive restart;
 - memory is advisory context, never proof that a side effect happened or a task completed;
 - BLOCK / ESCALATE / PROBE decisions dominate capability preference and topology convenience;
 - stale fencing blocks obsolete owners from external mutation;
@@ -113,7 +123,8 @@ These may choose among already safe alternatives but cannot weaken authority inv
 ## Minimal reference order
 
 ```text
-durable state load/claim
+durable state + durable memory load
+  -> claim/fence current attempt
   -> UNKNOWN reconciliation
   -> authority/escalation policy
   -> trusted/current advisory-memory filter
@@ -127,27 +138,28 @@ durable state load/claim
   -> terminal completion decision
 ```
 
-The key lesson is that **authority flows downward, preferences do not flow upward**. A downstream optimization layer must not reinterpret advisory output as authoritative evidence.
+The central rule is: **authority flows downward; preferences do not flow upward**. A downstream optimization layer cannot reinterpret advisory output as authoritative evidence.
 
 ## Important dependency constraints
 
-1. Reconciliation precedes evidence issuance: an UNKNOWN outcome is not evidence of success.
-2. Evidence validity is checked at decision time, not only when evidence was first observed.
-3. Claim/verifier semantics must be checked against the ledger record before requirement proof is accepted.
-4. Escalation/authorization is evaluated before route/topology convenience.
-5. Capability fallback may change transport but not logical identity.
-6. New attempt/topology ownership must advance fencing before external mutation.
-7. Memory selection can suggest what to inspect or route, but cannot synthesize receipts or completion proof.
-8. Completion is derived, not sticky: invalidation makes a previously true completion decision false until re-verified.
+1. Reconciliation precedes evidence issuance: an UNKNOWN outcome is not success evidence.
+2. Durable safety state must be reconstructed before a new decision is made.
+3. Evidence validity is checked at decision time, not only when evidence was first observed.
+4. Claim/verifier semantics are checked against the ledger record before requirement proof is accepted.
+5. Escalation/authorization is evaluated before route/topology convenience.
+6. Capability fallback may change transport but not logical identity.
+7. New attempt/topology ownership advances fencing before external mutation.
+8. Memory can suggest what to inspect or route, but cannot synthesize receipts or completion proof.
+9. Completion is derived, not sticky: invalidation makes a previously true completion decision false until re-verified.
 
 ## Limits
 
 - The experiments remain standard-library/single-process reference mechanisms, not a production transactional system.
 - JSON/file stores demonstrate semantics but not distributed atomicity.
-- Restart determinism here assumes the same authoritative capability observations and policy inputs; changing observations should intentionally change the next action.
-- Exact-branch local checkout was unavailable because direct container DNS/network access to GitHub failed; exact-source validation is therefore connector patch audit plus interface-compatible local execution.
+- Restart determinism assumes the same authoritative capability observations and policy inputs; changed observations should intentionally change the next action.
+- Direct container DNS/network access to GitHub remained unavailable, so the exact branch could not be cloned locally in this run.
 - No claim is made that the kernel is a universal workflow architecture.
 
 ## Decision
 
-The lab now has evidence that its main correctness primitives can compose under a strict authority order and that semantic binding between layers is itself a first-class invariant. The next engineering question should shift from inventing more independent primitives to **production-grade atomic persistence/concurrency semantics** or **measured latency/cost overhead of the correctness kernel**, unless representative open-model serving hardware becomes available first.
+The main correctness primitives now compose under an explicit authority order, and the experiment exposed two composition-only defects that individual component tests could not reveal. The highest-value next step is no longer another independent correctness primitive: it is **production-grade atomic persistence/concurrency semantics** for run state, evidence, leases/fences and completion transitions, followed by measured correctness overhead/latency once a transactional prototype exists.
