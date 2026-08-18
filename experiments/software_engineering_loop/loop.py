@@ -53,12 +53,18 @@ class Task:
     satisfied: set[str] = field(default_factory=set)
     evidence: list[Evidence] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
+    failure_history: list[Failure] = field(default_factory=list)
     selected_route: str | None = None
 
     def add_failure(self, failure: Failure, terminal: Phase = Phase.HOLD) -> None:
         if failure not in self.failures:
             self.failures.append(failure)
+        self.failure_history.append(failure)
         self.phase = terminal
+
+    def resolve(self, *failures: Failure) -> None:
+        resolved = set(failures)
+        self.failures = [f for f in self.failures if f not in resolved]
 
 
 class EngineeringLoop:
@@ -74,11 +80,12 @@ class EngineeringLoop:
         return task
 
     def patch(self, task: Task, *, satisfies: Iterable[str]) -> Task:
-        if task.phase != Phase.REPRODUCED:
+        if task.phase not in {Phase.REPRODUCED, Phase.PATCHED}:
             task.add_failure(Failure.UNREPRODUCED)
             return task
         task.artifact_version += 1
         task.satisfied = set(satisfies)
+        task.resolve(Failure.AUDIT_REGRESSION, Failure.VALIDATION_FAILED, Failure.PARTIAL_FIX, Failure.STALE_EVIDENCE, Failure.MISSING_EVIDENCE)
         task.phase = Phase.PATCHED
         return task
 
@@ -151,6 +158,7 @@ class EngineeringLoop:
 def failure_taxonomy(tasks: Iterable[Task]) -> dict[str, int]:
     counts = {f.value: 0 for f in Failure}
     for task in tasks:
-        for failure in set(task.failures):
+        source = task.failure_history or task.failures
+        for failure in set(source):
             counts[failure.value] += 1
     return {k: v for k, v in counts.items() if v}
