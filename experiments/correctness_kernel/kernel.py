@@ -6,7 +6,12 @@ from pathlib import Path
 from experiments.capability_planner.planner import Planner, Requirement
 from experiments.durable_run_state.protocol import DurableEngine, EffectLedger, JsonStateStore
 from experiments.escalation_policy.policy import Decision, decide
-from experiments.evidence_ledger.protocol import Ledger, Observation, Verifier as LedgerVerifier
+from experiments.evidence_ledger.protocol import (
+    Ledger,
+    Observation,
+    Verifier as LedgerVerifier,
+    digest,
+)
 from experiments.memory_safety.memory_safety import MemoryStore
 from experiments.verification_harness.protocol import Claim, Evidence, Task, Verifier as ClaimVerifier
 
@@ -71,8 +76,16 @@ class Kernel:
         return state, evidence_id
 
     def add_test_evidence(self, artifact_digest: str, requirements=("done",)):
+        requirements = tuple(requirements)
         evidence_id = self.ledger.observe(
-            Observation("test", artifact_digest, "deterministic-test", True, "PASS")
+            Observation(
+                "test",
+                artifact_digest,
+                "deterministic-test",
+                True,
+                "PASS",
+                output_digest=digest({"requirements": sorted(requirements)}),
+            )
         )
         return evidence_id, Evidence(
             evidence_id,
@@ -80,12 +93,35 @@ class Kernel:
             artifact_digest,
             True,
             "pass",
-            tuple(requirements),
+            requirements,
         )
 
     def completion(self, artifact_digest, requirements, evidence_ids, claim_evidence):
         if not LedgerVerifier(self.ledger).verify(artifact_digest, evidence_ids):
             return Completion(False, "ledger_evidence_invalid")
+
+        for item in claim_evidence:
+            try:
+                body, invalid, superseded = self.ledger.resolve(item.evidence_id)
+            except Exception:
+                return Completion(False, "claim_evidence_not_in_ledger")
+            if invalid or superseded:
+                return Completion(False, "claim_evidence_not_current")
+            expected_outcome = (
+                "pass" if body.get("result") == "PASS" else body.get("result", "").lower()
+            )
+            if (
+                body.get("kind") != item.kind
+                or body.get("artifact_digest") != item.artifact_digest
+                or body.get("trusted_observer") != item.observed
+                or expected_outcome != item.outcome
+            ):
+                return Completion(False, "claim_evidence_semantic_mismatch")
+            if item.requirements and body.get("output_digest") != digest(
+                {"requirements": sorted(item.requirements)}
+            ):
+                return Completion(False, "claim_requirement_mapping_unproven")
+
         claim = Claim(
             "completion",
             tuple(requirements),
