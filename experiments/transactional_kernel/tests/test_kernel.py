@@ -56,5 +56,7 @@ class T(unittest.TestCase):
   with self.assertRaises(InvalidCompletion): self.k.complete('w','a',f,'ev')
  def test_12_state_outbox_atomic(self):
   f,_=self.k.claim('w','a'); self.k.prepare_intent('w','a',f,'ek'); s=self.k.state('w'); c=sqlite3.connect(self.p); n=c.execute("select count(*) from outbox where dedupe_key='ek'").fetchone()[0]; c.close(); self.assertEqual(s['phase'],'INTENT'); self.assertEqual(n,1)
+ def test_13_duplicate_after_done_does_not_reopen_terminal_state(self):
+  f,_=self.k.claim('w','a'); self.k.prepare_intent('w','a',f,'ek'); self.k.confirm_effect('w','a',f,'r'); self.k.append_evidence('w','ev','v1'); self.k.complete('w','a',f,'ev'); self.k.prepare_intent('w','a',f,'ek'); self.assertEqual(self.k.state('w')['phase'],'DONE')
 
 if __name__=='__main__': unittest.main()
