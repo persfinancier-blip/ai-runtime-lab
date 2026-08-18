@@ -4,55 +4,54 @@ Last updated: 2026-08-18
 
 ## Active objective
 
-Measure the execution cost of the correctness stack without weakening it. LAB-015 moved the kernel from file-backed semantics to an executable transactional approximation and proved the key storage-boundary invariants under races, rollback, stale fences, duplicate delivery, and completion/evidence ordering. The next question is how much these protections cost and which operations can be batched safely.
+Move from example-driven correctness testing to systematic bounded state-space exploration. LAB-016 measured the local cost of the transactional correctness stack and validated a safe two-transaction boundary, but its remote audit also found another late-duplicate terminal-monotonicity defect that narrower tests had missed. The next priority is to make this class of regression automatically discoverable.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-015.
-- Completed: #28 / LAB-015 transactional correctness kernel.
-- LAB-015 PR #29 squash-merged as `327110abfd5eed4383c7bc92ab88aa1d7167d950`.
-- Next: #30 / LAB-016 correctness-kernel overhead and batching benchmark — READY.
-- Active branch/PR for LAB-016: none yet.
+- Completed: LAB-001 through LAB-016.
+- Completed: #30 / LAB-016 correctness-kernel overhead and batching benchmark.
+- LAB-016 PR #31 squash-merged as `1564e5e6507b3365a7a6b21f071b000af3a69c2e`.
+- Next: #32 / LAB-017 model-based state-space exploration and invariant fuzzing — READY.
+- Active branch/PR for LAB-017: none yet.
 
 ## Last completed step
 
-LAB-015 created `experiments/transactional_kernel/` using standard-library SQLite as an executable approximation of SQL transactional semantics. The deliberately unsafe split-transaction completion design checked evidence validity, allowed invalidation, and then committed `DONE`; its expected-safety test failed with `unsafe split transaction committed invalid DONE`.
+LAB-016 built `experiments/correctness_overhead/` and compared an unsafe one-transaction terminal baseline, the current six-transaction LAB-015 path, and a safe two-transaction batching candidate around the external side-effect boundary. A methodological pilot was discarded because schema initialization was inside the timed path. A later remote patch audit found that the initial batching candidate could reopen terminal `DONE` on late duplicate delivery; that implementation/results were also discarded. The corrected candidate added terminal monotonicity protection and was rerun.
 
-The corrected prototype binds claim generation+fence, state+outbox intent, and evidence-validity+completion at transactional boundaries. The initial 12-test matrix passed. A separate remote patch audit then found a terminal-monotonicity defect: late duplicate delivery could call `prepare_intent()` and reopen a `DONE` item as `INTENT`. The branch was corrected before merge and a regression test added. Final corrected matrix: 13/13 tests passed; `python -m compileall -q experiments/transactional_kernel` passed.
+Final local results: 5/5 batching invariants passed and compileall passed. Uncontended median improved by ~69.8–69.9% vs the six-transaction path. Four-worker throughput improved ~2.37x for 32 B evidence and ~2.09x for 64 KiB evidence; retries/conflicts fell. Negative evidence was retained: 32 B contention p95 worsened in the corrected run, so LAB-016 does not claim universal latency improvement.
 
 ## Evidence produced
 
-- `experiments/transactional_kernel/kernel.py`
-- `experiments/transactional_kernel/tests/test_kernel.py`
-- `experiments/transactional_kernel/tests/unsafe_seed_expected_failure.py`
-- `experiments/transactional_kernel/README.md`
-- `research/2026-08-18-transactional-correctness-kernel.md`
-- Issue #28 closed DONE.
-- PR #29 merged: `327110abfd5eed4383c7bc92ab88aa1d7167d950`.
-- New follow-up Issue #30 / LAB-016 created.
+- `experiments/correctness_overhead/benchmark.py`
+- `experiments/correctness_overhead/results.json`
+- `experiments/correctness_overhead/tests/test_batching.py`
+- `experiments/correctness_overhead/README.md`
+- `research/2026-08-18-correctness-overhead-and-batching.md`
+- Issue #30 closed DONE.
+- PR #31 merged: `1564e5e6507b3365a7a6b21f071b000af3a69c2e`.
+- New follow-up Issue #32 / LAB-017 created.
 
 ## Findings carried forward
 
-- atomicity belongs at the storage boundary, not in caller discipline;
-- generation and fence advance together on claim; stale workers cannot mutate authoritative state;
-- external-effect intent and outbox identity must commit together;
-- terminal completion must read authoritative evidence validity/version and write `DONE` in the same deciding transaction;
-- serialization/deadlock/lock conflicts are retryable transaction outcomes, never permission to weaken invariants;
-- terminal state is monotonic under late duplicate delivery;
-- SQLite proves invariants only approximately; PostgreSQL production semantics require row-level locking/conditional updates, short transactions, uniqueness constraints, and retry handling.
+- safe batching boundary: transaction A = claim/fence + durable intent + outbox; external effect/reconciliation; transaction B = confirmation + evidence + fresh terminal decision;
+- never batch across the external side-effect boundary or cache authoritative fence/evidence checks at terminal commit;
+- terminal `DONE` remains monotonic under duplicate delivery;
+- fewer transaction boundaries materially improved local median/throughput in SQLite but tail latency remained workload-dependent;
+- audit repeatedly finding defects after example tests pass is now itself evidence that bounded model/state exploration is high leverage.
 
 ## Known blockers / constraints
 
 - No current blocking issue is known.
-- Direct local network access remains a per-run capability; use connector-first exact-source audit when needed.
-- LAB-016 measurements are local runtime/SQLite measurements only and must not be generalized to PostgreSQL, other hardware, or production latency.
-- Open-model serving efficiency remains deferred until representative target hardware/runtime is available; decorative benchmarking remains disallowed.
+- Direct local network/tool availability remains per-run; use connector-first exact-source audit where needed.
+- SQLite performance results do not predict PostgreSQL/hardware-general latency.
+- Open-model serving efficiency remains deferred until representative target hardware/runtime is available.
 
 ## Exact next action
 
-Select Issue #30 / LAB-016. Build `experiments/correctness_overhead/` and benchmark a minimal unsafe baseline, full correctness path, and at least one safe batching variant under uncontended/contended conditions and small/larger evidence payloads. Record robust latency distributions, transaction/conflict counts and practical write amplification. Re-run correctness invariants for any optimization candidate; reject optimizations that require stale authoritative checks or weakened atomicity. Persist raw/summary results, audit the benchmark for methodological bias, integrate safely, and update this state.
+Select Issue #32 / LAB-017. Research primary-source state-machine/concurrency verification mechanisms (TLA+/PlusCal or Apalache, Jepsen/Knossos-style checking, and an implementation-level property/state-machine approach). Build a small storage-independent Python model and deterministic bounded explorer. Require it to rediscover the historical unsafe split-completion and reopen-terminal defects automatically, emit short replayable counterexample traces, then demonstrate the corrected model passes a documented search bound plus seeded randomized schedules. Persist code, traces, research, tests and audit before integration.
 
 ## Backlog
 
-- #30 / LAB-016 — correctness-kernel overhead and batching benchmark — READY and next.
+- #32 / LAB-017 — model-based state-space exploration and invariant fuzzing — READY and next.
+- PostgreSQL-specific performance/locking validation — defer until a representative PostgreSQL runtime is actually available.
 - Open-model serving efficiency — DEFERRED pending representative hardware/runtime.
