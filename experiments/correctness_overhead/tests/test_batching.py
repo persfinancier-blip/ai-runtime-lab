@@ -9,8 +9,12 @@ class SafeBatchingInvariantTests(unittest.TestCase):
     def tx1(self,wid='w',owner='a',effect='effect:w'):
         with self.k.tx() as c:
             c.execute('INSERT OR IGNORE INTO work(work_id) VALUES (?)',(wid,)); r=c.execute('SELECT * FROM work WHERE work_id=?',(wid,)).fetchone(); f=r['fence']+1
-            c.execute("UPDATE work SET owner=?,lease_until=?,fence=?,generation=generation+2,phase='INTENT',effect_key=? WHERE work_id=? AND generation=?",(owner,time.time()+30,f,effect,wid,r['generation']))
-            c.execute('INSERT INTO outbox VALUES (?,?,?,?,?,0)',(str(uuid.uuid4()),wid,'effect-intent',effect,'{}'))
+            if r['phase']=='DONE':
+                if r['effect_key']==effect: return r['fence']
+                raise InvalidCompletion('terminal work cannot accept new effect')
+            cur=c.execute("UPDATE work SET owner=?,lease_until=?,fence=?,generation=generation+2,phase='INTENT',effect_key=? WHERE work_id=? AND generation=?",(owner,time.time()+30,f,effect,wid,r['generation']))
+            if cur.rowcount!=1: raise RuntimeError('claim CAS failed')
+            c.execute('INSERT OR IGNORE INTO outbox VALUES (?,?,?,?,?,0)',(str(uuid.uuid4()),wid,'effect-intent',effect,'{}'))
         return f
     def tx2(self,fence,wid='w',owner='a',valid=1):
         with self.k.tx() as c:
@@ -32,4 +36,6 @@ class SafeBatchingInvariantTests(unittest.TestCase):
     def test_stale_fence_cannot_complete(self):
         f=self.tx1(); self.k.claim('w','a')
         with self.assertRaises(StaleFence): self.tx2(f)
+    def test_late_duplicate_does_not_reopen_done(self):
+        f=self.tx1(); self.tx2(f); self.tx1(); self.assertEqual(self.k.state('w')['phase'],'DONE')
 if __name__=='__main__': unittest.main()
