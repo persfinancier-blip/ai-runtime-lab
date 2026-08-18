@@ -1,20 +1,15 @@
 {
-  "environment": {
-    "python": "3.13.5",
-    "sqlite": "3.46.1",
-    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
-    "cpu_count": 5
-  },
+  "environment": {"python":"3.13.5","sqlite":"3.46.1","platform":"Linux-6.18.35-x86_64-with-glibc2.41","cpu_count":5},
   "rows": [
-    {"variant":"minimal","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":1.577321,"p95_ms":3.336091,"mean_ms":1.920161925,"db_bytes_delta":8192,"known_tx_per_task":1,"conflicts":0},
-    {"variant":"full","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":16.506676,"p95_ms":32.542645,"mean_ms":19.481456525,"db_bytes_delta":40960,"known_tx_per_task":6,"conflicts":0},
-    {"variant":"batched2","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":6.5652145,"p95_ms":17.763635,"mean_ms":8.112221908333334,"db_bytes_delta":40960,"known_tx_per_task":2,"conflicts":0},
-    {"variant":"full","payload_bytes":32,"mode":"contended","workers":4,"repetitions":120,"median_ms":6.9864485,"p95_ms":40.297829,"mean_ms":21.961193675,"wall_ms":1269.6982639999987,"throughput_tasks_s":94.51064351459183,"db_bytes_delta":45056,"known_tx_per_task":6,"conflicts":5},
-    {"variant":"batched2","payload_bytes":32,"mode":"contended","workers":4,"repetitions":120,"median_ms":2.253873,"p95_ms":12.606438,"mean_ms":8.973291808333332,"wall_ms":450.7544189999635,"throughput_tasks_s":266.2203517965061,"db_bytes_delta":45056,"known_tx_per_task":2,"conflicts":1},
-    {"variant":"minimal","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":1.9313505,"p95_ms":7.801682,"mean_ms":2.5004288166666666,"db_bytes_delta":7925760,"known_tx_per_task":1,"conflicts":0},
-    {"variant":"full","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":15.357547,"p95_ms":23.482153,"mean_ms":16.893006466666666,"db_bytes_delta":7958528,"known_tx_per_task":6,"conflicts":0},
-    {"variant":"batched2","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":5.9376125,"p95_ms":13.060691,"mean_ms":7.530588716666666,"db_bytes_delta":7958528,"known_tx_per_task":2,"conflicts":0},
-    {"variant":"full","payload_bytes":65536,"mode":"contended","workers":4,"repetitions":120,"median_ms":7.728308999999999,"p95_ms":37.805263,"mean_ms":27.498752633333332,"wall_ms":1286.1697250000361,"throughput_tasks_s":93.3002835220652,"db_bytes_delta":7958528,"known_tx_per_task":6,"conflicts":6},
-    {"variant":"batched2","payload_bytes":65536,"mode":"contended","workers":4,"repetitions":120,"median_ms":2.9190555,"p95_ms":21.7485,"mean_ms":11.797487891666666,"wall_ms":562.3968579999428,"throughput_tasks_s":213.37245806592364,"db_bytes_delta":7958528,"known_tx_per_task":2,"conflicts":1}
+    {"variant":"minimal","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":1.5972499999999998,"p95_ms":3.899515,"mean_ms":2.1716585,"db_bytes_delta":8192,"known_tx_per_task":1,"conflicts":0},
+    {"variant":"full","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":16.8677705,"p95_ms":30.033315,"mean_ms":19.260340516666666,"db_bytes_delta":40960,"known_tx_per_task":6,"conflicts":0},
+    {"variant":"batched2","payload_bytes":32,"mode":"uncontended","repetitions":120,"median_ms":5.086815,"p95_ms":13.385341,"mean_ms":6.470970783333334,"db_bytes_delta":40960,"known_tx_per_task":2,"conflicts":0},
+    {"variant":"full","payload_bytes":32,"mode":"contended","workers":4,"repetitions":120,"median_ms":6.294473,"p95_ms":25.031517,"mean_ms":24.637181541666667,"wall_ms":972.1966910001356,"throughput_tasks_s":123.43181283259815,"db_bytes_delta":49152,"known_tx_per_task":6,"conflicts":6},
+    {"variant":"batched2","payload_bytes":32,"mode":"contended","workers":4,"repetitions":120,"median_ms":2.2323905,"p95_ms":41.495468,"mean_ms":9.869400058333333,"wall_ms":411.0760969999774,"throughput_tasks_s":291.9167542840775,"db_bytes_delta":45056,"known_tx_per_task":2,"conflicts":2},
+    {"variant":"minimal","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":1.8332295,"p95_ms":7.068016,"mean_ms":2.42560275,"db_bytes_delta":7925760,"known_tx_per_task":1,"conflicts":0},
+    {"variant":"full","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":21.3236515,"p95_ms":41.795086,"mean_ms":29.917166658333333,"db_bytes_delta":7958528,"known_tx_per_task":6,"conflicts":0},
+    {"variant":"batched2","payload_bytes":65536,"mode":"uncontended","repetitions":120,"median_ms":6.421882500000001,"p95_ms":18.949385,"mean_ms":8.768874016666667,"db_bytes_delta":7958528,"known_tx_per_task":2,"conflicts":0},
+    {"variant":"full","payload_bytes":65536,"mode":"contended","workers":4,"repetitions":120,"median_ms":9.031331999999999,"p95_ms":226.80577,"mean_ms":37.991684983333336,"wall_ms":1447.084901999915,"throughput_tasks_s":82.9253348121844,"db_bytes_delta":7962624,"known_tx_per_task":6,"conflicts":11},
+    {"variant":"batched2","payload_bytes":65536,"mode":"contended","workers":4,"repetitions":120,"median_ms":2.827567,"p95_ms":62.349449,"mean_ms":13.15327245,"wall_ms":693.2310949998737,"throughput_tasks_s":173.1024486142271,"db_bytes_delta":7958528,"known_tx_per_task":2,"conflicts":2}
   ]
 }
