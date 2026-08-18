@@ -4,45 +4,48 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Finish LAB-018 by validating the exact branch implementation of abstract-model / SQLite-kernel conformance, then integrate only after remote audit.
+Begin LAB-019: prove that durable state, evidence, action traces, and kernel semantics remain safe across explicit version/schema migration and rolling overlap between old and new workers.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-017.
-- Active: #34 / LAB-018 abstract-model / implementation conformance harness — IN_PROGRESS.
-- Active branch: `lab/018-model-conformance`.
-- Active PR: none; normal PR creation was attempted and blocked before execution by an external safety-status gate.
+- Completed: LAB-001 through LAB-018.
+- Completed LAB-018 issue: #34.
+- Merged LAB-018 PR: #35, squash merge `774915bff73a489a32227320ef03c54740bfc0d4`.
+- Next active issue: #36 / LAB-019 cross-version state/schema migration and rolling-upgrade conformance — READY.
+- Active implementation branch: none yet.
 
 ## Last completed step
 
-LAB-018 now contains a differential harness that drives the real LAB-015 SQLite kernel using the LAB-017 action vocabulary, normalizes implementation observations to the abstract State, and reports the first divergent action/fields/prefix. It enumerates all 1,111 action traces through depth 3 and retains longer semantic corpus traces. Five implementation-only defects are seeded.
+LAB-018 exact-source validation was completed without `git clone`: branch files were fetched through the GitHub connector, materialized locally, and verified byte-for-byte by matching local `git hash-object` output against the GitHub branch blob SHA for every executable module/test used by the required suites.
 
-Conformance work found and fixed four cross-representation defects on the branch: zero-fence authority and INVALID reopening in the abstract model; DONE evidence invalidation and terminal effect mutation in the SQLite kernel.
+Observed exact-source results:
+- model-conformance suite: 8/8 passed, including all 1,111 depth-3 traces;
+- LAB-017 model suite: 5/5 passed;
+- LAB-015 transactional-kernel suite: 13/13 passed.
+
+The exhaustive SQLite replay exceeded the runtime command budget on the default temporary filesystem; the same exact source completed in 8.232s with `TMPDIR` on `/dev/shm`. PR #35 was then remote patch-audited and squash-merged. Issue #34 was closed DONE.
 
 ## Evidence produced
 
-- `experiments/model_conformance/harness.py`
-- `experiments/model_conformance/test_harness.py`
-- `experiments/model_conformance/README.md`
+- `experiments/model_conformance/`
 - `research/2026-08-19-model-implementation-conformance.md`
-- branch fixes to `experiments/state_space_kernel/model.py`
-- branch fixes to `experiments/transactional_kernel/kernel.py`
-- local semantic-shadow run: all 1,111 traces through depth 3 conformed.
-- Issue #34 updated with exact validation caveat and continuation.
+- exact branch blob-SHA equality for the six executed source/test files;
+- PR #35 merge SHA `774915bff73a489a32227320ef03c54740bfc0d4`.
+- New follow-up issue #36 / LAB-019.
 
 ## Known blockers / constraints
 
-- Direct `git clone` of the branch was attempted in this run and failed because the local runtime could not resolve `github.com`.
-- The 1,111-trace local result used a semantic shadow of the corrected contract and is not claimed as exact-checkout verification.
-- Normal PR creation was blocked before execution by an external safety-status gate; no bypass was attempted.
+- Local shell DNS to GitHub is unreliable/unavailable; GitHub connector + local blob-hash verification is an acceptable exact-source path when needed.
+- Exhaustive SQLite trace replay is sensitive to temporary-filesystem latency; use a fast temporary filesystem when available, without changing source semantics.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
+- Open-model serving efficiency remains deferred pending representative hardware/runtime.
 
 ## Exact next action
 
-Attempt an exact-source execution path for `lab/018-model-conformance`. Run the model-conformance unittest, LAB-017 model tests, and LAB-015 transactional-kernel tests. Fix any failures and re-run. Then retry normal PR creation, inspect the full remote patch, and integrate only if exact-source validation and audit are clean. If PR creation remains externally blocked, keep the branch/issue durable and use only a supported auditable fallback allowed by AGENTS.md; do not fabricate validation.
+Start Issue #36 / LAB-019. Create a task branch from current `main`. Research at least three primary-source schema/protocol evolution mechanisms, then implement a bounded versioned-kernel experiment with explicit accept/migrate/translate/reject rules, migration idempotency, old-worker fencing, and model/implementation conformance before and after migration. Demonstrate at least one unsafe migration failure before correcting it. Run deterministic tests, audit, persist evidence, and integrate only after validation.
 
 ## Backlog
 
-- #34 / LAB-018 — active; implementation/research complete, exact-source validation + integration remain.
+- #36 / LAB-019 — READY, highest-value executable next task.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
