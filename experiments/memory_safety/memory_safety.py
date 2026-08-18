@@ -28,10 +28,17 @@ class MemoryStore:
 
     def add(self, memory):
         self.items[memory.id] = memory
-        if memory.supersedes and memory.supersedes in self.items:
-            self.items[memory.supersedes].status = "SUPERSEDED"
         self.save()
         return memory
+
+    def supersede(self, old_id, replacement, min_trust="corroborated"):
+        if replacement.status != "ACTIVE" or TRUST[replacement.trust] < TRUST[min_trust]:
+            raise ValueError("replacement is not eligible to supersede authoritative memory")
+        replacement.supersedes = old_id
+        self.items[replacement.id] = replacement
+        self.items[old_id].status = "SUPERSEDED"
+        self.save()
+        return replacement
 
     def quarantine(self, memory_id, reason):
         self.items[memory_id].status = "QUARANTINED"
