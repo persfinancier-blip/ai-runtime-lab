@@ -40,7 +40,7 @@ class Kernel:
         self.effects = EffectLedger(self.root / "effects.json")
         self.engine = DurableEngine(self.store, self.effects)
         self.ledger = Ledger(self.root / "evidence.jsonl")
-        self.memory = MemoryStore(self.root / "memory.json")
+        self.memory = MemoryStore.load(self.root / "memory.json")
 
     def start(self, work_id: str, artifact_digest: str):
         state = self.engine.start_or_resume(work_id, {"artifact_digest": artifact_digest})
