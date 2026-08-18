@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS work(
   effect_key TEXT UNIQUE,
   effect_receipt TEXT,
   done_evidence_id TEXT,
-  CHECK (phase IN ('NEW','INTENT','UNKNOWN','CONFIRMED','DONE'))
+  CHECK (phase IN ('NEW','INTENT','UNKNOWN','CONFIRMED','DONE','INVALID'))
 );
 CREATE TABLE IF NOT EXISTS evidence(
   evidence_id TEXT PRIMARY KEY,
@@ -81,7 +81,7 @@ class Kernel:
         with self.tx() as c:
             r=c.execute('SELECT * FROM work WHERE work_id=?',(work_id,)).fetchone()
             self._owner(r,owner,fence)
-            if r['phase'] == 'DONE':
+            if r['phase'] in ('DONE','INVALID'):
                 if r['effect_key'] == effect_key:
                     return
                 raise InvalidCompletion('terminal work cannot accept a new effect intent')
@@ -91,16 +91,23 @@ class Kernel:
     def confirm_effect(self, work_id, owner, fence, receipt):
         with self.tx() as c:
             r=c.execute('SELECT * FROM work WHERE work_id=?',(work_id,)).fetchone(); self._owner(r,owner,fence)
+            if r['phase'] in ('DONE','INVALID'): raise InvalidCompletion('terminal work cannot be reconfirmed')
             c.execute("UPDATE work SET phase='CONFIRMED', effect_receipt=?, generation=generation+1 WHERE work_id=?",(receipt,work_id))
     def mark_unknown(self, work_id, owner, fence):
         with self.tx() as c:
             r=c.execute('SELECT * FROM work WHERE work_id=?',(work_id,)).fetchone(); self._owner(r,owner,fence)
+            if r['phase'] in ('DONE','INVALID'): raise InvalidCompletion('terminal work cannot become unknown')
             c.execute("UPDATE work SET phase='UNKNOWN', generation=generation+1 WHERE work_id=?",(work_id,))
     def append_evidence(self, work_id, evidence_id, version, payload='ok'):
         with self.tx() as c:
             c.execute('INSERT OR IGNORE INTO evidence VALUES (?,?,?,?,?,?)',(evidence_id,work_id,version,1,payload,time.time()))
     def invalidate(self, evidence_id):
-        with self.tx() as c: c.execute('UPDATE evidence SET valid=0 WHERE evidence_id=?',(evidence_id,))
+        with self.tx() as c:
+            e=c.execute('SELECT work_id FROM evidence WHERE evidence_id=?',(evidence_id,)).fetchone()
+            if not e: return
+            c.execute('UPDATE evidence SET valid=0 WHERE evidence_id=?',(evidence_id,))
+            c.execute("UPDATE work SET phase='INVALID', generation=generation+1 WHERE work_id=? AND phase='DONE' AND done_evidence_id=?",
+                      (e['work_id'],evidence_id))
     def complete(self, work_id, owner, fence, evidence_id):
         with self.tx() as c:
             r=c.execute('SELECT * FROM work WHERE work_id=?',(work_id,)).fetchone(); self._owner(r,owner,fence)
