@@ -81,6 +81,10 @@ class Kernel:
         with self.tx() as c:
             r=c.execute('SELECT * FROM work WHERE work_id=?',(work_id,)).fetchone()
             self._owner(r,owner,fence)
+            if r['phase'] == 'DONE':
+                if r['effect_key'] == effect_key:
+                    return
+                raise InvalidCompletion('terminal work cannot accept a new effect intent')
             c.execute("UPDATE work SET phase='INTENT', effect_key=?, generation=generation+1 WHERE work_id=?",(effect_key,work_id))
             c.execute("INSERT OR IGNORE INTO outbox(event_id,work_id,kind,dedupe_key,payload) VALUES (?,?,?,?,?)",
                       (str(uuid.uuid4()),work_id,'effect-intent',effect_key,'{}'))
