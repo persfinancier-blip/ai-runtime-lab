@@ -44,9 +44,9 @@ Result: **PASS**.
 
 ### GitHub write
 
-This Stage B file was created through the connected GitHub write path in the current invocation.
+This Stage B file was created through the connected GitHub write path in the current invocation and then read back from the experiment branch before audit.
 
-Result: **PASS**, conditional on successful connector response and subsequent read/audit.
+Result: **PASS**.
 
 ### Local temporary-file persistence
 
@@ -82,7 +82,7 @@ Result: **NO CHAT-ONLY DEPENDENCY FOUND**.
 
 ## Worker/Action audit
 
-No GitHub Action, GitHub worker, Codex worker, or assumed background repository agent was used to perform Stage B. The executing assistant invocation directly read the repository, inspected local state, wrote this evidence, and will perform the PR/issue audit and merge itself.
+No GitHub Action, GitHub worker, Codex worker, or assumed background repository agent was used to perform Stage B. The executing assistant invocation directly read the repository, inspected local state, wrote this evidence, and performed the PR/issue audit itself.
 
 Result: **PASS**.
 
