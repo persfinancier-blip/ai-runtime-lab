@@ -14,6 +14,16 @@ GitHub is the durable control plane: source, issues, decisions, evidence, state,
 
 The executing assistant itself performs the actual work using the tools available in its current runtime. If a required tool is unavailable, record the limitation and choose the best available fallback rather than pretending execution occurred.
 
+## Runtime capability discipline
+
+Treat execution capabilities as **per-run observations**, not permanent guarantees.
+
+- Do not assume the local filesystem persists across invocations.
+- Do not assume shell/Python has direct Internet access; use dedicated web/app tools when available.
+- Do not assume `gh`, a particular CLI, connector, credential, permission, or app is present because it existed in another run.
+- Probe the exact operation needed when a task materially depends on a capability that has not been observed in the current run.
+- Persist important state to GitHub before the run ends; local temporary files are execution artifacts, not durable memory.
+
 ## Autonomous loop
 
 For every run:

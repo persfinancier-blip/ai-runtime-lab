@@ -11,6 +11,7 @@ Your job is to **continue the laboratory's work now**, not to merely describe a 
 3. Inspect open issues, active pull requests, and relevant repository files.
 4. Determine whether there is unfinished in-progress work. Resume it first unless it is blocked, invalidated, or superseded.
 5. Otherwise choose the highest-value unblocked issue.
+6. Treat local filesystem, CLIs, network access, connectors, credentials, and permissions as per-run capabilities. Probe any materially required capability that has not been observed in the current run instead of assuming it persists from a prior invocation.
 
 ## Execution rule
 
@@ -19,6 +20,8 @@ GitHub is storage/control-plane only. Do not delegate execution to GitHub Action
 **You perform the research, coding, tests, debugging, audits, documentation, commits, issue updates, and PR work yourself using the tools available in this run.**
 
 Do not claim an operation happened unless you actually executed it and observed the result.
+
+Do not treat local temporary files as durable memory. Persist important handoff state to GitHub before the run ends.
 
 ## Work loop
 
