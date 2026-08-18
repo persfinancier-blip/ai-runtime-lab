@@ -63,9 +63,15 @@ These are cross-representation defects: neither ordinary unit tests nor abstract
 
 ## Validation evidence
 
-Direct `git clone` of the branch was attempted in the execution runtime and failed because DNS access to github.com was unavailable. Source persistence and inspection therefore used the GitHub connector.
+Direct `git clone` of the branch was unavailable because the local runtime could not resolve `github.com`, so exact branch files were fetched through the GitHub connector and materialized locally. Exactness was independently verified by computing Git blob SHA-1 locally and matching GitHub's branch blob SHA for every executable module and test used by the three required suites.
 
-A local semantic shadow of the corrected model/adapter transition contract was executed over every action sequence through depth 3: **1,111 traces, no divergence**. This is supporting evidence, not a substitute for running the exact repository checkout; the repository test suite remains the canonical runnable artifact for the next environment with a checkout path.
+Observed exact-source results:
+
+- `experiments.model_conformance.test_harness`: **8/8 passed**, including all 1,111 action traces through depth 3 and all seeded first-divergence defects.
+- `experiments.state_space_kernel.test_model`: **5/5 passed**.
+- `experiments.transactional_kernel.tests.test_kernel`: **13/13 passed**.
+
+The exhaustive SQLite replay exceeded the runtime command budget on the default temporary filesystem without producing an assertion failure. Re-running the same exact source with `TMPDIR` on `/dev/shm` completed the conformance suite in 8.232 seconds. This is recorded as an execution-environment performance dependency, not a semantic change or correctness exemption.
 
 ## Decision
 
