@@ -1,57 +1,55 @@
 # Current Lab State
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Active objective
 
-Move from example-driven correctness testing to systematic bounded state-space exploration. LAB-016 measured the local cost of the transactional correctness stack and validated a safe two-transaction boundary, but its remote audit also found another late-duplicate terminal-monotonicity defect that narrower tests had missed. The next priority is to make this class of regression automatically discoverable.
+Move from bounded abstract correctness exploration to model/implementation conformance. LAB-017 now automatically rediscovers historical cross-layer defects as short traces; the next risk is semantic drift between that correct abstract model and executable SQL/kernel implementations.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-016.
-- Completed: #30 / LAB-016 correctness-kernel overhead and batching benchmark.
-- LAB-016 PR #31 squash-merged as `1564e5e6507b3365a7a6b21f071b000af3a69c2e`.
-- Next: #32 / LAB-017 model-based state-space exploration and invariant fuzzing — READY.
-- Active branch/PR for LAB-017: none yet.
+- Completed: LAB-001 through LAB-017.
+- Completed: #32 / LAB-017 model-based state-space exploration and invariant fuzzing.
+- LAB-017 PR #33 squash-merged as `99a9f37c7d5babe9a31d26d65a4ef548314adb20`.
+- Next: #34 / LAB-018 abstract-model / implementation conformance harness — READY.
+- Active branch/PR for LAB-018: none yet.
 
 ## Last completed step
 
-LAB-016 built `experiments/correctness_overhead/` and compared an unsafe one-transaction terminal baseline, the current six-transaction LAB-015 path, and a safe two-transaction batching candidate around the external side-effect boundary. A methodological pilot was discarded because schema initialization was inside the timed path. A later remote patch audit found that the initial batching candidate could reopen terminal `DONE` on late duplicate delivery; that implementation/results were also discarded. The corrected candidate added terminal monotonicity protection and was rerun.
+LAB-017 built a storage-independent state/action model and bounded BFS explorer. The corrected model passed depth 8 (314 queued states) and seed 17017 / 1000 x 20-step randomized schedules. It automatically found the historical invalid-evidence completion trace and terminal-reopen-on-duplicate trace, plus a stale-authority mutation variant. Local unittest passed 5/5. Remote patch audit found no unresolved blocker and PR #33 was merged.
 
-Final local results: 5/5 batching invariants passed and compileall passed. Uncontended median improved by ~69.8–69.9% vs the six-transaction path. Four-worker throughput improved ~2.37x for 32 B evidence and ~2.09x for 64 KiB evidence; retries/conflicts fell. Negative evidence was retained: 32 B contention p95 worsened in the corrected run, so LAB-016 does not claim universal latency improvement.
+Implementation audit also found and fixed a defect in the first abstract model itself: effect execution had been over-permitted from CONFIRMED and is now restricted to INTENT/UNKNOWN.
 
 ## Evidence produced
 
-- `experiments/correctness_overhead/benchmark.py`
-- `experiments/correctness_overhead/results.json`
-- `experiments/correctness_overhead/tests/test_batching.py`
-- `experiments/correctness_overhead/README.md`
-- `research/2026-08-18-correctness-overhead-and-batching.md`
-- Issue #30 closed DONE.
-- PR #31 merged: `1564e5e6507b3365a7a6b21f071b000af3a69c2e`.
-- New follow-up Issue #32 / LAB-017 created.
+- `experiments/state_space_kernel/model.py`
+- `experiments/state_space_kernel/test_model.py`
+- `experiments/state_space_kernel/README.md`
+- `research/2026-08-19-state-space-exploration.md`
+- Issue #32 closed DONE.
+- PR #33 merged: `99a9f37c7d5babe9a31d26d65a4ef548314adb20`.
+- Follow-up Issue #34 / LAB-018 created.
 
 ## Findings carried forward
 
-- safe batching boundary: transaction A = claim/fence + durable intent + outbox; external effect/reconciliation; transaction B = confirmation + evidence + fresh terminal decision;
-- never batch across the external side-effect boundary or cache authoritative fence/evidence checks at terminal commit;
-- terminal `DONE` remains monotonic under duplicate delivery;
-- fewer transaction boundaries materially improved local median/throughput in SQLite but tail latency remained workload-dependent;
-- audit repeatedly finding defects after example tests pass is now itself evidence that bounded model/state exploration is high leverage.
+- bounded model exploration is a falsification/regression amplifier, not universal proof;
+- every new cross-layer defect should be reduced to a replayable action/invariant trace;
+- short abstract traces expose invalid-evidence completion, terminal reopening and stale authority with less incidental implementation detail;
+- a correct abstract model still does not prove an implementation conforms to it.
 
 ## Known blockers / constraints
 
 - No current blocking issue is known.
-- Direct local network/tool availability remains per-run; use connector-first exact-source audit where needed.
-- SQLite performance results do not predict PostgreSQL/hardware-general latency.
-- Open-model serving efficiency remains deferred until representative target hardware/runtime is available.
+- Direct local network/tool availability remains per-run.
+- PostgreSQL-specific performance/locking validation remains deferred until representative PostgreSQL is available.
+- Open-model serving efficiency remains deferred pending representative hardware/runtime.
 
 ## Exact next action
 
-Select Issue #32 / LAB-017. Research primary-source state-machine/concurrency verification mechanisms (TLA+/PlusCal or Apalache, Jepsen/Knossos-style checking, and an implementation-level property/state-machine approach). Build a small storage-independent Python model and deterministic bounded explorer. Require it to rediscover the historical unsafe split-completion and reopen-terminal defects automatically, emit short replayable counterexample traces, then demonstrate the corrected model passes a documented search bound plus seeded randomized schedules. Persist code, traces, research, tests and audit before integration.
+Select Issue #34 / LAB-018. Reuse LAB-017 traces as executable contracts against an implementation adapter, preferably the existing SQLite transactional kernel. Normalize implementation observations to abstract state and compare after each authoritative action. Seed implementation-only drift variants for terminal reopening, stale fence acceptance, invalid-evidence completion, UNKNOWN retry, and invalidation semantics; require first-divergence replay traces before integration.
 
 ## Backlog
 
-- #32 / LAB-017 — model-based state-space exploration and invariant fuzzing — READY and next.
-- PostgreSQL-specific performance/locking validation — defer until a representative PostgreSQL runtime is actually available.
-- Open-model serving efficiency — DEFERRED pending representative hardware/runtime.
+- #34 / LAB-018 — abstract-model / implementation conformance harness — READY and next.
+- PostgreSQL-specific performance/locking validation — deferred until representative runtime.
+- Open-model serving efficiency — deferred pending representative hardware/runtime.
