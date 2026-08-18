@@ -136,6 +136,14 @@ class CorrectnessKernelTests(unittest.TestCase):
                 value="x",
             )
 
+    def test_restart_preserves_memory_quarantine(self):
+        memory = Memory.make("route", "unsafe", 0.99, trust="verified")
+        self.kernel.memory.add(memory)
+        self.kernel.memory.quarantine(memory.id, "false")
+        restarted = Kernel(self.tmp.name)
+        self.assertEqual(restarted.authoritative_memory("route"), [])
+        self.assertEqual(restarted.memory.items[memory.id].status, "QUARANTINED")
+
     def test_restart_deterministic_next_action(self):
         routes, observations = self.routes(False)
         first_plan = self.kernel.plan_route(routes, observations)
