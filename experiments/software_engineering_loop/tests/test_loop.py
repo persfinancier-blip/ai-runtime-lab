@@ -58,6 +58,23 @@ class LoopTests(unittest.TestCase):
         self.assertIn(Failure.AUDIT_REGRESSION, t.failures)
         self.assertEqual(t.phase, Phase.PATCHED)
 
+    def test_audit_regression_can_be_fixed_and_reaudited(self):
+        t = self.task()
+        self.loop.reproduce(t, observed=True)
+        self.loop.patch(t, satisfies=("primary", "secondary"))
+        self.loop.validate(t, routes=[PREFERRED], passed=True)
+        self.loop.audit(t, regression_found=True)
+        first_bad_version = t.artifact_version
+        self.assertIn(Failure.AUDIT_REGRESSION, t.failures)
+
+        self.loop.patch(t, satisfies=("primary", "secondary"))
+        self.assertGreater(t.artifact_version, first_bad_version)
+        self.assertNotIn(Failure.AUDIT_REGRESSION, t.failures)
+        self.loop.validate(t, routes=[PREFERRED], passed=True)
+        self.loop.audit(t, regression_found=False)
+        self.assertTrue(self.loop.decide(t))
+        self.assertIn(Failure.AUDIT_REGRESSION, t.failure_history)
+
     def test_safe_fallback_selected_when_preferred_unavailable(self):
         unavailable = Route("preferred-test", False, True, 100)
         t = self.task()
