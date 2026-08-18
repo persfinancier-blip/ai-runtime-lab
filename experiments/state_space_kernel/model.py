@@ -7,8 +7,8 @@ class State:
 ACTIONS=("claim","intent","effect_ok","effect_unknown","reconcile","append_evidence","invalidate","complete","duplicate","stale_mutate")
 def step(s,a,variant="correct"):
  if a=="claim": return replace(s,fence=s.max_fence+1,max_fence=s.max_fence+1)
- if a=="intent" and s.fence==s.max_fence and s.phase!="DONE": return replace(s,intent=True,phase="INTENT")
- if a in ("effect_ok","effect_unknown") and s.intent and s.fence==s.max_fence and s.phase in ("INTENT","UNKNOWN"):
+ if a=="intent" and s.fence>0 and s.fence==s.max_fence and s.phase!="DONE": return replace(s,intent=True,phase="INTENT")
+ if a in ("effect_ok","effect_unknown") and s.intent and s.fence>0 and s.fence==s.max_fence and s.phase in ("INTENT","UNKNOWN"):
   n=s.effect_count+(1 if s.effect_count==0 else 0)
   return replace(s,effect_count=n,confirmed=a=="effect_ok",phase="CONFIRMED" if a=="effect_ok" else "UNKNOWN")
  if a=="reconcile" and s.effect_count==1 and s.phase=="UNKNOWN": return replace(s,confirmed=True,phase="CONFIRMED")
