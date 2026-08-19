@@ -4,33 +4,33 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Advance from application/endpoint egress binding to the remaining transport identity gap: TLS server identity/SNI and explicit proxy/CONNECT paths must preserve the same authorized origin, endpoint and effect identity.
+Advance from transport endpoint + TLS/proxy identity binding to credential-scope correctness: origin credentials, cookies/session material and proxy credentials must not leak or change authority across redirect, fallback, rotation or retry.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-023.
-- LAB-023: Issue #44 DONE; PR #45 remote patch-audited and squash-merged as `3baff7361238a452ec38f587f306ab83407e35e6`.
-- Next issue: #46 / LAB-024 TLS origin authentication and proxy-path binding conformance — READY.
-- Active branch: none yet for LAB-024.
+- Completed: LAB-001 through LAB-024.
+- LAB-024: Issue #46 DONE; PR #47 remote patch-audited and squash-merged as `5ac3af8c17a81c66f5e5a1f3b7e4acb6542fc75a`.
+- Next issue: #48 / LAB-025 Origin/proxy credential scope and redirect leakage conformance — READY.
+- Active branch: none yet for LAB-025.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-023 compared current IANA IPv4/IPv6 special-purpose registries, RFC 6890/8190 address semantics, RFC 9110 redirect semantics, RFC 3986 URI host normalization, and AWS IMDS endpoint guidance. It built a deterministic fake resolver/redirector/connector harness that preserves LAB-022 request/effect identity while validating every DNS result, redirect, and final connection endpoint.
+LAB-024 compared RFC 9525 service identity, RFC 6066/RFC 8446 SNI semantics and RFC 9110/RFC 9112 CONNECT authority. It built a deterministic fake TLS/proxy harness binding LAB-022 request identity and LAB-023 endpoint evidence to TLS SNI/certificate DNS-ID, route kind, proxy identity/policy generation, CONNECT authority, proxy-side resolution and stable effect identity.
 
-The unsafe resolve-once/check-then-connect seed failed as intended: policy checked public `93.184.216.34`, then the connection path re-resolved the hostname and reached `127.0.0.1`. The corrected suite passed 13/13 tests and compileall. Audit tightened redirect authority so a cross-host redirect requires fresh authorization rather than inheriting the LAB-022 permit.
+Two unsafe seeds failed as intended: IP-only trust accepted a wrong TLS identity at the correct IP, and certificate-only trust accepted CONNECT/proxy endpoint drift. The corrected exact-source suite passed 14/14 plus compileall. Audit found and fixed two cross-layer defects: route fingerprint initially omitted payload/purpose/authorization generation, and endpoint evidence origin was not checked against authorized origin.
 
 ## Evidence produced
 
-- `research/2026-08-19-transport-endpoint-binding.md`
-- `experiments/transport_binding/`
-- LAB-023 corrected suite: 13/13 passed.
-- LAB-023 unsafe seed: failed as intended on public-to-loopback DNS rebinding.
-- Exact-source protocol blob: `c78b9d5121be2cb8892f78227929ff658f578c2d`.
-- Exact-source corrected test blob: `5d818c24f37a352af1e5aad02c41ce89010170e2`.
-- Exact-source unsafe seed blob: `69f1ba20d90ff67ec7a2cca07656a31583fc0b97`.
-- PR #45 merge: `3baff7361238a452ec38f587f306ab83407e35e6`.
-- Issue #46 / LAB-024 created as the next executable transport-correctness gap.
+- `research/2026-08-19-tls-origin-proxy-binding.md`
+- `experiments/tls_proxy_binding/`
+- LAB-024 corrected suite: 14/14 passed.
+- LAB-024 unsafe seeds: 2/2 failed as intended.
+- Exact-source protocol blob: `cc4828b2f112263412309316fac57016c37d9189`.
+- Exact-source corrected test blob: `dd75509153481063e28a032ffb409e7345b00990`.
+- Exact-source unsafe seed blob: `1d4355f8dc75daca2d5e4aac8035c70c672c95b9`.
+- PR #47 merge: `5ac3af8c17a81c66f5e5a1f3b7e4acb6542fc75a`.
+- Issue #48 / LAB-025 created as the next executable security/correctness gap.
 
 ## Known blockers / constraints
 
@@ -38,14 +38,14 @@ The unsafe resolve-once/check-then-connect seed failed as intended: policy check
 - Preferred GitHub merge endpoint can be blocked before execution; audited small/file-scoped conflict-free changes may use the documented Contents API fallback.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
 - Open-model serving efficiency remains deferred pending representative hardware/runtime.
-- LAB-023 proves direct endpoint validation/pinning in a fake transport. It does not prove TLS certificate/SNI binding, proxy CONNECT authority, proxy-side DNS behavior, or OS/network egress enforcement.
+- LAB-024 is a deterministic adapter contract, not a real TLS/CA/proxy implementation; production adapters still need runtime-specific conformance.
 
 ## Exact next action
 
-Select Issue #46 / LAB-024. Research at least three current primary-source HTTPS server-identity/SNI/proxy/CONNECT mechanisms. Create a task branch and deterministic fake TLS/proxy harness. Falsify a design that validates only socket endpoint or only certificate identity, then require authorized origin hostname, TLS peer identity, direct/proxy route identity, CONNECT target and proxy policy generation to remain bound to LAB-022 request/effect identity and LAB-023 validated endpoint. Test retry-after-UNKNOWN before any route change, audit, exact-source validate, and integrate only after the bounded matrix passes.
+Select Issue #48 / LAB-025. Research at least three primary-source credential-scope mechanisms (HTTP Authorization/proxy auth, redirects, cookies or sender-constrained tokens). Create a task branch and deterministic credential-routing harness with separate origin/proxy credentials. Falsify naive header forwarding across authority changes, then bind credential use to canonical authority/path/proxy generation and request/effect identity. Test redirect, fallback, credential rotation and retry-after-UNKNOWN; audit, exact-source validate and integrate only after the bounded matrix passes.
 
 ## Backlog
 
-- #46 / LAB-024 — READY, highest-value executable task.
+- #48 / LAB-025 — READY, highest-value executable task.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
