@@ -27,8 +27,8 @@ class SandboxLauncherTests(unittest.TestCase):
         l = LinuxSandboxLauncher(b"k" * 32)
         r = l.launch(self.req(), self.caps)
         l.verify(r, self.req(), self.caps)
-        self.assertIn("no_new_privs", r.backends)
-        self.assertIn("seccomp-bpf", r.backends)
+        self.assertIn("pre-exec-no_new_privs", r.backends)
+        self.assertIn("pre-exec-seccomp-bpf", r.backends)
 
     def test_fd_default_deny_is_observed_in_child(self):
         l = LinuxSandboxLauncher(b"k" * 32)
@@ -66,7 +66,7 @@ class SandboxLauncherTests(unittest.TestCase):
     def test_backend_omission_rejected_even_with_valid_signature_shape(self):
         l = LinuxSandboxLauncher(b"k" * 32)
         r = l.launch(self.req(), self.caps)
-        forged = dataclasses.replace(r, backends=tuple(x for x in r.backends if x != "seccomp-bpf"))
+        forged = dataclasses.replace(r, backends=tuple(x for x in r.backends if x != "pre-exec-seccomp-bpf"))
         with self.assertRaises(AttestationError):
             l.verify(forged, self.req(), self.caps)
 
@@ -75,7 +75,7 @@ class SandboxLauncherTests(unittest.TestCase):
         l = LinuxSandboxLauncher(key)
         req = self.req()
         r = l.launch(req, self.caps)
-        changed = dataclasses.replace(r, backends=tuple(x for x in r.backends if x != "seccomp-bpf"), signature="")
+        changed = dataclasses.replace(r, backends=tuple(x for x in r.backends if x != "pre-exec-seccomp-bpf"), signature="")
         fields = dataclasses.asdict(changed)
         fields.pop("signature")
         sig = hmac.new(key, json.dumps(fields, sort_keys=True, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
