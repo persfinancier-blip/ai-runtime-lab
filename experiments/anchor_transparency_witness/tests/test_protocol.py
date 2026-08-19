@@ -1,12 +1,15 @@
 import tempfile, unittest
 from pathlib import Path
-from experiments.anchor_transparency_witness.protocol import ReferenceLog, CheckpointObserver, ConsistencyError, DuplicateWitness, ReplayDetected, SplitViewDetected, StaleCheckpoint, Witness, WitnessPolicy, WitnessStore, WitnessThresholdError
+from experiments.anchor_transparency_witness.protocol import Checkpoint, ReferenceLog, CheckpointObserver, ConsistencyError, InvalidCheckpoint, ReplayDetected, SplitViewDetected, StaleCheckpoint, Witness, WitnessPolicy, WitnessStore, WitnessThresholdError
 class WitnessTests(unittest.TestCase):
     def setUp(self): self.log_key=b'log-key'; self.w1=b'w1'; self.w2=b'w2'; self.w3=b'w3'; self.tmp=tempfile.TemporaryDirectory(); self.base=Path(self.tmp.name)
     def tearDown(self): self.tmp.cleanup()
     def witness(self,name,key): return Witness(name,key,'log-A',self.log_key,WitnessStore(self.base/f'{name}.json'))
     def test_linear_history_accepts_valid_extension(self):
         log=ReferenceLog('log-A',self.log_key,[b'a']); w=self.witness('w1',self.w1); c1=log.checkpoint(); w.observe(c1); log.append(b'b'); c2=log.checkpoint(); sig=w.observe(c2,log.consistency_from(c1)); self.assertEqual(w.store.load(),c2); self.assertEqual(sig.checkpoint_id,c2.identity())
+    def test_structural_bool_version_is_rejected(self):
+        log=ReferenceLog('log-A',self.log_key,[b'a']); good=log.checkpoint(); bad=Checkpoint(True,good.log_id,good.size,good.root_hash,good.sequence,good.signature); w=self.witness('w1',self.w1)
+        with self.assertRaises(InvalidCheckpoint): w.observe(bad)
     def test_same_size_different_root_detected(self):
         l1=ReferenceLog('log-A',self.log_key,[b'a']); l2=ReferenceLog('log-A',self.log_key,[b'x']); w=self.witness('w1',self.w1); w.observe(l1.checkpoint());
         with self.assertRaises(SplitViewDetected): w.observe(l2.checkpoint())
