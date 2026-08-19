@@ -4,51 +4,48 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Execute LAB-019: prove that durable state, evidence, action traces, and kernel semantics remain safe across explicit version/schema migration and rolling overlap between old and new workers.
+Execute LAB-021: prove sensitive-data labels survive transformations/fallbacks and that protected egress sinks cannot receive secret-derived data without destination/purpose-bound authorization.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-018.
-- Completed LAB-018 issue: #34.
-- Merged LAB-018 PR: #35, squash merge `774915bff73a489a32227320ef03c54740bfc0d4`.
-- Active issue: #36 / LAB-019 cross-version state/schema migration and rolling-upgrade conformance — IN_PROGRESS.
-- Active branch: `lab/019-versioned-kernel`.
-- Active PR: none yet.
+- Completed: LAB-001 through LAB-020.
+- LAB-019: Issue #36 DONE; PR #37 merged as `678b104f85da55ceefc4eaebed50a2dee455c58c`.
+- LAB-020: Issue #38 DONE; PR #39 remote-audited then manually integrated through supported GitHub Contents API because the normal merge endpoint was blocked before execution.
+- LAB-020 integration commits: `6f3df493ae1927325b1e73d53d1b9e99c8490b31` through `18fe82363356f1ce2674651b1903079e7cedd818`.
+- Next issue: #40 / LAB-021 sensitive-data taint propagation and egress sink gating — READY.
+- Active branch: none yet for LAB-021.
+- Active PR: none.
 
 ## Last completed step
 
-LAB-018 exact-source validation was completed without `git clone`: branch files were fetched through the GitHub connector, materialized locally, and verified byte-for-byte by matching local `git hash-object` output against the GitHub branch blob SHA for every executable module/test used by the required suites.
+LAB-020 researched current MCP, OpenAI, and OWASP prompt-injection/tool-security mechanisms and built a deterministic control/data authority kernel. A seeded unsafe design promoted tool-output fields into `send_secret/attacker.example`; the corrected kernel prevents external data from widening action authority, skipping escalation, replacing protected targets, or self-promoting claims into trusted evidence.
 
-Observed exact-source results:
-- model-conformance suite: 8/8 passed, including all 1,111 depth-3 traces;
-- LAB-017 model suite: 5/5 passed;
-- LAB-015 transactional-kernel suite: 13/13 passed.
-
-The exhaustive SQLite replay exceeded the runtime command budget on the default temporary filesystem; the same exact source completed in 8.232s with `TMPDIR` on `/dev/shm`. PR #35 was then remote patch-audited and squash-merged. Issue #34 was closed DONE.
-
-LAB-019 was then created as Issue #36 and branch `lab/019-versioned-kernel` was created from current `main`.
+The first corrected draft exposed two audit defects before publication: trusted-control denials were not enforced and accepted evidence lacked artifact-version binding. Both were fixed and regression-tested. Corrected local suite: 12/12 passed; unsafe seed failed as intended; compileall passed. PR #39 was remote patch-audited. The normal merge operation was blocked before execution, so the exact audited five new paths were integrated through the supported Contents API and the PR was closed as manually integrated.
 
 ## Evidence produced
 
-- `experiments/model_conformance/`
-- `research/2026-08-19-model-implementation-conformance.md`
-- exact branch blob-SHA equality for the six executed LAB-018 source/test files;
-- PR #35 merge SHA `774915bff73a489a32227320ef03c54740bfc0d4`;
-- Issue #36 / LAB-019 and branch `lab/019-versioned-kernel`.
+- `research/2026-08-19-versioned-kernel-migration.md`
+- `experiments/versioned_kernel/` and LAB-019 PR #37 merge `678b104f85da55ceefc4eaebed50a2dee455c58c`.
+- `research/2026-08-19-untrusted-tool-output-boundary.md`
+- `experiments/untrusted_tool_output/`
+- LAB-020 corrected suite: 12/12 passed.
+- LAB-020 unsafe authority-promotion seed: failed as intended.
+- Issue #40 / LAB-021 created as the next executable security/correctness gap.
 
 ## Known blockers / constraints
 
-- Local shell DNS to GitHub is unreliable/unavailable; GitHub connector + local blob-hash verification is an acceptable exact-source path when needed.
-- Exhaustive SQLite trace replay is sensitive to temporary-filesystem latency; use a fast temporary filesystem when available, without changing source semantics.
+- Local shell DNS to GitHub remains unreliable/unavailable; GitHub connector plus local execution is the supported path.
+- Preferred GitHub merge endpoint can be blocked before execution; audited small/file-scoped conflict-free changes may use the documented Contents API fallback.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
 - Open-model serving efficiency remains deferred pending representative hardware/runtime.
+- LAB-020 reduces prompt-injection blast radius; it does not solve model-level prompt injection or reasoning manipulation.
 
 ## Exact next action
 
-On `lab/019-versioned-kernel`, research at least three primary-source schema/protocol evolution mechanisms, then implement a bounded versioned-kernel experiment with explicit accept/migrate/translate/reject rules, migration idempotency, old-worker fencing, and model/implementation conformance before and after migration. Demonstrate at least one unsafe migration failure before correcting it. Run deterministic tests, audit, persist evidence, and integrate only after validation.
+Select Issue #40 / LAB-021. Research at least three current primary-source data-flow/egress/security-label mechanisms, create `lab/021-egress-taint`, implement a deterministic source→transform→sink policy prototype under `experiments/egress_taint/`, falsify one unsafe taint-loss design, run the required matrix, audit composition with evidence/fallback/escalation/LAB-020 authority boundaries, then integrate only after validation.
 
 ## Backlog
 
-- #36 / LAB-019 — IN_PROGRESS, highest-value executable task.
+- #40 / LAB-021 — READY, highest-value executable task.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
