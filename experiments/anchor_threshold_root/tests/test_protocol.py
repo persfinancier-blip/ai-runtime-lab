@@ -21,10 +21,10 @@ class T(unittest.TestCase):
         with self.assertRaises(ThresholdError): self.trust().rotate(self.new,a,sigs(self.new_raw,p,[0,1]))
     def test_duplicate_signer_does_not_count_twice(self):
         _,b=self.rsigs(); p=rotation_payload(self.old,self.new); one=Signature(key_id(self.old_raw[0]),sign(self.old_raw[0],p))
-        with self.assertRaises(DuplicateSigner): self.trust().rotate(self.new,[one,one],b)
+        with self.assertRaises(ThresholdError): self.trust().rotate(self.new,[one,one],b)
     def test_revoked_old_signer_cannot_contribute(self):
         old=RootState('anchor-A',1,7,2,self.old.keys,(key_id(self.old_raw[0]),)); p=rotation_payload(old,self.new)
-        with self.assertRaises(RevokedSigner): ThresholdTrustStore(old,self.rec).rotate(self.new,sigs(self.old_raw,p,[0,1]),sigs(self.new_raw,p,[0,1,2]))
+        with self.assertRaises(ThresholdError): ThresholdTrustStore(old,self.rec).rotate(self.new,sigs(self.old_raw,p,[0,1]),sigs(self.new_raw,p,[0,1,2]))
     def test_cross_provider_substitution_rejected(self):
         bad=RootState('anchor-B',2,7,3,self.new.keys); p=rotation_payload(self.old,bad)
         with self.assertRaises(WrongProvider): self.trust().rotate(bad,sigs(self.old_raw,p,[0,1]),sigs(self.new_raw,p,[0,1,2]))
@@ -42,13 +42,18 @@ class T(unittest.TestCase):
         with self.assertRaises(ThresholdError): self.trust().recover(new,sigs(self.rec_raw,p,[0,1]))
     def test_revoked_recovery_signer_rejected(self):
         rec=RecoveryAuthority(4,3,self.rec.keys,(key_id(self.rec_raw[0]),)); new=RootState('anchor-A',2,8,2,self.new.keys); p=recovery_payload(self.old,new,rec.generation)
-        with self.assertRaises(RevokedSigner): ThresholdTrustStore(self.old,rec).recover(new,sigs(self.rec_raw,p,[0,1,2]))
+        with self.assertRaises(ThresholdError): ThresholdTrustStore(self.old,rec).recover(new,sigs(self.rec_raw,p,[0,1,2]))
     def test_restart_has_exactly_one_activated_root(self):
         with tempfile.TemporaryDirectory() as td:
             store=AtomicRootStore(Path(td)/'root.json'); t=self.trust(store); a,b=self.rsigs(); t.rotate(self.new,a,b); loaded=store.load(); self.assertEqual(loaded,self.new); self.assertTrue(set(loaded.keys).isdisjoint(set(self.old.keys)))
     def test_evidence_contains_identifiers_not_private_material(self):
         a,b=self.rsigs(); out=self.trust().rotate(self.new,a,b); text=repr(out)
         for k in self.old_raw+self.new_raw+self.rec_raw: self.assertNotIn(k.hex(),text)
+    def test_junk_signatures_do_not_break_sufficient_quorum(self):
+        a,b=self.rsigs(); p=rotation_payload(self.old,self.new)
+        junk=Signature('unknown-key','00'); duplicate=a[0]
+        t=self.trust(); t.rotate(self.new,[junk,duplicate,*a],[junk,*b]); self.assertEqual(t.root,self.new)
+
     def test_recovery_replay_is_rejected_after_epoch_advance(self):
         new=RootState('anchor-A',2,8,2,self.new.keys); p=recovery_payload(self.old,new,self.rec.generation); rs=sigs(self.rec_raw,p,[0,1,2]); t=self.trust(); t.recover(new,rs)
         with self.assertRaises(EpochMismatch): t.recover(new,rs)
