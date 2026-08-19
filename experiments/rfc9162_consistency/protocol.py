@@ -65,6 +65,8 @@ def merkle_tree_hash(entries: Sequence[bytes]) -> bytes:
 def consistency_proof(first: int, entries: Sequence[bytes]) -> tuple[bytes, ...]:
     """RFC 9162 PROOF(first, D_n), for 0 < first < n."""
     second = len(entries)
+    if type(first) is not int:
+        raise SizeError("first tree size must be an integer")
     if first <= 0 or first >= second:
         raise SizeError("generation requires 0 < first < second")
     return tuple(_subproof(first, entries, True))
@@ -211,6 +213,8 @@ class Checkpoint:
     root: bytes
 
     def __post_init__(self) -> None:
+        if type(self.size) is not int:
+            raise SizeError("checkpoint size must be an integer")
         if self.size < 0:
             raise SizeError("checkpoint size must be non-negative")
         _require_hash(self.root)
