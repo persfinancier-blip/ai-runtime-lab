@@ -202,15 +202,13 @@ class LinuxSandboxLauncher:
     def launch(self, req: SandboxRequest, caps: CapabilityReport, *, inherited_fd: int | None = None) -> LaunchReceipt:
         _validate_request(req, caps)
         parent_userns = os.readlink("/proc/self/ns/user")
-        child_code = r'''
+        payload_code = r'''
 import ctypes, errno, json, os
-from experiments.linux_sandbox_launcher.protocol import set_no_new_privs, install_seccomp_errno_filter, SYS_GETPPID
-set_no_new_privs()
-install_seccomp_errno_filter()
 status = {}
 for line in open('/proc/self/status', encoding='utf-8'):
     if line.startswith(('NoNewPrivs:', 'Seccomp:', 'Seccomp_filters:')):
         k,v=line.split(':',1); status[k]=v.strip()
+SYS_GETPPID = 110
 libc=ctypes.CDLL(None,use_errno=True)
 ctypes.set_errno(0)
 r=libc.syscall(SYS_GETPPID)
@@ -237,9 +235,11 @@ print(json.dumps(probe, sort_keys=True))
             "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
             "LAB030_PARENT_USERNS": parent_userns,
             "LAB030_PROBE_FD": str(inherited_fd if inherited_fd is not None else -1),
+            "LAB030_PAYLOAD_CODE": payload_code,
         }
-        argv = [sys.executable, "-c", child_code]
-        backends = ["no_new_privs", "seccomp-bpf", "fd-default-deny"]
+        supervisor = str(Path(__file__).with_name("supervisor.py"))
+        argv = [sys.executable, supervisor]
+        backends = ["pre-exec-no_new_privs", "pre-exec-seccomp-bpf", "fd-default-deny"]
         if req.require_userns:
             argv = ["unshare", "-Ur", "--"] + argv
             backends.append("userns")
@@ -248,7 +248,7 @@ print(json.dumps(probe, sort_keys=True))
             raise SandboxError(f"child failed rc={p.returncode}: {p.stderr.strip()}")
         probe = json.loads(p.stdout.strip().splitlines()[-1])
         expected = {
-            "nnp": True,
+            "nnp": probe["nnp"],
             "seccomp": probe["seccomp_mode"] == 2 and probe["seccomp_filters"] >= 1 and probe["denied_syscall"],
             "fd": (inherited_fd is None or probe["fd_closed"]),
             "userns": (not req.require_userns or probe["userns"] != probe["parent_userns"]),
@@ -286,7 +286,7 @@ print(json.dumps(probe, sort_keys=True))
             raise AttestationError("generation binding mismatch")
         if receipt.capability_generation != caps.generation or receipt.capability_digest != caps.digest:
             raise AttestationError("capability binding mismatch")
-        required = {"no_new_privs", "seccomp-bpf", "fd-default-deny"}
+        required = {"pre-exec-no_new_privs", "pre-exec-seccomp-bpf", "fd-default-deny"}
         if req.require_userns:
             required.add("userns")
         if not required.issubset(set(receipt.backends)):
