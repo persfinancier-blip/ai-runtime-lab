@@ -24,7 +24,8 @@ class RootState:
     def validate(self):
         if type(self.version) is not int or self.version<1: raise IntegrityError('invalid root version')
         if type(self.authority_epoch) is not int or self.authority_epoch<1: raise IntegrityError('invalid authority epoch')
-        if type(self.threshold) is not int or self.threshold<1 or self.threshold>len(self.keys): raise IntegrityError('invalid threshold')
+        active=set(self.keys)-set(self.revoked)
+        if type(self.threshold) is not int or self.threshold<1 or self.threshold>len(active): raise IntegrityError('invalid threshold')
         for sid,hx in self.keys.items():
             key=bytes.fromhex(hx)
             if sid!=key_id(key): raise IntegrityError('signer id/key mismatch')
@@ -34,7 +35,8 @@ class RecoveryAuthority:
     generation:int; threshold:int; keys:dict[str,str]; revoked:tuple[str,...]=()
     def validate(self):
         if type(self.generation) is not int or self.generation<1: raise IntegrityError('invalid recovery generation')
-        if type(self.threshold) is not int or self.threshold<1 or self.threshold>len(self.keys): raise IntegrityError('invalid recovery threshold')
+        active=set(self.keys)-set(self.revoked)
+        if type(self.threshold) is not int or self.threshold<1 or self.threshold>len(active): raise IntegrityError('invalid recovery threshold')
         for sid,hx in self.keys.items():
             key=bytes.fromhex(hx)
             if sid!=key_id(key): raise IntegrityError('recovery signer id/key mismatch')
@@ -47,9 +49,9 @@ def recovery_payload(old:RootState,new:RootState,recovery_generation:int)->dict:
 def verify_threshold(keys:dict[str,str],threshold:int,revoked:Iterable[str],payload:dict,signatures:Iterable[Signature])->tuple[str,...]:
     revoked=set(revoked); seen=set(); valid=[]
     for item in signatures:
-        if item.signer_id in seen: raise DuplicateSigner(item.signer_id)
+        if item.signer_id in seen: continue
         seen.add(item.signer_id)
-        if item.signer_id in revoked: raise RevokedSigner(item.signer_id)
+        if item.signer_id in revoked: continue
         hx=keys.get(item.signer_id)
         if hx is None: continue
         if hmac.compare_digest(sign(bytes.fromhex(hx),payload),item.signature): valid.append(item.signer_id)
