@@ -69,9 +69,14 @@ class WitnessStore:
 class Witness:
     def __init__(self,witness_id,key,log_id,log_key,store): self.witness_id=witness_id; self.key=key; self.log_id=log_id; self.log_key=log_key; self.store=store
     def verify_checkpoint(self,cp):
-        if cp.schema_version!=SCHEMA_VERSION: raise InvalidCheckpoint('schema')
+        if type(cp.schema_version) is not int or cp.schema_version!=SCHEMA_VERSION: raise InvalidCheckpoint('schema')
+        if type(cp.size) is not int or cp.size<0 or type(cp.sequence) is not int or cp.sequence<0: raise InvalidCheckpoint('numeric fields')
+        if not isinstance(cp.root_hash,str) or len(cp.root_hash)!=64:
+            raise InvalidCheckpoint('root hash')
+        try: bytes.fromhex(cp.root_hash)
+        except ValueError as exc: raise InvalidCheckpoint('root hash') from exc
         if cp.log_id!=self.log_id: raise WrongLog(cp.log_id)
-        if not hmac.compare_digest(sign(self.log_key,cp.unsigned()),cp.signature): raise InvalidCheckpoint('signature')
+        if not isinstance(cp.signature,str) or not hmac.compare_digest(sign(self.log_key,cp.unsigned()),cp.signature): raise InvalidCheckpoint('signature')
     def observe(self,cp,proof=None,accepted_at=0):
         self.verify_checkpoint(cp); prev=self.store.load()
         if prev is None:
