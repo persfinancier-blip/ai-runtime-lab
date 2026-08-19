@@ -5,6 +5,7 @@ class TrustError(RuntimeError): pass
 class UnknownKey(TrustError): pass
 class StaleGeneration(TrustError): pass
 class Rollback(TrustError): pass
+class SnapshotSubstitution(TrustError): pass
 class RevokedKey(TrustError): pass
 class WrongProvider(TrustError): pass
 class RecoveryEpochMismatch(TrustError): pass
@@ -31,10 +32,15 @@ class TrustStore:
         p=rotation_payload(r.provider_id,r.old_generation,r.new_generation,r.new_key_id,r.authority_epoch)
         if not hmac.compare_digest(mac(s.key,p),r.signature): raise RotationAuthError()
         self.state=TrustState(s.store_version+1,s.authority_epoch,s.provider_id,r.new_generation,r.new_key_id,r.new_key,s.revoked|{s.key_id})
+    def revoke_current(self):
+        s=self.state
+        self.state=TrustState(s.store_version+1,s.authority_epoch,s.provider_id,s.generation,s.key_id,s.key,s.revoked|{s.key_id})
     def recover(self,new_key:bytes):
         s=self.state; self.state=TrustState(s.store_version+1,s.authority_epoch+1,s.provider_id,s.generation+1,kid(new_key),new_key,s.revoked|{s.key_id})
     def load_snapshot(self,candidate:TrustState):
-        if candidate.store_version<self.state.store_version or candidate.authority_epoch<self.state.authority_epoch: raise Rollback()
+        current=self.state
+        if candidate.store_version<current.store_version or candidate.authority_epoch<current.authority_epoch: raise Rollback()
+        if candidate.store_version==current.store_version and candidate!=current: raise SnapshotSubstitution("same-version trust-store substitution")
         self.state=candidate
     def verify(self,provider_id,generation,key_id,payload,signature,receipt_epoch):
         s=self.state
