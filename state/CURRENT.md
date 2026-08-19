@@ -4,44 +4,44 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Finish LAB-030 integration after exact-source and remote patch audit, then choose the highest-value next gap exposed by real post-launch sandboxing.
+Advance from launch-time sandbox proof to lifetime-safe supervision: bind attestation to a specific process instance, prevent replay after exit/PID reuse, handle generation drift, and prove descendant termination/containment where the runtime supports it.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-029.
-- Active: Issue #58 / LAB-030 `Linux sandbox launcher enforcement and post-launch attestation`.
-- Branch: `lab/030-linux-sandbox-launcher`.
-- PR: to be created after exact-source artifact validation.
+- Completed: LAB-001 through LAB-030.
+- LAB-030: Issue #58 DONE; PR #59 squash-merged as `ad56179fc0730887c9a3aec7704b710c659c9a34`.
+- Next: Issue #60 / LAB-031 `Sandbox lifetime supervision, process identity, and attestation freshness` — READY.
 
 ## Last completed step
 
-Built and locally exercised a real Linux child launcher. Fresh probes observed userns, `no_new_privs` and seccomp available; network and mount namespace creation remained unavailable. The child verified `NoNewPrivs: 1`, seccomp filter mode, a deterministically denied syscall, user namespace separation and default-deny FD inheritance. Audit fixed three defects: opaque-only probe evidence, a backend-omission test that only hit signature validation, and missing seccomp audit-architecture validation.
+LAB-030 built and exact-source validated a real Linux launcher. Fresh probes observed userns, `no_new_privs` and seccomp available, while network and mount namespace creation remained unavailable. A trusted supervisor now applies `no_new_privs` + seccomp at the pre-exec boundary and only then execs the actual payload. The launched payload proves the resulting state via `/proc/self/status`, a denied syscall, user-namespace identity and FD inheritance probes. Remote audit caught the earlier post-exec setup flaw and it was fixed before merge.
 
 ## Evidence produced
 
 - `research/2026-08-19-linux-sandbox-launcher.md`.
 - `experiments/linux_sandbox_launcher/`.
-- Corrected local tests: 11/11 passed.
+- Corrected exact-source suite: 11/11 passed.
 - Unsafe parent-intent-only seed: expected failure.
-- `python -m compileall -q experiments`: passed.
-- Primary docs: Linux `no_new_privs`, seccomp filter API/seccomp(2), Python subprocess FD controls.
+- Exact executable/test blobs matched local executed sources after publication.
+- LAB-030 merge: `ad56179fc0730887c9a3aec7704b710c659c9a34`.
+- Primary sources: Linux `no_new_privs`, seccomp filter API/seccomp(2), Python subprocess FD controls.
 
 ## Known blockers / constraints
 
-- Local shell DNS to GitHub remains unavailable/unreliable; connector publication + local exact-source execution is the supported path.
+- Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
 - Current runtime supports userns but not network or mount namespaces; REQUIRED network/filesystem confinement must remain fail-closed.
-- Prototype seccomp program is x86_64-specific and deliberately minimal; it is not a production syscall policy.
-- User namespace alone is not filesystem/network confinement.
+- LAB-030 seccomp policy is x86_64-specific and deliberately minimal; it demonstrates enforcement mechanics, not a production syscall allowlist.
+- Launch attestation is a point-in-time fact; numeric PID alone is not durable process identity and descendants may outlive the directly observed process.
 - HMAC launch receipts depend on protecting the launcher signing key.
 - PostgreSQL-specific validation and open-model serving remain deferred for representative environments.
 
 ## Exact next action
 
-Fetch the published LAB-030 executable/test files through the GitHub connector, compare Git blob/content hashes with the executed local sources, rerun the corrected suite on exact fetched source if any mismatch appears, create the LAB-030 PR, perform remote patch audit, fix any defect, then integrate and close Issue #58. After closure, select the highest-value new issue exposed by the remaining boundary: launcher-policy-to-real-resource confinement and/or attestation freshness/revocation across child lifetime.
+Start Issue #60 / LAB-031. Fresh-probe Linux supervision primitives such as pidfd, `/proc` start-time identity, process groups and cgroup v2 availability. Build a bounded real-process harness that binds liveness/termination evidence to a specific child instance, rejects stale launch receipts after exit or generation drift, detects numeric-PID reuse/forgery, and proves descendant termination using the strongest freshly available mechanism. Keep launch attestation, liveness, termination and task-completion evidence distinct. Seed an unsafe numeric-PID + old-receipt design, then audit, exact-source validate and integrate.
 
 ## Backlog
 
-- #58 / LAB-030 — IN_PROGRESS, exact-source/audit/integration remains.
+- #60 / LAB-031 — sandbox lifetime supervision + attestation freshness — READY.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
