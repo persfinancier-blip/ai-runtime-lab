@@ -4,45 +4,43 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Advance from durable observability secrecy to ephemeral credential-delivery and process-boundary correctness: correctly scoped and redacted credentials must also avoid argv/environment/temp-file/inheritance leakage and unnecessary lifetime.
+Advance from safe credential delivery to child-process least privilege: a credential may cross the process boundary safely while the receiving process still has excessive ambient filesystem, execution, local-socket, HOME/config, or descriptor authority.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-026.
-- LAB-026: Issue #50 DONE; PR #51 remote patch-audited and squash-merged as `5c2faad83fbec7261eed1e9164beee6700af7258`.
-- Proposed next track: LAB-027 / ephemeral credential delivery, process-boundary leakage, cleanup, rotation and lifetime conformance.
-- Follow-up GitHub Issue creation was attempted in this run but the connector operation was blocked before execution by an external safety-status gate; no issue was created.
-- Active branch: none.
-- Active PR: none.
+- Completed: LAB-001 through LAB-027.
+- LAB-027: Issue #52 DONE; PR #53 remote patch-audited and squash-merged as `eb49db534f7dd2aa50ba38a4d5da8424030dd24e`.
+- Active: Issue #54 / LAB-028 `Child-process ambient authority and local sandbox conformance`.
+- Active branch: `lab/028-child-sandbox-authority`.
+- Active PR: none yet.
 
 ## Last completed step
 
-LAB-026 introduced a single fail-closed boundary for logs, traces, exceptions, evidence and replay snapshots. Raw credential bytes are removed recursively; credential identity/scope/generation remain auditable; keyed HMAC is used when secret correlation is required instead of raw low-entropy hashing. An unsafe serializer retained raw Authorization bytes as intended. The first corrected implementation exposed a real `API_KEY` canonicalization defect; it was fixed before integration.
+LAB-027 built and validated a deterministic credential-delivery contract. Unsafe argv/environment baselines leaked raw secret material as expected. The corrected exact-source suite passed 12/12 plus compileall. Published protocol/test/unsafe-seed Git blob SHA matched locally executed source. The audit recorded that named-temp-file cleanup is not forensic erasure and does not survive SIGKILL/power loss; production preference is dedicated OS credential facility, narrow memory-backed FD/pipe, explicit handle allowlist, with a 0600 temp file only as a constrained fallback.
 
 ## Evidence produced
 
-- `research/2026-08-19-secret-observability-boundary.md`
-- `experiments/secret_observability/`
-- Primary sources: OpenTelemetry sensitive-data guidance/log data model/supplementary processing guidance and RFC 6750 bearer-token security.
-- Exact branch blob SHA: protocol `1461f26d4f999b3db05e687efa2871cb67ca36ac`; tests `509dfc292cf2da3e1c31b1c5d361ec15ff6a94fb`; both matched locally executed exact-source copies.
-- Exact-source corrected suite: 13/13 passed; compileall passed.
-- PR #51 audited HEAD: `d8ca0f30825e0b02d00df9a7316405fad1393138`.
-- PR #51 merge: `5c2faad83fbec7261eed1e9164beee6700af7258`.
+- `research/2026-08-19-ephemeral-credential-delivery.md`
+- `experiments/ephemeral_credentials/`
+- LAB-027 merge: `eb49db534f7dd2aa50ba38a4d5da8424030dd24e`.
+- Primary sources used: Linux `proc_pid_cmdline(5)`, `proc_pid_environ(5)`, `environ(7)`, `execve(2)`; POSIX exec descriptor semantics; Python `subprocess` descriptor controls; Linux memfd security documentation.
+- Exact executable blob SHA: protocol `22f1941ffa9a79ac6d483ba79f8cdde698b45366`; corrected tests `30bbad0e82ca9532e1894418fa0cebea20712521`; unsafe seed `a0919ef4e45fe7454800a0e756e6d914051a3d4b`.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unreliable/unavailable; GitHub connector plus local execution is the supported path.
-- Preferred GitHub operations can be blocked before execution by an external safety-status gate; treat this as a per-operation/tool limitation and use safe supported fallbacks where one exists.
-- Follow-up issue creation for LAB-027 is currently not durable as an Issue because the create-issue operation was blocked before execution; the complete intent is preserved here instead.
+- OS/kernel sandbox mechanisms differ across Linux/Windows/macOS; LAB-028 must separate deterministic policy-model guarantees from actually observed kernel enforcement.
+- Privileged namespace/cgroup setup must not be assumed available in this runtime.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
 - Open-model serving efficiency remains deferred pending representative hardware/runtime.
 
 ## Exact next action
 
-Start LAB-027 from this state even if issue creation remains blocked: research current primary-source guidance for credential delivery across process boundaries; create a task branch; build a deterministic harness that falsifies argv/environment/temp-file leakage and validates scoped ephemeral delivery, child inheritance control, cleanup, rotation, retry/UNKNOWN behavior, and non-secret evidence identity. Retry creating the GitHub Issue with concise neutral wording when the connector permits, but do not let issue-creation failure block research execution. Audit and exact-source validate before integration.
+Resume Issue #54 on `lab/028-child-sandbox-authority`. Research current primary-source least-privilege process mechanisms (Linux `no_new_privs`, seccomp, Landlock/namespaces as available, plus a cross-platform/runtime analogue). Build a deterministic capability/sandbox permit model that binds task/workspace/sandbox generation and LAB-027 credential generation, with explicit filesystem-read/write, exec, local-socket/network and FD capabilities. Seed a broad-authority baseline, run the required failure matrix, perform separate audit, exact-source validate, then integrate only after patch audit.
 
 ## Backlog
 
-- LAB-027 — ephemeral credential delivery/process-boundary leakage/lifetime conformance — READY from durable state; Issue creation pending connector availability.
+- #54 / LAB-028 — child-process ambient authority/local sandbox conformance — IN_PROGRESS.
+- Crash-resilient scavenging for named credential-file fallback — candidate follow-up if LAB-028 does not subsume it.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
