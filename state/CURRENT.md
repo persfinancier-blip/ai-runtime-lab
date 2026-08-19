@@ -4,32 +4,33 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Execute LAB-023: bind authorized egress not only to canonical URL/request identity but also to the actual allowed transport endpoint across DNS resolution, redirects, retries, and connection establishment.
+Advance from application/endpoint egress binding to the remaining transport identity gap: TLS server identity/SNI and explicit proxy/CONNECT paths must preserve the same authorized origin, endpoint and effect identity.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-022.
-- LAB-022: Issue #42 DONE; PR #43 remote patch-audited and squash-merged as `a6850d12540b1ce93c7a79b7eb275deac7b62ee6`.
-- Next issue: #44 / LAB-023 transport endpoint binding against DNS rebinding, SSRF, and redirect-chain drift — READY.
-- Active branch: none yet for LAB-023.
+- Completed: LAB-001 through LAB-023.
+- LAB-023: Issue #44 DONE; PR #45 remote patch-audited and squash-merged as `3baff7361238a452ec38f587f306ab83407e35e6`.
+- Next issue: #46 / LAB-024 TLS origin authentication and proxy-path binding conformance — READY.
+- Active branch: none yet for LAB-024.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-022 compared RFC 9449 DPoP request binding, AWS SigV4 canonical request/payload signing, W3C capability guidance, and RFC 9700 supporting security guidance. It built a deterministic trusted-control prepare→commit permit harness bound to payload digest, canonical destination, purpose, policy generation, authenticated authorization generation/id, expiry/nonce, and stable effect identity.
+LAB-023 compared current IANA IPv4/IPv6 special-purpose registries, RFC 6890/8190 address semantics, RFC 9110 redirect semantics, RFC 3986 URI host normalization, and AWS IMDS endpoint guidance. It built a deterministic fake resolver/redirector/connector harness that preserves LAB-022 request/effect identity while validating every DNS result, redirect, and final connection endpoint.
 
-The corrected exact-source suite passed 14/14 tests and compileall. The retained unsafe check-then-use seed failed as intended by committing to `attacker.example` after `trusted.example` had been checked. Audit before publication found and fixed a cross-layer regression: trusted authorization was initially represented by a forgeable structural trust flag; it was replaced with authenticated trusted-control authorization and a forged-authorization rejection test.
+The unsafe resolve-once/check-then-connect seed failed as intended: policy checked public `93.184.216.34`, then the connection path re-resolved the hostname and reached `127.0.0.1`. The corrected suite passed 13/13 tests and compileall. Audit tightened redirect authority so a cross-host redirect requires fresh authorization rather than inheriting the LAB-022 permit.
 
 ## Evidence produced
 
-- `research/2026-08-19-egress-commit-binding.md`
-- `experiments/egress_commit/`
-- LAB-022 corrected suite: 14/14 passed.
-- LAB-022 unsafe redirect TOCTOU seed: failed as intended.
-- Exact-source protocol blob: `07fe1bf97bde7c8e2efd8adf0066b386c26e832c`.
-- Exact-source test blob: `3d4d76416d0a8c9f001eb19574ce196d034a2af0`.
-- PR #43 merge: `a6850d12540b1ce93c7a79b7eb275deac7b62ee6`.
-- Issue #44 / LAB-023 created as the next executable security/correctness gap.
+- `research/2026-08-19-transport-endpoint-binding.md`
+- `experiments/transport_binding/`
+- LAB-023 corrected suite: 13/13 passed.
+- LAB-023 unsafe seed: failed as intended on public-to-loopback DNS rebinding.
+- Exact-source protocol blob: `c78b9d5121be2cb8892f78227929ff658f578c2d`.
+- Exact-source corrected test blob: `5d818c24f37a352af1e5aad02c41ce89010170e2`.
+- Exact-source unsafe seed blob: `69f1ba20d90ff67ec7a2cca07656a31583fc0b97`.
+- PR #45 merge: `3baff7361238a452ec38f587f306ab83407e35e6`.
+- Issue #46 / LAB-024 created as the next executable transport-correctness gap.
 
 ## Known blockers / constraints
 
@@ -37,14 +38,14 @@ The corrected exact-source suite passed 14/14 tests and compileall. The retained
 - Preferred GitHub merge endpoint can be blocked before execution; audited small/file-scoped conflict-free changes may use the documented Contents API fallback.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
 - Open-model serving efficiency remains deferred pending representative hardware/runtime.
-- LAB-022 proves application-level request binding, not network endpoint identity. Canonical URL equality alone does not defeat DNS rebinding, SSRF private-address resolution, redirect-chain drift, proxy behavior, or transport-level endpoint substitution.
+- LAB-023 proves direct endpoint validation/pinning in a fake transport. It does not prove TLS certificate/SNI binding, proxy CONNECT authority, proxy-side DNS behavior, or OS/network egress enforcement.
 
 ## Exact next action
 
-Select Issue #44 / LAB-023. Research at least three current primary-source SSRF/DNS-rebinding/redirect/endpoint-binding mechanisms. Create a task branch and deterministic fake resolver/redirector/connector harness. Falsify a resolve-once/check-then-connect design, then enforce revalidation of every resolution/redirect/connection endpoint including IPv4/IPv6 special ranges and retry-after-UNKNOWN. Preserve LAB-022 permit/effect identity, run the bounded matrix, audit the result, and integrate only after exact-source validation.
+Select Issue #46 / LAB-024. Research at least three current primary-source HTTPS server-identity/SNI/proxy/CONNECT mechanisms. Create a task branch and deterministic fake TLS/proxy harness. Falsify a design that validates only socket endpoint or only certificate identity, then require authorized origin hostname, TLS peer identity, direct/proxy route identity, CONNECT target and proxy policy generation to remain bound to LAB-022 request/effect identity and LAB-023 validated endpoint. Test retry-after-UNKNOWN before any route change, audit, exact-source validate, and integrate only after the bounded matrix passes.
 
 ## Backlog
 
-- #44 / LAB-023 — READY, highest-value executable task.
+- #46 / LAB-024 — READY, highest-value executable task.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
