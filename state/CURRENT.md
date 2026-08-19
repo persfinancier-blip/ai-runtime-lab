@@ -4,30 +4,32 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Execute LAB-022: prove egress authorization remains valid at the actual sink commit boundary and cannot be bypassed by payload mutation, redirect, stale policy generation, or replay between check and use.
+Execute LAB-023: bind authorized egress not only to canonical URL/request identity but also to the actual allowed transport endpoint across DNS resolution, redirects, retries, and connection establishment.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-021.
-- LAB-021: Issue #40 DONE; PR #41 remote patch-audited and squash-merged as `359d20087a98a262dc9a500cb1f976d1bacd83fc`.
-- Next issue: #42 / LAB-022 commit-time egress authorization binding and redirect TOCTOU harness — READY.
-- Active branch: none yet for LAB-022.
+- Completed: LAB-001 through LAB-022.
+- LAB-022: Issue #42 DONE; PR #43 remote patch-audited and squash-merged as `a6850d12540b1ce93c7a79b7eb275deac7b62ee6`.
+- Next issue: #44 / LAB-023 transport endpoint binding against DNS rebinding, SSRF, and redirect-chain drift — READY.
+- Active branch: none yet for LAB-023.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-021 compared current OpenAI source/sink and outbound-restriction guidance, NIST SP 1800-39 data classification/labeling, and Google Sensitive Data Protection label/de-identification mechanisms. It built a deterministic source→transform→sink policy prototype. A deliberately unsafe transform dropped SECRET taint and enabled exfiltration to an untrusted sink; the unsafe test failed as intended.
+LAB-022 compared RFC 9449 DPoP request binding, AWS SigV4 canonical request/payload signing, W3C capability guidance, and RFC 9700 supporting security guidance. It built a deterministic trusted-control prepare→commit permit harness bound to payload digest, canonical destination, purpose, policy generation, authenticated authorization generation/id, expiry/nonce, and stable effect identity.
 
-The corrected suite passed 15/15 tests and compileall. Audit before publication found and fixed three authority/binding defects: forgeable boolean declassification, structurally valid but untrusted disclosure authorization, and disclosure grants not bound to the exact payload. Evidence identity was also hardened from raw content SHA-256 to keyed HMAC references to reduce low-entropy hash-oracle risk. PR #41 was remote patch-audited and merged normally.
+The corrected exact-source suite passed 14/14 tests and compileall. The retained unsafe check-then-use seed failed as intended by committing to `attacker.example` after `trusted.example` had been checked. Audit before publication found and fixed a cross-layer regression: trusted authorization was initially represented by a forgeable structural trust flag; it was replaced with authenticated trusted-control authorization and a forged-authorization rejection test.
 
 ## Evidence produced
 
-- `research/2026-08-19-sensitive-data-egress-taint.md`
-- `experiments/egress_taint/`
-- LAB-021 corrected suite: 15/15 passed.
-- LAB-021 unsafe taint-loss seed: failed as intended.
-- PR #41 merge: `359d20087a98a262dc9a500cb1f976d1bacd83fc`.
-- Issue #42 / LAB-022 created as the next executable correctness/security gap.
+- `research/2026-08-19-egress-commit-binding.md`
+- `experiments/egress_commit/`
+- LAB-022 corrected suite: 14/14 passed.
+- LAB-022 unsafe redirect TOCTOU seed: failed as intended.
+- Exact-source protocol blob: `07fe1bf97bde7c8e2efd8adf0066b386c26e832c`.
+- Exact-source test blob: `3d4d76416d0a8c9f001eb19574ce196d034a2af0`.
+- PR #43 merge: `a6850d12540b1ce93c7a79b7eb275deac7b62ee6`.
+- Issue #44 / LAB-023 created as the next executable security/correctness gap.
 
 ## Known blockers / constraints
 
@@ -35,14 +37,14 @@ The corrected suite passed 15/15 tests and compileall. Audit before publication 
 - Preferred GitHub merge endpoint can be blocked before execution; audited small/file-scoped conflict-free changes may use the documented Contents API fallback.
 - PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
 - Open-model serving efficiency remains deferred pending representative hardware/runtime.
-- LAB-021 limits labeled-data egress but does not solve covert channels, steganography, timing/metadata leakage, semantic reconstruction, incorrect source classification, or model-level prompt injection.
+- LAB-022 proves application-level request binding, not network endpoint identity. Canonical URL equality alone does not defeat DNS rebinding, SSRF private-address resolution, redirect-chain drift, proxy behavior, or transport-level endpoint substitution.
 
 ## Exact next action
 
-Select Issue #42 / LAB-022. Research at least three current primary-source TOCTOU/capability/request-binding mechanisms, create a task branch, implement a deterministic prepare→commit egress permit harness that revalidates payload identity, canonical destination, purpose, policy/authorization generation, issuer, and replay/idempotency at commit, falsify an unsafe check-then-use design, run the required mutation/redirect/replay matrix, audit composition with LAB-005/LAB-015/LAB-020/LAB-021, then integrate only after validation.
+Select Issue #44 / LAB-023. Research at least three current primary-source SSRF/DNS-rebinding/redirect/endpoint-binding mechanisms. Create a task branch and deterministic fake resolver/redirector/connector harness. Falsify a resolve-once/check-then-connect design, then enforce revalidation of every resolution/redirect/connection endpoint including IPv4/IPv6 special ranges and retry-after-UNKNOWN. Preserve LAB-022 permit/effect identity, run the bounded matrix, audit the result, and integrate only after exact-source validation.
 
 ## Backlog
 
-- #42 / LAB-022 — READY, highest-value executable task.
+- #44 / LAB-023 — READY, highest-value executable task.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
