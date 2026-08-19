@@ -28,13 +28,13 @@ Authenticity and liveness remain separate. A correctly authenticated record can 
 
 Corrected suite: `python -m unittest discover -s experiments/launch_record_integrity/tests -p 'test_*.py' -v`
 
-Observed: **12/12 passed**.
+Observed after audit fix: **13/13 passed**.
 
 Unsafe seed: `python -m unittest experiments.launch_record_integrity.tests.unsafe_unsigned_expected_failure -v`
 
 Observed: expected failure because unsigned structural trust accepted a forged PID.
 
-Covered cases: valid record; field tamper; cross-task substitution; rollback; key rotation; authority rotation; canonical reformat; duplicate JSON keys; truncated/corrupt JSON; generation drift; no raw key in evidence; unsafe unsigned structural trust.
+Covered cases: valid record; field tamper; cross-task substitution; rollback; key rotation; authority rotation; canonical reformat; duplicate JSON keys; truncated/corrupt JSON; generation drift; strict metadata type validation; no raw key in evidence; unsafe unsigned structural trust.
 
 `python -m compileall -q experiments` also completed successfully.
 
@@ -46,6 +46,7 @@ Covered cases: valid record; field tamper; cross-task substitution; rollback; ke
 - **HMAC shared-key reference is not a KMS design.** Production should use protected key storage/KMS/HSM or asymmetric signatures where writer/verifier separation is required.
 - **No raw key material is persisted in launch records, evidence, or logs.** `key_id` and record fingerprint are safe identifiers; the secret remains outside durable evidence.
 - **Record authentication precedes but never replaces LAB-032 liveness checks.**
+- **Audit fix:** the first implementation did not strictly type-check payload metadata. In Python, `True == 1`, so a JSON boolean could accidentally satisfy a numeric schema-version equality. Metadata now enforces exact integer schema version plus string algorithm/key ID and object record shape before cryptographic verification; a dedicated type-confusion regression test passes.
 
 ## Integration implication
 
@@ -59,4 +60,4 @@ No general PKI, KMS, certificate lifecycle, encrypted storage, or replacement fo
 
 ## Stop-condition assessment
 
-The required tamper/replay matrix passed, the unsafe structural-trust baseline failed as expected, and the LAB-032 boundary is explicit. LAB-033 is ready for repository audit/integration.
+The required tamper/replay matrix passed, the unsafe structural-trust baseline failed as expected, audit findings were fixed and re-tested, and the LAB-032 boundary is explicit. LAB-033 is ready for integration.
