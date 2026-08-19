@@ -75,7 +75,10 @@ class WatermarkDB:
     def verify_fresh(self,secret,r,anchor=None):
         if not verify_record(secret,r): return False
         c=self.connect(); epoch,keygen,gseq=c.execute("SELECT authority_epoch,key_generation,global_sequence FROM authority WHERE singleton=1").fetchone(); row=c.execute("SELECT sequence,authority_epoch,key_generation,payload_digest,mac FROM task_watermark WHERE task_id=?",(r.task_id,)).fetchone(); c.close()
-        if anchor is not None and anchor.read() > gseq: raise AnchorMismatch("database rollback detected")
+        if anchor is not None:
+            av=anchor.read()
+            if av > gseq: raise AnchorMismatch("database rollback detected")
+            if av < gseq: raise AnchorMismatch("database state is not yet externally anchored")
         if (r.authority_epoch,r.key_generation)!=(epoch,keygen) or row is None: return False
         return row==(r.sequence,r.authority_epoch,r.key_generation,r.payload_digest,r.mac)
 
