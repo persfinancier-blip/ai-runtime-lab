@@ -52,11 +52,14 @@ class T(unittest.TestCase):
     def test_recovery_replay_is_rejected_after_epoch_advance(self):
         new=RootState('anchor-A',2,8,2,self.new.keys); p=recovery_payload(self.old,new,self.rec.generation); rs=sigs(self.rec_raw,p,[0,1,2]); t=self.trust(); t.recover(new,rs)
         with self.assertRaises(EpochMismatch): t.recover(new,rs)
+
     def test_failed_persistence_does_not_activate_candidate(self):
         class FailingStore:
             path=Path('/virtual/already-exists')
             def save(self,state): raise OSError('simulated durable-store failure')
-        t=ThresholdTrustStore(self.old,self.rec); t.store=FailingStore(); a,b=self.rsigs()
+        t=ThresholdTrustStore(self.old,self.rec)
+        t.store=FailingStore(); a,b=self.rsigs()
         with self.assertRaises(OSError): t.rotate(self.new,a,b)
         self.assertEqual(t.root,self.old)
+
 if __name__=='__main__': unittest.main()
