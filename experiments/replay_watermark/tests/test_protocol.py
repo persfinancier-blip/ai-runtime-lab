@@ -27,6 +27,11 @@ class Tests(unittest.TestCase):
   r=self.db.publish(SECRET,'t','a'); self.assertTrue(self.db.verify_fresh(SECRET,r)); self.assertTrue(self.db.verify_fresh(SECRET,r))
  def test_crash_transaction_rolls_back_together(self):
   before=self.db.state(); c=self.db.connect(); c.execute('BEGIN IMMEDIATE'); e,k,g=c.execute('SELECT authority_epoch,key_generation,global_sequence FROM authority WHERE singleton=1').fetchone(); c.execute('UPDATE authority SET global_sequence=? WHERE singleton=1',(g+1,)); c.execute('INSERT INTO task_watermark VALUES(?,?,?,?,?,?)',('x',g+1,e,k,'d','bad')); c.execute('ROLLBACK'); c.close(); self.assertEqual(before,self.db.state())
+ def test_anchor_lag_blocks_unanchored_state(self):
+  self.db.publish(SECRET,'t','a'); anchor=Anchor(0)
+  r=self.db.publish(SECRET,'t','b')
+  with self.assertRaises(AnchorMismatch): self.db.verify_fresh(SECRET,r,anchor)
+  anchor.advance(self.db.state()['global_sequence']); self.assertTrue(self.db.verify_fresh(SECRET,r,anchor))
  def test_snapshot_rollback_detected_with_anchor(self):
   r1=self.db.publish(SECRET,'t','a'); anchor=Anchor(self.db.state()['global_sequence']); backup=Path(self.t.name)/'backup.sqlite'; shutil.copy2(self.p,backup); self.db.publish(SECRET,'t','b'); anchor.advance(self.db.state()['global_sequence']); shutil.copy2(backup,self.p); db2=WatermarkDB(self.p)
   with self.assertRaises(AnchorMismatch): db2.verify_fresh(SECRET,r1,anchor)
