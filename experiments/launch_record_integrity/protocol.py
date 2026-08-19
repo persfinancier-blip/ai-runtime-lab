@@ -65,6 +65,8 @@ def verify_record(raw,*,expected_task,expected_generations,keyring,replay_guard,
     if set(env)!={'payload','mac'} or not isinstance(env['payload'],dict) or not isinstance(env['mac'],str): raise ParseError('invalid envelope shape')
     p=env['payload']
     if set(p)!={'schema_version','alg','key_id','record'}: raise ParseError('invalid payload shape')
+    if type(p['schema_version']) is not int or not isinstance(p['alg'],str) or not isinstance(p['key_id'],str) or not isinstance(p['record'],dict):
+        raise ParseError('invalid payload types')
     if p['schema_version']!=SCHEMA_VERSION or p['alg']!=ALG: raise DomainError('unsupported schema/alg')
     key=keyring.key(p['key_id'])
     if not hmac.compare_digest(hmac.new(key,canonical_bytes(p),hashlib.sha256).hexdigest(),env['mac']): raise AuthError('record MAC mismatch')
