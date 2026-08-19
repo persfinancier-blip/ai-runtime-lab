@@ -1,124 +1,156 @@
 from __future__ import annotations
-import hashlib, json, sqlite3
+import hashlib, hmac, json, sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 class RotationError(RuntimeError): pass
-class StaleProposal(RotationError): pass
-class SameVersionSubstitution(RotationError): pass
-class UnknownCommitOutcome(RotationError): pass
-class InvalidTransition(RotationError): pass
+class ThresholdError(RotationError): pass
+class StalePredecessor(RotationError): pass
+class WrongProvider(RotationError): pass
+class VersionError(RotationError): pass
+class EpochError(RotationError): pass
+class UnknownOutcome(RotationError): pass
+class IntegrityError(RotationError): pass
+class ProposalSubstitution(IntegrityError): pass
+class EquivocationDetected(RotationError): pass
 
-def canonical(obj): return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
-def digest_obj(obj): return hashlib.sha256(canonical(obj)).hexdigest()
+def canonical(obj: dict) -> bytes: return json.dumps(obj,sort_keys=True,separators=(",",":")).encode()
+def digest_obj(obj: dict) -> str: return hashlib.sha256(canonical(obj)).hexdigest()
+def key_id(key: bytes) -> str: return hashlib.sha256(key).hexdigest()[:16]
+def sign(key: bytes,payload: dict) -> str: return hmac.new(key,canonical(payload),hashlib.sha256).hexdigest()
 
 @dataclass(frozen=True)
-class Root:
-    provider_id:str; version:int; authority_epoch:int; threshold:int; key_ids:tuple[str,...]
-    def descriptor(self): return {"provider_id":self.provider_id,"version":self.version,"authority_epoch":self.authority_epoch,"threshold":self.threshold,"key_ids":list(self.key_ids)}
+class Signature:
+    signer_id:str; signature:str
+
+@dataclass(frozen=True)
+class RootState:
+    provider_id:str; version:int; authority_epoch:int; threshold:int; keys:dict[str,str]; revoked:tuple[str,...]=()
+    def descriptor(self): return {"provider_id":self.provider_id,"version":self.version,"authority_epoch":self.authority_epoch,"threshold":self.threshold,"keys":dict(sorted(self.keys.items())),"revoked":sorted(self.revoked)}
     @property
     def digest(self): return digest_obj(self.descriptor())
+    def validate(self):
+        if type(self.version) is not int or self.version<1: raise IntegrityError("bad version")
+        if type(self.authority_epoch) is not int or self.authority_epoch<1: raise IntegrityError("bad epoch")
+        active=set(self.keys)-set(self.revoked)
+        if type(self.threshold) is not int or self.threshold<1 or self.threshold>len(active): raise IntegrityError("bad threshold")
+        for sid,hx in self.keys.items():
+            key=bytes.fromhex(hx)
+            if sid!=key_id(key): raise IntegrityError("key id mismatch")
+
+@dataclass(frozen=True)
+class RecoveryAuthority:
+    generation:int; threshold:int; keys:dict[str,str]; revoked:tuple[str,...]=()
 
 @dataclass(frozen=True)
 class Proposal:
-    proposal_id:str; kind:str; predecessor_digest:str; predecessor_version:int; predecessor_epoch:int; candidate:Root; signer_ids:tuple[str,...]
+    proposal_id:str; kind:str; predecessor_digest:str; predecessor_version:int; predecessor_epoch:int; candidate:RootState
+    old_signatures:tuple[Signature,...]=(); new_signatures:tuple[Signature,...]=(); recovery_signatures:tuple[Signature,...]=()
     @property
-    def digest(self):
-        return digest_obj({"proposal_id":self.proposal_id,"kind":self.kind,"predecessor_digest":self.predecessor_digest,"predecessor_version":self.predecessor_version,"predecessor_epoch":self.predecessor_epoch,"candidate":self.candidate.descriptor(),"signer_ids":list(self.signer_ids)})
+    def payload(self): return {"kind":self.kind,"proposal_id":self.proposal_id,"predecessor_digest":self.predecessor_digest,"predecessor_version":self.predecessor_version,"predecessor_epoch":self.predecessor_epoch,"candidate":self.candidate.descriptor()}
+    @property
+    def digest(self): return digest_obj(self.payload)
 
-@dataclass(frozen=True)
-class ActivationReceipt:
-    proposal_id:str; proposal_digest:str; root_digest:str; transition_seq:int; provider_id:str; version:int; authority_epoch:int; signer_ids:tuple[str,...]
+def verify_threshold(keys:dict[str,str],threshold:int,revoked:Iterable[str],payload:dict,signatures:Iterable[Signature])->tuple[str,...]:
+    revoked=set(revoked); seen=set(); valid=[]
+    for s in signatures:
+        if s.signer_id in seen: continue
+        seen.add(s.signer_id)
+        if s.signer_id in revoked: continue
+        hx=keys.get(s.signer_id)
+        if hx is None: continue
+        if hmac.compare_digest(sign(bytes.fromhex(hx),payload),s.signature): valid.append(s.signer_id)
+    if len(valid)<threshold: raise ThresholdError(f"valid={len(valid)} threshold={threshold}")
+    return tuple(sorted(valid))
 
-class RotationDB:
-    def __init__(self,path,initial=None):
-        self.path=str(path)
-        if initial is not None:self._init(initial)
-    def connect(self):
-        c=sqlite3.connect(self.path,timeout=5.0,isolation_level=None,check_same_thread=False)
-        c.execute('PRAGMA journal_mode=WAL'); c.execute('PRAGMA synchronous=FULL'); return c
-    def _init(self,initial):
-        c=self.connect()
+class SerializedRootStore:
+    def __init__(self,path:str|Path,initial:RootState,recovery:RecoveryAuthority):
+        self.path=str(path); self.recovery=recovery; initial.validate(); c=self.connect()
         try:
-            c.executescript('''CREATE TABLE IF NOT EXISTS active_root(singleton INTEGER PRIMARY KEY CHECK(singleton=1),provider_id TEXT NOT NULL,version INTEGER NOT NULL,authority_epoch INTEGER NOT NULL,root_digest TEXT NOT NULL,root_json TEXT NOT NULL,transition_seq INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS transitions(transition_seq INTEGER PRIMARY KEY,proposal_id TEXT NOT NULL UNIQUE,proposal_digest TEXT NOT NULL UNIQUE,predecessor_digest TEXT NOT NULL,root_digest TEXT NOT NULL,root_json TEXT NOT NULL,kind TEXT NOT NULL,signer_ids_json TEXT NOT NULL,committed INTEGER NOT NULL CHECK(committed=1));CREATE UNIQUE INDEX IF NOT EXISTS one_successor_per_predecessor ON transitions(predecessor_digest);CREATE TABLE IF NOT EXISTS proposal_observations(proposal_digest TEXT PRIMARY KEY,proposal_id TEXT NOT NULL,predecessor_digest TEXT NOT NULL,kind TEXT NOT NULL,signer_ids_json TEXT NOT NULL);''')
+            c.executescript('''PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS active_root(singleton INTEGER PRIMARY KEY CHECK(singleton=1),provider_id TEXT NOT NULL,version INTEGER NOT NULL,authority_epoch INTEGER NOT NULL,root_digest TEXT NOT NULL,root_json TEXT NOT NULL,activation_seq INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS activations(seq INTEGER PRIMARY KEY AUTOINCREMENT,proposal_id TEXT NOT NULL UNIQUE,proposal_digest TEXT NOT NULL UNIQUE,predecessor_digest TEXT NOT NULL,candidate_digest TEXT NOT NULL,kind TEXT NOT NULL,receipt TEXT NOT NULL UNIQUE,chain_hash TEXT NOT NULL);
+            CREATE UNIQUE INDEX IF NOT EXISTS one_successor_per_parent ON activations(predecessor_digest);''')
             if c.execute('SELECT 1 FROM active_root WHERE singleton=1').fetchone() is None:
                 c.execute('INSERT INTO active_root VALUES(1,?,?,?,?,?,0)',(initial.provider_id,initial.version,initial.authority_epoch,initial.digest,json.dumps(initial.descriptor(),sort_keys=True)))
+            c.commit()
         finally:c.close()
-    def active(self):
-        c=self.connect()
-        try:
-            r=c.execute('SELECT root_json,transition_seq FROM active_root WHERE singleton=1').fetchone(); raw=json.loads(r[0]); return Root(raw['provider_id'],raw['version'],raw['authority_epoch'],raw['threshold'],tuple(raw['key_ids'])),int(r[1])
-        finally:c.close()
-    def receipt(self,pid):
-        c=self.connect()
-        try:
-            row=c.execute('SELECT proposal_digest,root_digest,transition_seq,root_json,signer_ids_json FROM transitions WHERE proposal_id=?',(pid,)).fetchone()
-            if row is None:return None
-            raw=json.loads(row[3]); return ActivationReceipt(pid,row[0],row[1],int(row[2]),raw['provider_id'],raw['version'],raw['authority_epoch'],tuple(json.loads(row[4])))
-        finally:c.close()
-    def observe(self,p):
-        c=self.connect()
-        try:
-            c.execute('BEGIN IMMEDIATE')
-            row=c.execute('SELECT proposal_id FROM proposal_observations WHERE proposal_digest=?',(p.digest,)).fetchone()
-            if row is None:
-                c.execute('INSERT INTO proposal_observations VALUES(?,?,?,?,?)',(p.digest,p.proposal_id,p.predecessor_digest,p.kind,json.dumps(sorted(set(p.signer_ids)))))
-            c.execute('COMMIT')
-        finally:c.close()
-    def equivocation_candidates(self,predecessor_digest):
-        c=self.connect()
-        try:
-            rows=c.execute('SELECT proposal_digest,proposal_id,kind,signer_ids_json FROM proposal_observations WHERE predecessor_digest=? ORDER BY proposal_digest',(predecessor_digest,)).fetchall(); out=[]
-            for i,a in enumerate(rows):
-                sa=set(json.loads(a[3]))
-                for b in rows[i+1:]:
-                    overlap=tuple(sorted(sa & set(json.loads(b[3])))); out.append({'proposal_a':a[0],'proposal_b':b[0],'proposal_id_a':a[1],'proposal_id_b':b[1],'overlapping_signers':overlap})
-            return out
-        finally:c.close()
-    def transition_count(self):
-        c=self.connect()
-        try:return int(c.execute('SELECT COUNT(*) FROM transitions').fetchone()[0])
-        finally:c.close()
+    def connect(self):
+        c=sqlite3.connect(self.path,timeout=5.0,isolation_level=None,check_same_thread=False); c.row_factory=sqlite3.Row; return c
     @staticmethod
-    def validate_against(old,p):
-        if p.predecessor_digest!=old.digest or p.predecessor_version!=old.version or p.predecessor_epoch!=old.authority_epoch: raise StaleProposal('predecessor changed')
-        if p.candidate.provider_id!=old.provider_id: raise InvalidTransition('provider changed')
-        if p.candidate.version!=old.version+1:
-            if p.candidate.version==old.version and p.candidate.digest!=old.digest: raise SameVersionSubstitution('same-version substitution')
-            raise InvalidTransition('version')
+    def row_to_root(r):
+        x=json.loads(r['root_json']); return RootState(x['provider_id'],x['version'],x['authority_epoch'],x['threshold'],dict(x['keys']),tuple(x.get('revoked',())))
+    def current(self):
+        c=self.connect()
+        try:return self.row_to_root(c.execute('SELECT * FROM active_root WHERE singleton=1').fetchone())
+        finally:c.close()
+    def get_activation(self,pid):
+        c=self.connect()
+        try:
+            r=c.execute('SELECT * FROM activations WHERE proposal_id=?',(pid,)).fetchone(); return dict(r) if r else None
+        finally:c.close()
+    def get_receipt(self,pid):
+        r=self.get_activation(pid); return r['receipt'] if r else None
+    @staticmethod
+    def _reconcile_existing(r,p):
+        if r is None:return None
+        if r['proposal_digest']!=p.digest or r['candidate_digest']!=p.candidate.digest or r['predecessor_digest']!=p.predecessor_digest: raise ProposalSubstitution('proposal_id reused with different transition identity')
+        return r['receipt']
+    def activation_rows(self):
+        c=self.connect()
+        try:return [dict(r) for r in c.execute('SELECT * FROM activations ORDER BY seq')]
+        finally:c.close()
+    def _validate(self,current,p):
+        p.candidate.validate()
+        if current.provider_id!=p.candidate.provider_id: raise WrongProvider()
+        if p.predecessor_digest!=current.digest or p.predecessor_version!=current.version or p.predecessor_epoch!=current.authority_epoch: raise StalePredecessor()
+        if p.candidate.version!=current.version+1: raise VersionError()
         if p.kind=='rotation':
-            if p.candidate.authority_epoch!=old.authority_epoch: raise InvalidTransition('rotation epoch')
-        elif p.kind=='recovery':
-            if p.candidate.authority_epoch!=old.authority_epoch+1: raise InvalidTransition('recovery epoch')
-        else: raise InvalidTransition('kind')
-        if not p.signer_ids: raise InvalidTransition('signers')
+            if p.candidate.authority_epoch!=current.authority_epoch: raise EpochError()
+            verify_threshold(current.keys,current.threshold,current.revoked,p.payload,p.old_signatures); verify_threshold(p.candidate.keys,p.candidate.threshold,p.candidate.revoked,p.payload,p.new_signatures); return
+        if p.kind=='recovery':
+            if p.candidate.authority_epoch!=current.authority_epoch+1: raise EpochError()
+            verify_threshold(self.recovery.keys,self.recovery.threshold,self.recovery.revoked,p.payload,p.recovery_signatures); return
+        raise RotationError('unknown proposal kind')
     def activate(self,p,crash_before_commit=False,timeout_after_commit=False):
-        self.observe(p)
-        existing=self.receipt(p.proposal_id)
-        if existing:
-            if existing.proposal_digest!=p.digest: raise SameVersionSubstitution('proposal id content changed')
-            return existing
-        c=self.connect(); committed=False
+        existing=self._reconcile_existing(self.get_activation(p.proposal_id),p)
+        if existing:return existing
+        c=self.connect()
         try:
             c.execute('BEGIN IMMEDIATE')
-            row=c.execute('SELECT proposal_digest FROM transitions WHERE proposal_id=?',(p.proposal_id,)).fetchone()
-            if row:
-                c.execute('ROLLBACK'); return self.receipt(p.proposal_id)
-            ar=c.execute('SELECT root_json,root_digest,transition_seq FROM active_root WHERE singleton=1').fetchone(); raw=json.loads(ar[0]); old=Root(raw['provider_id'],raw['version'],raw['authority_epoch'],raw['threshold'],tuple(raw['key_ids']))
-            self.validate_against(old,p); next_seq=int(ar[2])+1
-            if crash_before_commit:
-                c.execute('ROLLBACK'); raise RuntimeError('injected crash')
-            root_json=json.dumps(p.candidate.descriptor(),sort_keys=True); signer_json=json.dumps(sorted(set(p.signer_ids)))
-            c.execute('INSERT INTO transitions VALUES(?,?,?,?,?,?,?,?,1)',(next_seq,p.proposal_id,p.digest,p.predecessor_digest,p.candidate.digest,root_json,p.kind,signer_json))
-            changed=c.execute('UPDATE active_root SET provider_id=?,version=?,authority_epoch=?,root_digest=?,root_json=?,transition_seq=? WHERE singleton=1 AND root_digest=? AND transition_seq=?',(p.candidate.provider_id,p.candidate.version,p.candidate.authority_epoch,p.candidate.digest,root_json,next_seq,p.predecessor_digest,int(ar[2]))).rowcount
-            if changed!=1:
-                c.execute('ROLLBACK'); raise StaleProposal('CAS lost')
-            c.execute('COMMIT'); committed=True
+            er=c.execute('SELECT * FROM activations WHERE proposal_id=?',(p.proposal_id,)).fetchone()
+            if er:
+                receipt=self._reconcile_existing(dict(er),p); c.commit(); return receipt
+            current=self.row_to_root(c.execute('SELECT * FROM active_root WHERE singleton=1').fetchone()); self._validate(current,p)
+            if crash_before_commit: raise RuntimeError('injected crash before commit')
+            prev=c.execute('SELECT chain_hash FROM activations ORDER BY seq DESC LIMIT 1').fetchone(); prev_hash=prev['chain_hash'] if prev else '0'*64
+            receipt=f'activation:{p.digest}'; chain_hash=hashlib.sha256((prev_hash+p.digest+receipt).encode()).hexdigest()
+            c.execute('INSERT INTO activations(proposal_id,proposal_digest,predecessor_digest,candidate_digest,kind,receipt,chain_hash) VALUES(?,?,?,?,?,?,?)',(p.proposal_id,p.digest,p.predecessor_digest,p.candidate.digest,p.kind,receipt,chain_hash))
+            seq=c.execute('SELECT seq FROM activations WHERE proposal_id=?',(p.proposal_id,)).fetchone()['seq']
+            changed=c.execute('UPDATE active_root SET provider_id=?,version=?,authority_epoch=?,root_digest=?,root_json=?,activation_seq=? WHERE singleton=1 AND root_digest=? AND version=? AND authority_epoch=?',(p.candidate.provider_id,p.candidate.version,p.candidate.authority_epoch,p.candidate.digest,json.dumps(p.candidate.descriptor(),sort_keys=True),seq,p.predecessor_digest,p.predecessor_version,p.predecessor_epoch)).rowcount
+            if changed!=1: raise StalePredecessor()
+            c.commit()
+            if timeout_after_commit: raise UnknownOutcome('commit succeeded but receipt was not observed')
+            return receipt
+        except sqlite3.IntegrityError as e:
+            if c.in_transaction:c.rollback()
+            existing=self._reconcile_existing(self.get_activation(p.proposal_id),p)
+            if existing:return existing
+            raise StalePredecessor(str(e))
+        except Exception:
+            if c.in_transaction:c.rollback()
+            raise
         finally:c.close()
-        if timeout_after_commit and committed: raise UnknownCommitOutcome(p.proposal_id)
-        return self.receipt(p.proposal_id)
 
-class UnsafeCheckThenWrite:
-    def __init__(self,initial): self.active=initial; self.activations=[]
-    def validate(self,p): RotationDB.validate_against(self.active,p)
-    def write(self,p): self.active=p.candidate; self.activations.append(p.proposal_id)
+class UnsafeCheckThenWriteStore:
+    def __init__(self,initial):self.current=initial;self.accepted=[]
+    def check(self,p):return p.predecessor_digest==self.current.digest and p.predecessor_version==self.current.version
+    def write_without_recheck(self,p):self.current=p.candidate;self.accepted.append(p.proposal_id)
+
+class TransparencyObserver:
+    def __init__(self):self.by_parent={}
+    def observe(self,a):
+        parent=a['predecessor_digest']; value=(a['candidate_digest'],a['proposal_digest']); prior=self.by_parent.get(parent)
+        if prior and prior!=value: raise EquivocationDetected(f'parent {parent} has conflicting successors')
+        self.by_parent[parent]=value
