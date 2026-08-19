@@ -4,55 +4,55 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Advance from concurrency-safe trust-root activation to externally observable split-view detection. LAB-039 is complete: one shared authoritative store now activates exactly one threshold-authorized successor per exact predecessor, but global anti-equivocation still requires independently comparable transparency/witness evidence.
+Advance from bounded witness/split-view detection to interoperable compact append-only consistency proofs. LAB-040 is complete: independent views can now be compared through durable witness checkpoints, replay/freeze handling, distinct-witness quorum and explicit split-view detection, while consensus/prevention remains deliberately out of scope.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-039.
-- Completed Issue #75 / LAB-039.
-- LAB-039 final files are integrated directly in `main` through the allowed Contents API fallback because PR creation was blocked before execution by an external safety-status gate.
-- Active next: Issue #76 / LAB-040 — READY.
+- Completed: LAB-001 through LAB-040.
+- Completed Issue #76 / LAB-040.
+- Merged PR #77 / LAB-040 as `e184ce26f9372707a6e4a6015307fda21c0f9dbb`.
+- Active next: Issue #78 / LAB-041 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-039 built and audited `experiments/anchor_rotation_concurrency/`. The final reference protocol restores LAB-038 threshold-signature verification, binds activation to the exact predecessor digest/version/authority epoch, serializes activation in one SQLite write transaction, enforces one local successor per predecessor, and reconciles timeout-after-commit by stable transition identity.
+LAB-040 built and audited `experiments/anchor_transparency_witness/`. It implements versioned signed checkpoints, RFC-style Merkle commitments, a deterministic self-contained append-only reference proof, durable witness watermark/restart state, local freshness policy, witness countersignatures, distinct-identity threshold checking and a checkpoint observer that detects conflicting same-size roots after independently obtained views meet.
 
-Remote branch audit found and corrected two material defects before integration: an earlier draft treated structural `signer_ids` as if they were threshold proof, and an initial reconciliation path trusted `proposal_id` without rechecking transition digests. Superseded draft research/test artifacts were removed before integration.
+The unsafe self-presented-checkpoint baseline accepted two validly signed forks. The corrected suite distinguishes cryptographic replay from local freeze/freshness and explicitly states that witnessing detects equivocation after observation/gossip rather than preventing isolated forks.
 
 ## Evidence produced
 
-- `experiments/anchor_rotation_concurrency/protocol.py`
-- `experiments/anchor_rotation_concurrency/tests/test_protocol.py`
-- `experiments/anchor_rotation_concurrency/tests/unsafe_split_check_expected_failure.py`
-- `experiments/anchor_rotation_concurrency/README.md`
-- `research/2026-08-19-concurrent-threshold-rotation.md`
-- Corrected local deterministic suite: 11/11 passed.
-- Unsafe split check-then-write baseline: expected failure, two successors accepted (`2 != 1`).
+- `experiments/anchor_transparency_witness/protocol.py`
+- `experiments/anchor_transparency_witness/tests/test_protocol.py`
+- `experiments/anchor_transparency_witness/tests/unsafe_self_presented_expected_failure.py`
+- `experiments/anchor_transparency_witness/README.md`
+- `research/2026-08-19-witnessed-transparency-checkpoints.md`
+- Corrected exact local suite: 14/14 deterministic tests passed.
+- Unsafe baseline: expected failure, two forks accepted (`2 != 1`).
 - `python -m compileall -q experiments` passed.
-- Real two-thread SQLite race: exactly one activation committed.
-- Rotation-vs-recovery race: exactly one authority transition committed.
-- Crash-before-commit rollback, timeout-after-commit reconciliation, restart reconstruction, stale loser retry, proposal substitution rejection and split-view observation are covered.
-- Primary donors: TUF root continuity, PostgreSQL Serializable/row-locking semantics, RFC 9162 Certificate Transparency and transparency.dev consistency concepts.
-- Final LAB-039 content was compare-audited as exactly five added, conflict-free paths before Contents API integration; latest LAB-039 content commit in `main`: `f7f869818e5b25305cfa6500803c822560fa8b8a`.
+- Remote protocol/test/unsafe blob SHA values matched locally executed `git hash-object` values after the final audit fix.
+- Audit fixes: RFC-style tree decomposition; cross-witness observer; restart-self-contained reference proof; duplicate witness de-duplication without quorum inflation/DoS; local freshness semantics; strict checkpoint type/structure validation.
+- Primary donors: RFC 9162 Certificate Transparency v2, transparency-dev Witness, Trillian transparent logging.
+- PR #77 remote patch audited and squash-merged as `e184ce26f9372707a6e4a6015307fda21c0f9dbb`.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- PR creation for LAB-039 was blocked before execution by an external safety-status gate; safe Contents API integration succeeded, so this is not an active blocker.
-- SQLite is a deterministic transaction reference, not a PostgreSQL performance/distributed-concurrency claim.
-- HMAC remains reference-only deterministic cryptography; production trust-root private signing material must not reside in verifier state.
-- LAB-039 proves one successor only inside a shared authoritative store. Two independent/forked stores can still show divergent histories; `TransparencyObserver` only detects a conflict once both views are observed.
-- LAB-034/035 monotonic-anchor guarantees remain separate from global transparency consistency.
+- HMAC remains reference-only deterministic cryptography; production log/witness private keys must not reside in verifier state.
+- LAB-040 consistency evidence is deliberately explicit/non-succinct and is not RFC 9162 wire-compatible; this is the concrete gap assigned to LAB-041.
+- A freshness timeout is a local policy observation, not cryptographic proof that a log operator is malicious.
+- Witnessing cannot prevent an isolated split view before independent evidence is distributed/compared and does not implement Byzantine consensus.
+- Witness-store rollback resistance remains a separate LAB-034/035 external-anchor concern.
 
 ## Exact next action
 
-Start Issue #76 / LAB-040. Research RFC 9162 checkpoint/consistency semantics plus at least one production transparency/witness mechanism. Build `experiments/anchor_transparency_witness/` with versioned checkpoints, append-only consistency verification, durable witness watermark, stale/freeze/replay handling, duplicate-witness protection, restart recovery, and an unsafe self-presented-checkpoint baseline. Explicitly separate split-view detection after witness/gossip from consensus/prevention.
+Start Issue #78 / LAB-041. Research the exact RFC 9162 Merkle consistency proof generation/verification algorithm and a primary/reference implementation or authoritative vector set. Build `experiments/rfc9162_consistency/` with compact proofs, malformed/tampered proof rejection, power-of-two and odd-size edge cases, and differential/reference validation. Integrate the compact verifier with LAB-040 witness checkpoints without requiring prior leaf material.
 
 ## Backlog
 
-- #76 / LAB-040 — witnessed transparency checkpoints and split-view anti-equivocation conformance — READY.
+- #78 / LAB-041 — RFC 9162 compact consistency-proof interoperability and differential conformance — READY.
+- Independent witness/gossip transport reliability and Byzantine consensus remain intentionally outside LAB-040; create follow-up only if later product requirements justify them.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
