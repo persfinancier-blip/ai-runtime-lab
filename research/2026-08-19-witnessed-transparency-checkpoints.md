@@ -68,7 +68,7 @@ HMAC is reference-only deterministic cryptography, as in earlier lab experiments
 
 ## Failure matrix
 
-Observed corrected suite: **13/13 deterministic tests passed**.
+Observed corrected suite: **14/14 deterministic tests passed**.
 
 Covered cases:
 
@@ -84,7 +84,8 @@ Covered cases:
 10. witness restart can verify next extension using self-contained proof;
 11. threshold policy accepts distinct witness quorum;
 12. duplicate witness identity is not double-counted;
-13. local freshness window surfaces a frozen view as `STALE`.
+13. local freshness window surfaces a frozen view as `STALE`;
+14. structural boolean schema version is rejected instead of passing Python numeric equality.
 
 Unsafe baseline: a client that verifies only the log's self-presented checkpoint signature accepts **both** signed forks. The expected-failure test observes `2 != 1`.
 
@@ -108,7 +109,11 @@ The first reference proof required an external `previous_leaves` argument. The p
 
 The first threshold policy raised on a repeated witness identity. It now ignores repeated identities for counting: duplicates cannot increase quorum, but redundant input does not invalidate an otherwise sufficient distinct quorum.
 
-### 5. Freeze is not the same as cryptographic replay
+### 5. Structural validation must not trust Python numeric equality
+
+The audit added strict integer/nonnegative checks for schema/size/sequence and root-hash structure. This closes the `True == 1` edge case seen elsewhere in the lab.
+
+### 6. Freeze is not the same as cryptographic replay
 
 A cryptographically older checkpoint can be rejected against a durable watermark. A log that simply stops advancing cannot be proven malicious from a Merkle root alone. The harness therefore exposes freshness relative to a trusted local observation clock and explicit maximum-age policy. `STALE` is a policy observation, not signed proof of operator equivocation.
 
