@@ -12,6 +12,12 @@ class T(unittest.TestCase):
  def test_rollback_reject(self):
   old=self.s.state; p=rotation_payload("A",1,2,kid(self.k2),1); self.s.apply_rotation(Rotation("A",1,2,kid(self.k2),self.k2,1,mac(self.k1,p)))
   with self.assertRaises(Rollback): self.s.load_snapshot(old)
+ def test_same_version_substitution_reject(self):
+  forged=TrustState(1,1,"A",1,kid(self.k2),self.k2)
+  with self.assertRaises(SnapshotSubstitution): self.s.load_snapshot(forged)
+ def test_explicit_revocation_blocks_current_key(self):
+  self.s.revoke_current()
+  with self.assertRaises(RevokedKey): self.s.verify("A",1,kid(self.k1),{"x":1},self.sig(self.k1),1)
  def test_cross_provider(self):
   with self.assertRaises(WrongProvider): self.s.verify("B",1,kid(self.k1),{"x":1},self.sig(self.k1),1)
  def test_rotation_must_be_old_trusted(self):
