@@ -49,7 +49,7 @@ The deliberately unsafe design commits the authenticated record first and advanc
 ## Corrected experiment
 
 Observed locally:
-- corrected deterministic suite: 10/10 passed;
+- corrected deterministic suite: 11/11 passed;
 - compileall: passed;
 - unsafe split-commit seed: failed as expected.
 
@@ -61,25 +61,23 @@ Covered matrix:
 5. authority/key rotation fences old records;
 6. duplicate verification of the current record is idempotent;
 7. simulated crash inside transaction rolls record/watermark changes back together;
-8. full database snapshot rollback is **not detected by SQL alone**;
-9. the same rollback is detected when an independent anchor remains ahead;
-10. evidence contains only public anchor position/status, never key/anchor secret material.
+8. lagging external anchor blocks consequential continuation until it catches up;
+9. full database snapshot rollback is **not detected by SQL alone**;
+10. the same rollback is detected when an independent anchor remains ahead;
+11. evidence contains only public anchor position/status, never key/anchor secret material.
 
 ## Exact guarantee boundary
 
-SQL alone can protect against:
-- split commits inside the DB;
-- lost/stale concurrent writers when updates are conditional/serialized;
-- restart after incomplete transactions;
-- stale records relative to a newer state still present in that DB.
+SQL alone can protect against split commits inside the DB, lost/stale concurrent writers when updates are conditional/serialized, restart after incomplete transactions, and stale records relative to a newer state still present in that DB.
 
 SQL alone cannot prove that its entire durable state was not replaced by an older valid snapshot. If the record, task watermark, authority epoch and global sequence all roll back together, the snapshot is internally consistent.
 
-An external monotonic anchor can detect that condition by retaining a value greater than the restored DB sequence. This still is not a distributed atomic commit with the DB. Safe ordering is DB commit first, anchor advance second: a crash before anchor advance leaves the anchor behind (no false rollback claim); a database rollback after anchor advance leaves the anchor ahead and fails closed. Production design must define recovery when anchor update itself is unavailable.
+An external monotonic anchor can detect that condition by retaining a value greater than the restored DB sequence. This still is not a distributed atomic commit with the DB. Safe sequencing is DB commit first, anchor advance second, but **consequential continuation remains blocked while the anchor is behind**. Once the anchor reaches the DB sequence, rollback of the database to an earlier sequence leaves the anchor ahead and verification fails closed. Production design must define recovery when anchor advancement itself is unavailable.
 
 ## Audit findings
 
 - Authentication, database atomicity and anti-rollback are three separate properties; none substitutes for the others.
+- A first implementation incorrectly allowed use of DB state while the external anchor lagged. That creates an unprotected rollback window. The corrected verifier requires anchor == DB sequence when external anti-rollback is required.
 - The external anchor value is not a secret. Authentication keys/anchor authorization secrets must never enter evidence.
 - The SQLite prototype approximates transactional semantics, not PostgreSQL performance or locking behavior.
 - The anchor abstraction demonstrates the trust boundary; it is not hardware attestation.
@@ -88,6 +86,6 @@ An external monotonic anchor can detect that condition by retaining a value grea
 
 Order for restart continuation becomes:
 
-`authenticate launch record -> compare transactional authority/key/task watermark -> compare external anti-rollback anchor when required -> fresh LAB-032 pidfd/starttime reconciliation -> allow consequential continuation`
+`authenticate launch record -> compare transactional authority/key/task watermark -> require external anti-rollback anchor equality when configured -> fresh LAB-032 pidfd/starttime reconciliation -> allow consequential continuation`
 
 A fresh process identity check cannot repair a replayed authority record; likewise a valid signed record cannot prove database freshness.
