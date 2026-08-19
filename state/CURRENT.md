@@ -4,41 +4,44 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-Advance from capability reporting to actual post-launch enforcement verification: a child-process sandbox is not considered active merely because setup calls or an adapter plan say so.
+Finish LAB-030 integration after exact-source and remote patch audit, then choose the highest-value next gap exposed by real post-launch sandboxing.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-029.
-- LAB-029: Issue #56 DONE; PR #57 remote patch-audited and squash-merged as `4baf1b5176af17c436bf99807d5ed6a2bc6b93d1`.
-- Next: Issue #58 / LAB-030 `Linux sandbox launcher enforcement and post-launch attestation` — READY.
+- Active: Issue #58 / LAB-030 `Linux sandbox launcher enforcement and post-launch attestation`.
+- Branch: `lab/030-linux-sandbox-launcher`.
+- PR: to be created after exact-source artifact validation.
 
 ## Last completed step
 
-LAB-029 built a fresh enforcement-capability report and fail-closed adapter contract. Direct Linux probes on kernel 6.18.35 observed `no_new_privs`, seccomp-BPF filter installation, user namespaces and explicit subprocess FD controls as available; Landlock returned `ENOSYS`, while network and mount namespace creation returned `EPERM`. The corrected exact-source suite passed 13/13 and compileall. Audit found and fixed a forged-plan gap by requiring launch-time revalidation of every binding against the current observed capability report.
+Built and locally exercised a real Linux child launcher. Fresh probes observed userns, `no_new_privs` and seccomp available; network and mount namespace creation remained unavailable. The child verified `NoNewPrivs: 1`, seccomp filter mode, a deterministically denied syscall, user namespace separation and default-deny FD inheritance. Audit fixed three defects: opaque-only probe evidence, a backend-omission test that only hit signature validation, and missing seccomp audit-architecture validation.
 
 ## Evidence produced
 
-- `research/2026-08-19-kernel-sandbox-adapter.md`
-- `experiments/kernel_sandbox_adapter/`
-- LAB-029 merge: `4baf1b5176af17c436bf99807d5ed6a2bc6b93d1`.
-- Primary sources: Linux kernel no_new_privs, Landlock and seccomp userspace API docs; Microsoft AppContainer/LPAC docs.
+- `research/2026-08-19-linux-sandbox-launcher.md`.
+- `experiments/linux_sandbox_launcher/`.
+- Corrected local tests: 11/11 passed.
+- Unsafe parent-intent-only seed: expected failure.
+- `python -m compileall -q experiments`: passed.
+- Primary docs: Linux `no_new_privs`, seccomp filter API/seccomp(2), Python subprocess FD controls.
 
 ## Known blockers / constraints
 
-- Local shell DNS to GitHub remains unreliable/unavailable; GitHub connector plus local execution is the supported path.
-- Current Linux capability observations are per-run facts, not durable platform promises: userns was available in this run despite failing in an earlier run.
-- Current runtime still lacks observed Landlock, network namespace and mount namespace enforcement; REQUIRED filesystem/network confinement must fail closed rather than downgrade.
-- OS/kernel sandbox mechanisms differ across Linux/Windows/macOS.
-- PostgreSQL-specific locking/performance validation remains deferred until representative PostgreSQL is available.
-- Open-model serving efficiency remains deferred pending representative hardware/runtime.
+- Local shell DNS to GitHub remains unavailable/unreliable; connector publication + local exact-source execution is the supported path.
+- Current runtime supports userns but not network or mount namespaces; REQUIRED network/filesystem confinement must remain fail-closed.
+- Prototype seccomp program is x86_64-specific and deliberately minimal; it is not a production syscall policy.
+- User namespace alone is not filesystem/network confinement.
+- HMAC launch receipts depend on protecting the launcher signing key.
+- PostgreSQL-specific validation and open-model serving remain deferred for representative environments.
 
 ## Exact next action
 
-Start Issue #58 / LAB-030. Create a branch and build an actual Linux child-process launcher for the mechanisms freshly observed available in that run. Apply `no_new_privs`, a deterministic seccomp policy and explicit FD inheritance controls; use userns only if freshly observed available. Add child-side/post-launch probes and an attestation bound to task/sandbox/credential/capability generations. Prove the harness rejects missing/forged/partial enforcement and continues to fail closed for unavailable REQUIRED filesystem/network isolation. Seed a parent-intent-only unsafe launcher, then audit, exact-source validate and integrate.
+Fetch the published LAB-030 executable/test files through the GitHub connector, compare Git blob/content hashes with the executed local sources, rerun the corrected suite on exact fetched source if any mismatch appears, create the LAB-030 PR, perform remote patch audit, fix any defect, then integrate and close Issue #58. After closure, select the highest-value new issue exposed by the remaining boundary: launcher-policy-to-real-resource confinement and/or attestation freshness/revocation across child lifetime.
 
 ## Backlog
 
-- #58 / LAB-030 — Linux sandbox launcher + post-launch enforcement attestation — READY.
+- #58 / LAB-030 — IN_PROGRESS, exact-source/audit/integration remains.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
