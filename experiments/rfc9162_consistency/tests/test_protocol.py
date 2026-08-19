@@ -107,6 +107,10 @@ class RFC9162ConsistencyTests(unittest.TestCase):
         root = merkle_tree_hash(self.entries[:1])
         with self.assertRaises(SizeError):
             verify_consistency(True, 1, root, root, [])
+        with self.assertRaises(SizeError):
+            consistency_proof(True, self.entries[:2])
+        with self.assertRaises(SizeError):
+            Checkpoint(True, root)
 
     def test_malformed_hash_lengths_fail_closed(self):
         p = list(consistency_proof(3, self.entries[:7]))
