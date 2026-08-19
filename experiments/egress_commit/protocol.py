@@ -187,6 +187,7 @@ class CommitExecutor:
             raise PermitError('authorization no longer matches request')
         if permit.permit_id in self.consumed_permits:
             previous = self.consumed_permits[permit.permit_id]
+            # Exact duplicate is idempotent and returns prior receipt.
             if previous['effect_key'] == permit.effect_key:
                 return previous['receipt']
             raise ReplayError('permit replay changed effect identity')
@@ -199,6 +200,7 @@ class CommitExecutor:
                                         destination=dest, purpose=purpose,
                                         timeout_after_commit=timeout_after_commit)
         except UnknownOutcome:
+            # Do not broaden/reissue permit. Reconcile same effect identity.
             existing = self.ledger.lookup(permit.effect_key)
             if existing:
                 self.consumed_permits[permit.permit_id] = {'effect_key': permit.effect_key, 'receipt': existing}
@@ -211,5 +213,6 @@ class UnsafeCheckThenUse:
     def check(self, *, payload: bytes, destination: str) -> bool:
         return canonical_destination(destination).endswith('trusted.example/upload') and bool(payload)
     def use(self, *, payload: bytes, destination: str, purpose: str) -> dict:
+        # No revalidation of what was checked.
         return self.ledger.apply(effect_key=str(uuid.uuid4()), payload=payload,
                                  destination=destination, purpose=purpose)
