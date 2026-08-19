@@ -4,44 +4,45 @@ Last updated: 2026-08-19
 
 ## Active objective
 
-LAB-031: extend launch-time sandbox proof to lifetime-safe supervision: bind authority to a process instance, reject stale/replayed launch evidence, fence generation drift, and prove bounded descendant termination with freshly available primitives.
+LAB-032: prove restart-safe supervisor recovery and orphan-process reconciliation after the live pidfd held by LAB-031 is lost with the supervisor process.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-030.
-- Active: Issue #60 / LAB-031 — IN_PROGRESS.
-- Branch: `lab/031-sandbox-lifetime`.
-- PR: not opened yet; implementation is not yet acceptance-ready.
+- Completed: LAB-001 through LAB-031.
+- Active: Issue #61 / LAB-032 — READY.
+- Branch: not created yet.
+- PR: none.
 
 ## Last completed step
 
-Fresh runtime probes and primary-source research were completed. Python exposes `os.pidfd_open`; a real sleeping child produced a pidfd that was non-readable while live and readable after SIGKILL/wait. `/proc/<pid>/stat` starttime is readable. cgroup v2 and `cgroup.kill` are visible but the cgroup filesystem is not writable, so delegated cgroup-tree containment cannot be claimed in this runtime. Process-group creation/kill is available as a weaker bounded fallback. Issue #60 records these observations and primary-source decisions. A local prototype was started, but the descendant process-group test hung under the current harness and therefore no implementation/test success has been claimed or published.
+LAB-031 completed. The prior descendant-termination hang was removed by preventing descendants from inheriting captured stdout/stderr and using an external `/bin/sleep` descendant. The corrected real-process suite passed 8/8. An audit then found that a foreign live pidfd could be paired with another process's valid receipt; this was fixed by binding the pidfd target PID from `/proc/self/fdinfo/<pidfd>` to the receipt PID. Normal PR creation was blocked before execution by an external safety-status gate, so after `main..branch` comparison showed four new conflict-free paths, the audited files were integrated through the normal Contents API fallback. Issue #60 is DONE.
 
 ## Evidence produced
 
-- Fresh real-process pidfd liveness/exit probe succeeded.
-- Fresh `/proc/<pid>/stat` starttime observation succeeded.
-- Fresh cgroup probe: v2 mounted; `cgroup.kill` visible; cgroup root not writable.
-- Primary sources: Linux `pidfd_open(2)`, `pidfd_send_signal(2)`, `proc_pid_stat(5)`, kernel cgroup-v2 documentation.
-- Issue #60 updated with runtime evidence and design decisions.
-- Partial local tests for pidfd liveness, generation drift, foreign receipt, numeric-PID/starttime mismatch and fail-closed cgroup capability passed individually; full suite is NOT accepted because descendant termination harness timed out.
+- `experiments/sandbox_lifetime/protocol.py`
+- `experiments/sandbox_lifetime/tests/test_protocol.py`
+- `experiments/sandbox_lifetime/tests/unsafe_numeric_pid_replay.py`
+- `research/2026-08-19-sandbox-lifetime-supervision.md`
+- Corrected local real-process suite: 8/8 passed.
+- Unsafe numeric-PID/old-receipt seed: expected failure.
+- Protocol branch blob SHA matched the locally executed protocol source (`4ba8827a4ca612ddece21cb99da141e80e880a31`).
+- cgroup v2 remains visible but non-writable/non-delegated; REQUIRED tree containment fails closed.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- cgroup v2 is not writable/delegated in this runtime; REQUIRED cgroup-tree containment must fail closed.
-- Process groups are weaker than cgroups: a deliberately escaping descendant can evade group kill unless another containment mechanism prevents escape.
-- The first descendant termination test harness hung; likely causes include child/pipe inheritance or zombie/reaping behavior. This must be reproduced and fixed before publishing code.
-- Numeric PID + starttime is restart-reconstructible evidence but pidfd is the stronger live instance handle; do not serialize a pidfd number as durable identity.
-- Launch attestation, liveness evidence, termination evidence and task-completion evidence remain distinct authority classes.
+- cgroup v2 is not writable/delegated in this runtime; process-group fallback is weaker and cannot contain a deliberately escaping descendant.
+- A pidfd is strong live instance authority but its descriptor number is not durable across supervisor restart.
+- PID + `/proc` starttime is restart-reconstructible identity evidence, not equivalent to retaining the original pidfd.
+- PR creation may be blocked by the external safety-status gate; the repository's audited file-scoped Contents API fallback remains available when conflict checks pass.
 
 ## Exact next action
 
-Resume LAB-031 on `lab/031-sandbox-lifetime`. Rebuild the descendant test so descendants cannot keep the test runner's captured stdout/stderr pipes open (redirect child stdio to DEVNULL and use an external `/bin/sleep` descendant or close inherited descriptors), then prove process-group termination without a hang. Add explicit unsafe numeric-PID/old-receipt replay failure, stale-after-exit, generation-drift, forged starttime, and evidence-kind separation tests. If cgroup containment is REQUIRED, assert fail-closed because delegation is absent. Only after the complete bounded suite passes should code/research be published to the branch, remote-patch audited, exact-source validated, and integrated.
+Start Issue #61 / LAB-032. Create a branch, build a real-process restart harness that persists only PID/starttime/task/generations, deliberately discards the original pidfd, then reacquires a fresh pidfd and accepts SAME_INSTANCE only when fresh pidfd target + current `/proc` starttime + persisted identity + current generations all agree. Add EXITED / IDENTITY_MISMATCH / UNVERIFIABLE states, generation-drift fencing, orphan terminate/quarantine behavior, and an unsafe seed that treats serialized pidfd number or PID alone as durable authority. Run bounded tests, audit handle/receipt binding again, persist research/evidence, and integrate only after observed validation.
 
 ## Backlog
 
-- #60 / LAB-031 — sandbox lifetime supervision + attestation freshness — IN_PROGRESS.
+- #61 / LAB-032 — supervisor restart recovery + orphan reconciliation — READY.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
