@@ -20,9 +20,6 @@ class WireTests(unittest.TestCase):
         self.assertEqual(decode_consistency_proof(self.wire(), hash_size=H), self.item())
 
     def test_independent_literal_fixture(self):
-        # Independent TLS 1.3 presentation-language construction:
-        # uint16 type; opaque LogID<2..127>; uint64 x2; vector<0..65535>;
-        # each NodeHash is opaque<32..255>.
         path = bytes([32]) + N1 + bytes([32]) + N2
         fixture = (
             bytes([1, 5]) + bytes([len(LOG)]) + LOG
@@ -93,6 +90,15 @@ class WireTests(unittest.TestCase):
         with self.assertRaises(BindingError):
             verify_bound_growth(self.wire(), old, new, hash_size=H, merkle_verifier=verifier)
         self.assertFalse(calls)
+
+    def test_end_to_end_with_lab041_compact_verifier(self):
+        from experiments.rfc9162_consistency.protocol import consistency_proof, merkle_tree_hash
+        entries = [f"leaf-{i}".encode() for i in range(7)]
+        proof = consistency_proof(3, entries)
+        item = ConsistencyProofV2(LOG, 3, 7, proof)
+        old = WitnessCheckpoint(LOG, 3, merkle_tree_hash(entries[:3]))
+        new = WitnessCheckpoint(LOG, 7, merkle_tree_hash(entries))
+        self.assertTrue(verify_bound_growth(encode_consistency_proof(item), old, new, hash_size=H))
 
     def test_uint64_and_bool_rejected_by_encoder(self):
         with self.assertRaises(WireError):
