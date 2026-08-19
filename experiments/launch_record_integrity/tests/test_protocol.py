@@ -29,6 +29,11 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ParseError): verify('{"payload":')
     def test_generation_drift(self):
         with self.assertRaises(DomainError): verify(sign_record(base(),key_id='k2',key=KEY),gens=(7,99,9))
+    def test_metadata_type_confusion_rejected(self):
+        raw=sign_record(base(),key_id='k2',key=KEY)
+        for field,value in [('schema_version',True),('alg',7),('key_id',['k2']),('record','not-an-object')]:
+            bad=json.loads(raw); bad['payload'][field]=value
+            with self.subTest(field=field),self.assertRaises((ParseError,AuthError)): verify(json.dumps(bad))
     def test_no_key_evidence(self):
         ev=evidence_summary(sign_record(base(),key_id='k2',key=KEY)); s=json.dumps(ev); self.assertNotIn(KEY.hex(),s); self.assertNotIn('KKKK',s)
     def test_unsigned_is_unsafe(self): self.assertTrue(unsafe_accept_unsigned(json.dumps({'task_id':'task-A','pid':999999}),'task-A'))
