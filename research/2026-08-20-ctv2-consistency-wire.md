@@ -21,7 +21,7 @@ The independent fixture test constructs those fields directly with `struct.pack`
 
 ## Binding rule
 
-Wire parsing is not proof verification. Before LAB-041 is invoked, the adapter requires `proof.log_id == old.log_id == new.log_id` and exact equality of both proof tree sizes with the witnessed checkpoints. Only then are compact nodes passed to LAB-041 `verify_consistency`.
+Wire parsing is not proof verification. Before LAB-041 is invoked, the adapter requires `proof.log_id == old.log_id == new.log_id` and exact equality of both proof tree sizes with the witnessed checkpoints. Only then are compact nodes passed to LAB-041 `verify_consistency`. An end-to-end test generates a real LAB-041 compact proof for 3→7 leaves, serializes it, decodes/binds it, and verifies the two roots without leaf material at the wire boundary.
 
 ## Failure injection
 
@@ -29,16 +29,16 @@ The unsafe seed parses only the declared proof-vector prefix and ignores bytes t
 
 ## Observed local evidence
 
-- corrected deterministic suite: 13/13 tests passed;
+- corrected deterministic suite after integration audit: 14/14 tests passed;
 - unsafe trailing-byte seed: expected failure;
 - `python -m compileall -q experiments/ctv2_consistency_wire`: passed;
-- tests cover round-trip, independent literal fixture, wrong type, truncation, trailing bytes, node HASH_SIZE mismatch, vector-boundary corruption, LogID bounds/canonical DER, vector maximum, exact checkpoint binding, swapped sizes, and uint64/type boundaries.
+- tests cover round-trip, independent literal fixture, wrong type, truncation, trailing bytes, node HASH_SIZE mismatch, vector-boundary corruption, LogID bounds/canonical DER, vector maximum, exact checkpoint binding, swapped sizes, LAB-041 end-to-end compact proof verification, and uint64/type boundaries.
 
-The Python runtime emitted unrelated `artifact_tool` spreadsheet warmup diagnostics during subprocess startup; the test and compile exit statuses above were observed independently.
+The Python runtime emitted unrelated `artifact_tool` spreadsheet warmup diagnostics during subprocess startup; the test and compile exit statuses above were observed independently. The end-to-end local run used an interface-compatible local copy of the already independently exact-source-validated LAB-041 algorithm because direct GitHub clone DNS remained unavailable in this runtime; the published adapter imports the repository LAB-041 module directly.
 
 ## Audit findings
 
-Audit tightened `LogID` from mere length checking to canonical DER-OID-value validation, because RFC 9162 defines it as an OID encoding rather than arbitrary bytes. The decoder also treats HASH_SIZE as a trusted log-profile input rather than inferring it from attacker-controlled node lengths.
+Audit tightened `LogID` from mere length checking to canonical DER-OID-value validation, because RFC 9162 defines it as an OID encoding rather than arbitrary bytes. The decoder also treats HASH_SIZE as a trusted log-profile input rather than inferring it from attacker-controlled node lengths. A second audit added an end-to-end adapter test rather than relying only on a spy verifier.
 
 ## Scope boundary
 
