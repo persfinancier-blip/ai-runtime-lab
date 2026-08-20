@@ -4,49 +4,50 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-LAB-056 — replace LAB-055's remaining single static observer-registry root key with a threshold-authenticated, versioned root lifecycle and separate recovery quorum.
+LAB-057 — give LAB-056's separate recovery quorum its own authenticated lifecycle without allowing self-authorized recovery-quorum replacement or creating an infinite recovery chain.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-055.
-- Next: Issue #105 / LAB-056 — READY.
+- Completed: LAB-001 through LAB-056.
+- Next: Issue #107 / LAB-057 — READY.
 - Active implementation branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-055 implemented an authenticated/versioned observer registry. New quorum decisions count only distinct ACTIVE observers under the exact current registry snapshot and observer-key generation; historical replay resolves the exact recorded snapshot. Key rotation, revocation, rollback, sybil/duplicate resistance, restart persistence, and tamper detection are covered.
+LAB-056 removed LAB-055's final single static observer-registry root key. Registry authority is now explicit/versioned/threshold-authenticated; normal root rotation requires old-root and new-root threshold authorization over the same transition, break-glass recovery uses a separate threshold quorum and advances `authority_epoch`, and every registry snapshot binds exact root ID/version/epoch.
 
-The first real test run exposed a rollback-classification defect: an old snapshot was rejected as predecessor tamper instead of rollback. The check order was fixed and the corrected suite passed 11/11; compileall passed. The unsafe self-asserted-membership baseline failed as expected because two sybils incorrectly satisfied threshold=2.
+A separate authority audit found that the first corrected implementation persisted root states without the threshold proofs of root-to-root transitions. That would have allowed a fabricated but structurally plausible root history to survive restart. The final implementation persists each normal-rotation or recovery proof and re-verifies the complete root chain on load, including bootstrap-root and recovery-authority identities.
 
-PR creation was blocked by an external safety-status gate before execution. Branch comparison showed ahead 5 / behind 0 with exactly five new conflict-free paths, so the audited file-scoped change was integrated through the allowed Contents API fallback. Issue #104 was closed DONE.
+Corrected deterministic tests passed 16/16; compileall passed. The unsafe one-signer self-authorized registry rewrite failed as expected. PR #106 was remote patch-audited and squash-merged into `main` as `ee4ea96224bdd12f9c61f0260f56b0baa81e74e8`. Issue #105 was closed DONE.
 
 ## Evidence produced
 
-- `experiments/ctv2_observer_registry/protocol.py`
-- `experiments/ctv2_observer_registry/tests/test_protocol.py`
-- `experiments/ctv2_observer_registry/tests/unsafe_self_asserted_expected_failure.py`
-- `research/2026-08-20-observer-registry-lifecycle.md`
-- Corrected suite: 11/11 passed.
+- `experiments/ctv2_observer_registry_threshold_root/protocol.py`
+- `experiments/ctv2_observer_registry_threshold_root/tests/test_protocol.py`
+- `experiments/ctv2_observer_registry_threshold_root/tests/unsafe_single_signer_expected_failure.py`
+- `research/2026-08-20-observer-registry-threshold-root.md`
+- Corrected suite: 16/16 passed.
 - Unsafe seed: failed as expected.
 - Compileall: passed.
-- Branch `protocol.py` Git blob SHA `f6b5e9afde5a0705d760fd3bb52db9d78b2463bc` matched the locally executed source.
-- Follow-up Issue #105 / LAB-056 created.
+- Authority audit regression coverage includes fabricated transition-history rejection and bootstrap-root substitution rejection.
+- Merge SHA: `ee4ea96224bdd12f9c61f0260f56b0baa81e74e8`.
+- Follow-up Issue #107 / LAB-057 created.
 
 ## Known blockers / constraints
 
 - No active blocker.
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is supported.
 - Reliable gossip transport, Byzantine consensus, global total ordering, and fork prevention remain out of scope.
-- LAB-055 still authenticates registry snapshots with one static trusted root key; LAB-056 removes that authority single point.
+- LAB-056 still treats the recovery quorum as a separately pinned immutable trust input. It is thresholded, but planned recovery-key rotation/revocation has no authenticated lifecycle yet.
 
 ## Exact next action
 
-Start Issue #105 / LAB-056. Reuse the proven threshold-root lifecycle mechanisms from LAB-038 rather than inventing a parallel authority system. Bind every observer-registry snapshot to exact root version/authority epoch; implement normal old+new threshold rotation, revoked/duplicate signer handling, rollback/same-version substitution rejection, a separate recovery quorum, restart persistence/tamper checks, and stale signer rejection after rotation. Add an unsafe single-signer root-swap seed, run deterministic tests + compileall, then perform a separate authority audit before integration.
+Start Issue #107 / LAB-057. Research a minimal recovery-authority lifecycle using the proven LAB-038/LAB-056 threshold-continuity rules plus primary-source recovery/rekey mechanisms. For planned recovery-authority rotation, require old-recovery threshold + new-recovery threshold + current-root threshold co-authorization so the recovery quorum cannot silently self-expand while root authority is healthy. Persist and re-verify recovery-authority transition proofs across restart, reject stale/revoked recovery signers, bind root break-glass operations to the exact current recovery authority, and preserve exact historical recovery authority identity for replay. Explicitly document the final out-of-band boundary when both normal root authority and recovery quorum are compromised or lost. Add an unsafe self-authorized recovery-quorum swap seed, run deterministic tests + compileall, perform a separate authority audit, then integrate if acceptance criteria pass.
 
 ## Backlog
 
-- #105 / LAB-056 — threshold-authenticated observer-registry root lifecycle and recovery — READY.
+- #107 / LAB-057 — recovery-quorum lifecycle, rotation, and compromise-boundary conformance — READY.
 - Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
