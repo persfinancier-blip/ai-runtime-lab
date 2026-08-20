@@ -4,50 +4,52 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-Compose LAB-050's authenticated atomic policy/trust release with the threshold/recovery trust-root lifecycle already proven in LAB-037–039 so bundle signer authority is restart-persistent and cannot be replaced by an unauthenticated caller.
+Extend the authenticated root+bundle correctness boundary from one serialized authority store to multi-replica distribution, catch-up, and split-view detection without falsely claiming distributed consensus.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-050.
-- Completed Issue #96 / LAB-050.
-- PR #97 remote patch-audited at HEAD `a7f2d402f83311a2c35f6e03f78b344bb54aa147`; normal squash merge was blocked before execution by an external safety gate, so the exact five audited added files were integrated via normal Contents API fallback and PR #97 was closed as manually integrated.
-- Main LAB-050 protocol blob SHA: `368d988d7780da0f67cb03af4e634c15fd66163b` (matches audited branch exactly).
-- Active next: Issue #98 / LAB-051 — READY.
+- Completed: LAB-001 through LAB-051.
+- Completed Issue #98 / LAB-051.
+- LAB-051 branch: `lab/051-bundle-authority-lifecycle`.
+- PR creation for LAB-051 was blocked before execution by an external safety-status gate.
+- `compare_commits` showed the branch ahead by 5, behind by 0, with exactly five added conflict-free files; the audited file-scoped set was integrated through normal Contents API fallback.
+- Main LAB-051 protocol blob SHA: `de8a93e66e75f5be7dea4113ee3f8c34fe7be41e`, matching the branch protocol blob.
+- Active next: Issue #99 / LAB-052 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-050 replaced independently authenticated policy/trust histories with one signed release manifest committing to exact policy and CT trust digests under one bundle lineage/version/generation. Manifest, policy, trust and active pointer are activated in one SQLite transaction. Rollback, substitution, gaps, expiry, partial-update crashes and mix-and-match are fail-closed; historical replay rehashes stored bytes and rechecks manifest→object binding.
+LAB-051 removed LAB-050's unauthenticated `rotate_authority()` trust boundary. Bundle signer keys now live inside a persisted root identity/version/epoch. Every new release binds the exact root digest/version/epoch and is verified against the active root re-read inside the publication transaction. Normal root rotation requires old-root and new-root thresholds; break-glass recovery uses a separately persisted recovery quorum and advances the authority epoch. Historical old releases remain attributable through their old authenticated root but that root cannot authorize new releases.
 
-A separate audit found and fixed a replay defect: stored JSON bytes had initially not been rehashed during replay, so damage to document bytes could have escaped detection if the adjacent digest column was untouched.
+A separate audit found and fixed two defects before integration: recovery authority was initially caller-supplied after restart, and stored root JSON was initially trusted without rehashing against its durable digest.
 
 ## Evidence produced
 
-- `experiments/ctv2_policy_trust_bundle/`
-- `research/2026-08-20-authenticated-policy-trust-bundle.md`
-- Corrected deterministic suite: 15/15 passed.
-- Unsafe independent-history baseline: expected failure demonstrating policy release 2 + trust release 1 can be falsely accepted without an atomic bundle.
-- `python -m compileall -q experiments/ctv2_policy_trust_bundle` passed.
-- Primary donors: TUF snapshot mix-and-match protection, Sigstore TUF-delivered TrustedRoot, SQLite atomic commit/rollback.
+- `experiments/ctv2_bundle_authority_lifecycle/`
+- `research/2026-08-20-bundle-authority-lifecycle.md`
+- Corrected deterministic suite: 12/12 passed.
+- Real two-thread root-transition vs bundle-publication race serialized correctly at one SQLite write boundary.
+- Unsafe self-authorized authority-swap baseline failed as expected.
+- `python -m compileall -q experiments/ctv2_bundle_authority_lifecycle` passed.
+- Primary external donor: TUF root update continuity requiring threshold authorization from both currently trusted root N and candidate root N+1, followed by durable root persistence.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- Normal PR merge endpoint may be externally blocked before execution; the repository's audited Contents API fallback remains valid for small conflict-free file-scoped changes.
-- LAB-050 reference `Authority.rotate_authority()` still treats new signer authority as a trusted higher-level input. Bundle content is authenticated, but signer-root transition is not yet composed with LAB-037–039.
-- HMAC in LAB-050 is a deterministic reference authenticator, not production key management.
-- Local atomic activation does not imply multi-replica consensus/convergence.
+- PR creation/merge endpoints may be externally blocked before execution; the repository's audited Contents API fallback remains valid for small conflict-free file-scoped changes.
+- LAB-051 is a single-node serialization result only. It does not prove multi-replica convergence or consensus.
+- HMAC remains a deterministic reference authenticator, not production key custody/HSM behavior.
+- One published corrected test file had a Git blob SHA different from the local working test file despite matching observed content, so the run records 12/12 local execution plus remote content audit rather than falsely claiming exact-byte execution for that test file. The main protocol and unsafe seed did match exact Git blob identities.
 
 ## Exact next action
 
-Start Issue #98 / LAB-051. Reuse LAB-037–039 threshold trust-root, recovery and anti-equivocation mechanisms rather than redoing them. Build `experiments/ctv2_bundle_authority_lifecycle/` so LAB-050 bundle acceptance derives current signer authority from durable threshold-root state, persists root identity/version/epoch across restart, rejects stale/revoked signers, distinguishes normal rotation from break-glass recovery, serializes root transition vs release publication, and preserves historical attribution without allowing old roots to authorize new releases. Include an unsafe self-authorized authority swap seed and deterministic failure-injection tests. Do not build a general PKI/HSM service.
+Start Issue #99 / LAB-052. Reuse LAB-040 witnessed split-view principles and LAB-050/051 exact root+bundle identities. Build `experiments/ctv2_bundle_replica_convergence/` with deterministic replicas that exchange authenticated heads/history, allow stale catch-up only through valid continuity, detect same-predecessor root or bundle forks, preserve restart watermarks, suppress duplicate replica/witness identities, and distinguish split-view detection/convergence rules from consensus/prevention. Include an unsafe isolated-replica baseline. Do not build a production network service or consensus protocol.
 
 ## Backlog
 
-- #98 / LAB-051 — threshold-authorized bundle signer lifecycle + restart-persistent authority binding — READY.
-- Multi-replica bundle distribution/convergence and split-view detection — candidate follow-up after signer authority is closed.
-- Independent witness/gossip transport reliability and Byzantine consensus remain out of scope unless product requirements justify them.
+- #99 / LAB-052 — multi-replica root+bundle convergence and split-view detection — READY.
+- Independent witness/gossip transport reliability and Byzantine consensus remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
