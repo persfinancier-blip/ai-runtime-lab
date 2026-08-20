@@ -4,50 +4,49 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-LAB-057 — give LAB-056's separate recovery quorum its own authenticated lifecycle without allowing self-authorized recovery-quorum replacement or creating an infinite recovery chain.
+LAB-058 — prove that concurrent authority-changing operations serialize on one authoritative root+recovery predecessor pair instead of allowing two individually valid but incompatible successors to commit.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-056.
-- Next: Issue #107 / LAB-057 — READY.
+- Completed: LAB-001 through LAB-057.
+- Next: Issue #108 / LAB-058 — READY.
 - Active implementation branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-056 removed LAB-055's final single static observer-registry root key. Registry authority is now explicit/versioned/threshold-authenticated; normal root rotation requires old-root and new-root threshold authorization over the same transition, break-glass recovery uses a separate threshold quorum and advances `authority_epoch`, and every registry snapshot binds exact root ID/version/epoch.
+LAB-057 gave the recovery quorum an explicit authenticated lifecycle. Planned recovery-authority rotation now requires old-recovery threshold + new-recovery threshold + current-root threshold over the same canonical transition. Root break-glass recovery is bound to the exact current recovery authority ID/version/generation, and historical recovery records preserve the exact authority used.
 
-A separate authority audit found that the first corrected implementation persisted root states without the threshold proofs of root-to-root transitions. That would have allowed a fabricated but structurally plausible root history to survive restart. The final implementation persists each normal-rotation or recovery proof and re-verifies the complete root chain on load, including bootstrap-root and recovery-authority identities.
+A separate authority audit found that the first corrected implementation did not preserve enough historical co-authorizing root material to re-verify a recovery-authority transition after a later root recovery. The final implementation persists root history and re-verifies the exact co-authorizing root after restart; a restart-after-root-recovery regression test covers the defect.
 
-Corrected deterministic tests passed 16/16; compileall passed. The unsafe one-signer self-authorized registry rewrite failed as expected. PR #106 was remote patch-audited and squash-merged into `main` as `ee4ea96224bdd12f9c61f0260f56b0baa81e74e8`. Issue #105 was closed DONE.
+Corrected deterministic tests passed 12/12; compileall passed. The unsafe self-authorized recovery-quorum swap failed as expected. Normal PR creation was blocked by an external safety-status gate before execution. `compare_commits` showed the branch ahead 5 / behind 0 with five new conflict-free files, so exact audited bytes were integrated via the normal Contents API fallback. Issue #107 was closed DONE.
 
 ## Evidence produced
 
-- `experiments/ctv2_observer_registry_threshold_root/protocol.py`
-- `experiments/ctv2_observer_registry_threshold_root/tests/test_protocol.py`
-- `experiments/ctv2_observer_registry_threshold_root/tests/unsafe_single_signer_expected_failure.py`
-- `research/2026-08-20-observer-registry-threshold-root.md`
-- Corrected suite: 16/16 passed.
+- `experiments/recovery_authority_lifecycle/protocol.py`
+- `experiments/recovery_authority_lifecycle/tests/test_protocol.py`
+- `experiments/recovery_authority_lifecycle/tests/unsafe_self_swap_expected_failure.py`
+- `research/2026-08-20-recovery-authority-lifecycle.md`
+- Corrected suite: 12/12 passed.
 - Unsafe seed: failed as expected.
 - Compileall: passed.
-- Authority audit regression coverage includes fabricated transition-history rejection and bootstrap-root substitution rejection.
-- Merge SHA: `ee4ea96224bdd12f9c61f0260f56b0baa81e74e8`.
-- Follow-up Issue #107 / LAB-057 created.
+- Remote protocol blob SHA `59ce325a692bd946abd1c628ec90956d17b37aa1` and corrected-test blob SHA `9779398cde7d2f2299e83506c4e0f7735f0a98bd` matched locally executed sources.
+- Follow-up Issue #108 / LAB-058 created.
 
 ## Known blockers / constraints
 
 - No active blocker.
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is supported.
+- If both current root quorum and current recovery quorum are unavailable or compromised, there is deliberately no recursive in-band recovery path; an external bootstrap/ceremony is required.
 - Reliable gossip transport, Byzantine consensus, global total ordering, and fork prevention remain out of scope.
-- LAB-056 still treats the recovery quorum as a separately pinned immutable trust input. It is thresholded, but planned recovery-key rotation/revocation has no authenticated lifecycle yet.
 
 ## Exact next action
 
-Start Issue #107 / LAB-057. Research a minimal recovery-authority lifecycle using the proven LAB-038/LAB-056 threshold-continuity rules plus primary-source recovery/rekey mechanisms. For planned recovery-authority rotation, require old-recovery threshold + new-recovery threshold + current-root threshold co-authorization so the recovery quorum cannot silently self-expand while root authority is healthy. Persist and re-verify recovery-authority transition proofs across restart, reject stale/revoked recovery signers, bind root break-glass operations to the exact current recovery authority, and preserve exact historical recovery authority identity for replay. Explicitly document the final out-of-band boundary when both normal root authority and recovery quorum are compromised or lost. Add an unsafe self-authorized recovery-quorum swap seed, run deterministic tests + compileall, perform a separate authority audit, then integrate if acceptance criteria pass.
+Start Issue #108 / LAB-058. Build a small transactional/CAS reference model whose commit boundary binds the exact predecessor `(root_id, recovery_authority_id)` pair. Reproduce an unsafe check-then-write race, then test recovery-authority rotation vs root recovery, competing recovery rotations, competing root recoveries, stale co-authorization/signatures after a winner commits, timeout/UNKNOWN reconciliation, restart, rollback/substitution, and durable winning-transition evidence. Perform a separate concurrency/authority audit. Explicitly document that local serialization does not provide distributed consensus or prevent forks across independently writable replicas. Integrate only after deterministic race tests and compileall pass.
 
 ## Backlog
 
-- #107 / LAB-057 — recovery-quorum lifecycle, rotation, and compromise-boundary conformance — READY.
+- #108 / LAB-058 — atomic root/recovery transition serialization and race conformance — READY.
 - Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
