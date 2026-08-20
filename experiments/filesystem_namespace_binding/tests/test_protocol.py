@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from experiments.filesystem_namespace_binding.protocol import (
     ContentMismatch,
@@ -101,6 +102,23 @@ class NamespaceBindingTests(unittest.TestCase):
             # A nonsense syscall number is expected to return ENOSYS on Linux.
             with self.assertRaises(UnsupportedNamespaceBoundary):
                 NamespaceHandle.authorize_beneath(root, "safe", syscall=999999)
+
+    def test_unknown_architecture_fails_closed_before_syscall(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); (root / "safe").mkdir()
+            with patch("experiments.filesystem_namespace_binding.protocol.platform.machine", return_value="unknown-arch"):
+                with self.assertRaises(UnsupportedNamespaceBoundary):
+                    NamespaceHandle.authorize_beneath(root, "safe")
+
+    def test_special_file_replacement_is_rejected_without_blocking(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); (root / "safe").mkdir()
+            with NamespaceHandle.authorize_beneath(root, "safe") as handle:
+                receipt = handle.publish("artifact.json", b"x")
+                os.unlink("artifact.json", dir_fd=handle.fd)
+                os.mkfifo(root / "safe" / "artifact.json")
+                with self.assertRaises(ContentMismatch):
+                    handle.verify(receipt, expected_data=b"x")
 
     def test_publication_name_cannot_escape_dirfd(self):
         with tempfile.TemporaryDirectory() as td:
