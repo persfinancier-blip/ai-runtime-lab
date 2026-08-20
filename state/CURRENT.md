@@ -9,52 +9,49 @@ LAB-063 — reclaim crash-created or otherwise unreferenced local archive artifa
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-062.
-- Completed Issue #115 / LAB-062.
-- Merged PR #116 / LAB-062 as `88c7de6da45c31e994130dcdcbcd0b42debfccf3`.
-- Next: Issue #117 / LAB-063 — READY.
-- Active branch: none yet.
-- Active PR: none.
+- Issue #117 / LAB-063 — IN_PROGRESS.
+- Active branch: `lab/063-archive-scavenging`.
+- Active PR: #118.
 
 ## Last completed step
 
-LAB-062 directly integrated LAB-061 pruning/archive semantics with the real LAB-059 threshold-authenticated transition proof stack. Retained suffix and forensic archived rows reuse the existing authority content-ID lookup, `rotation_payload`, `recovery_payload`, `verify_threshold`, payload reconstruction, and transition-digest rules. A signed checkpoint authorizes the compaction boundary; exact archive bytes are written/fsynced first; then one SQLite `BEGIN IMMEDIATE` transaction revalidates inputs, records the archive/base, and deletes only the checkpointed prefix.
+A first executable LAB-063 reference scavenger was built and published. It uses durable retention generations, derives protected archive IDs by walking the current archive head through `previous_archive_id`, marks only unreferenced content-addressed filesystem names as candidates, and rechecks reachability under a SQLite `BEGIN IMMEDIATE` write lock immediately before unlink. UNKNOWN outcomes are reconciled by rereading authoritative SQL state. Invalid/substituted content-address pairs fail closed instead of being silently erased.
 
-A separate audit found and fixed a cross-layer defect: a content-addressed archive manifest could previously authenticate an arbitrary start authority/commitment. The corrected design binds each archive start to the signed checkpoint `(base_sequence, base_archive_id)` and either the exact bootstrap state or the previous authenticated archive's terminal authority IDs/commitment. Explicit forensic audit also requires the selected archive to be reachable from the current authenticated archive chain.
+Local corrected suite passed 9/9; the unsafe eager-delete seed failed as expected because it deleted a reachable archive; compileall passed. Pre-PR compare was ahead 6 / behind 0 with six new paths. PR #118 was opened and its complete remote patch was inspected.
+
+## Audit finding — unresolved
+
+The remote patch audit found a scope/integration weakness: the tests currently execute the scavenger against a compact fake LAB-062-shaped layer rather than the real `SignedPrunableHistory` implementation. That is useful algorithm evidence but does not yet satisfy Issue #117's requirement to extend LAB-062 and reproduce the real `fail_after_archive` orphan path. Therefore LAB-063 is deliberately NOT marked done and PR #118 must not be merged yet.
+
+The next correction should add minimal GC identity helpers/mixin integration to `experiments/signed_history_compaction` (or otherwise adapt the scavenger directly to its existing `ArchiveManifest`, `_verify_manifest_identity`, `_reachable_archive_ids`, and `_archive_paths`) and add real integration tests using `ChainBuilder` + `SignedPrunableHistory.compact(..., fail_after_archive=True)`. The race test must also demonstrate the actual SQL locking interaction with compaction, not only a pre-delete state change.
 
 ## Evidence produced
 
-- `experiments/signed_history_compaction/core.py`
-- `experiments/signed_history_compaction/verify.py`
-- `experiments/signed_history_compaction/archive.py`
-- `experiments/signed_history_compaction/protocol.py`
-- `experiments/signed_history_compaction/tests/test_protocol.py`
-- `experiments/signed_history_compaction/tests/unsafe_delete_first_expected_failure.py`
-- `experiments/signed_history_compaction/README.md`
-- `research/2026-08-20-signed-history-compaction.md`
-- Corrected deterministic suite: 15/15 passed.
-- Unsafe delete-first seed: failed as expected because restart verification was destroyed.
+- `experiments/archive_scavenging/protocol.py`
+- `experiments/archive_scavenging/tests/test_protocol.py`
+- `experiments/archive_scavenging/tests/unsafe_eager_delete_expected_failure.py`
+- `experiments/archive_scavenging/README.md`
+- `research/2026-08-20-crash-safe-archive-scavenging.md`
+- Corrected algorithm suite: 9/9 passed.
+- Unsafe eager-delete seed: failed as expected.
 - Compileall: passed.
-- Exact branch/local Git blob identities matched for executable/test sources: core `a872eb82dd8ced697116b58778d8f29b52aa816a`; verify `cca6eef6c140043ad9e74dcb5f4cae8c647ff0a4`; archive `34067078f619a4b2421a784e64dfb1acf3f09e01`; protocol `6e52b601a2aa772899b008bdd6c5fc7d1a29dda6`; corrected tests `8cedb4d6d5c97879e296123a5b677e2263578b93`; unsafe seed `03dd6b95ab075b51770dd0620741041f03450f62`.
-- Pre-PR compare: ahead 8 / behind 0; all eight LAB-062 paths were new.
-- PR #116 remote patch-audited, mergeable, and squash-merged as `88c7de6da45c31e994130dcdcbcd0b42debfccf3`.
+- PR #118 complete remote patch audited.
 
 ## Known blockers / constraints
 
-- No active blocker.
-- Direct shell/git network access to GitHub was unavailable in the LAB-062 run because DNS resolution failed; GitHub connector operations remained available and exact published new-source blob identities were checked against the locally executed bytes. Treat this as a per-run capability observation, not a persistent limitation.
-- Archive bytes are not runtime authority; normal restart uses authenticated checkpoint/base/manifest binding plus retained signed suffix. Archive bytes are required for explicit forensic audit.
-- LAB-062 intentionally writes archive files before the SQL prune commit. A crash before commit can therefore leave storage orphans; this is the immediate LAB-063 target.
+- No external blocker.
+- Current implementation is not yet accepted because its executable tests use a fake archive layer instead of the real LAB-062 layer.
+- Archive cleanup is storage reclamation, not forensic erasure.
 - Whole-store rollback/freshness remains delegated to LAB-034–037 external monotonic anchors.
-- SQL/file deletion is storage reclamation, not forensic erasure.
-- Local compaction/scavenging is not distributed consensus, backup durability, or remote-object-store lifecycle management.
+- Local scavenging is not distributed GC, backup retention, remote-object lifecycle, or consensus.
 
 ## Exact next action
 
-Start Issue #117 / LAB-063. Extend LAB-062 rather than creating a separate garbage collector. Reproduce an orphan artifact+manifest via the fail-after-archive path, then build a scavenger that derives the protected archive set from authenticated current compaction state and the complete `previous_archive_id` chain. Require an explicit grace/generation boundary, reconcile UNKNOWN compaction outcomes, and re-check reachability immediately before deletion. Test artifact-only/manifest-only debris, current and historical reachable archives, candidate-becomes-referenced races, restart/idempotency, stale retention generation, and content-address substitution. Keep secure deletion, legal retention, backups, remote stores, and distributed GC out of scope.
+Resume PR #118. Integrate the scavenger with real `SignedPrunableHistory`; reproduce a real orphan via `compact(checkpoint, fail_after_archive=True)`; add real tests for reachable current/historical archives, artifact-only/manifest-only debris, UNKNOWN-after-commit reconciliation, stale generation, restart/idempotency, substitution, and a candidate-vs-compaction race. Re-run the full LAB-062 + LAB-063 suites and compileall, then remote patch-audit the corrected PR. Merge/close Issue #117 only if those tests pass and the audit finds no unresolved authority gap.
 
 ## Backlog
 
-- #117 / LAB-063 — crash-safe archive retention and orphan-artifact scavenging conformance — READY.
+- #117 / LAB-063 — IN_PROGRESS.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
