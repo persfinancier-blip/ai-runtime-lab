@@ -35,6 +35,9 @@ class T(unittest.TestCase):
  def test_evidence_change_breaks_replay(self):
   d=evaluate(policies(),trusts(),policy_time=250,evidence=EV)
   with self.assertRaises(ReplayMismatch): replay(d,policies(),trusts(),(EV[0],))
+ def test_retroactive_publication_rejected(self):
+  h=AuthenticatedPolicyHistory()
+  with self.assertRaises(Exception): h.add_accepted(PolicySnapshot('p',1,1,20,1000,10,None,1,0,EvaluationMode.HISTORICAL,1,None))
  def test_expiry(self):
   h=AuthenticatedPolicyHistory(); h.add_accepted(PolicySnapshot('p',1,1,10,50,10,None,1,0,EvaluationMode.HISTORICAL,1,None))
   with self.assertRaises(Exception): evaluate(h,trusts(),policy_time=100,evidence=EV)
