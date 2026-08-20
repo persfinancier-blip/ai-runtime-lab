@@ -4,53 +4,53 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-Extend the authenticated multi-replica root+bundle boundary from “detect divergence once complete views meet” to durable gossip/exchange evidence that can distinguish partition/delay, stale or selectively frozen views, and actual split-view evidence without false equivocation claims from silence alone.
+Remove the remaining cross-observer wall-clock trust assumption from gossip freeze attribution by replacing it with authenticated causal ordering/sequence evidence and explicit observer-credibility/quorum rules.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-052.
-- Completed Issue #99 / LAB-052.
-- LAB-052 branch: `lab/052-bundle-replica-convergence`.
-- LAB-052 PR: #100.
-- LAB-052 merge SHA: `7e064ee74d599d4905820cae7552630757b6e4a3`.
-- Active next: Issue #101 / LAB-053 — READY.
+- Completed: LAB-001 through LAB-053.
+- Completed Issue #101 / LAB-053.
+- LAB-053 branch: `lab/053-gossip-evidence`.
+- LAB-053 PR: #102.
+- LAB-053 merge SHA: `e0edca297d80c96fccca5a1ded7a948ce3520bd2`.
+- Active next: Issue #103 / LAB-054 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-052 built a deterministic authenticated root+bundle replica model. Replicas validate complete root/bundle event continuity, persist a durable head/history watermark, catch up only when the candidate is an authenticated strict extension, reject shorter rollback input for current service, and emit split-view evidence for incomparable authenticated histories. Duplicate/conflicting replica identities cannot inflate evidence quorum. The model explicitly demonstrates that two locally valid forks can exist while replicas are isolated; detection begins only when independent views meet, so the result is not presented as consensus or fork prevention.
+LAB-053 built durable observer-signed gossip evidence over LAB-052-style authenticated histories. It distinguishes fresh current state, ordinary missing/delayed exchange (`UNKNOWN_PARTITIONED`), an older authenticated prefix served after independently observed newer same-lineage evidence (`FREEZE_SUSPECTED`), and incompatible authenticated histories (`SPLIT_VIEW`). Silence/timeout alone never becomes equivocation evidence. Duplicate replay of the same signed view does not refresh freshness. Restart preserves observations and trusted-clock rollback fails closed.
 
-A separate audit found and fixed a lineage-authorization defect: the first version accepted a successor root signed by any known registry root key. The corrected model additionally requires the successor signer to be authorized by the predecessor authority.
+A separate audit found and fixed a consequential evidence-authority defect: persisted incident labels were initially trusted during classification, so storage corruption could fabricate `SPLIT_VIEW`. The final implementation verifies observer-signed observations and deterministically rebuilds incident attribution from those observations before consequential classification.
 
 ## Evidence produced
 
-- `experiments/ctv2_bundle_replica_convergence/`
-- `research/2026-08-20-bundle-replica-convergence.md`
-- Corrected deterministic suite: 14/14 passed.
-- Unsafe isolated-replica baseline failed as expected: two incompatible locally authenticated forks were both accepted before comparison.
-- `python -m compileall -q experiments/ctv2_bundle_replica_convergence` passed.
-- Remote Git blob identities for the executable protocol, corrected tests, unsafe seed, and README matched the locally executed files.
-- `compare_commits` before integration: ahead by 5, behind by 0, exactly five new files.
-- PR #100 remote patch-audited and squash-merged as `7e064ee74d599d4905820cae7552630757b6e4a3`.
-- Primary external donors: RFC 9162 split-view/gossip boundary and TUF monotonic rollback/continuity rules.
+- `experiments/ctv2_bundle_gossip_evidence/`
+- `research/2026-08-20-gossip-evidence-partition-freeze.md`
+- Corrected exact published-source suite: 13/13 passed.
+- `python -m compileall -q experiments/ctv2_bundle_gossip_evidence` passed.
+- Unsafe timeout=>split baseline failed as expected.
+- Published protocol blob matched locally executed source: `0dbf7e1228f3cba61bb0bb069c88a9b229b810b8`.
+- Published corrected test blob matched locally executed source: `c0caed5f0a3328cdc38c3fc0bb513275ef3cbeb8`.
+- PR #102 remote patch-audited and squash-merged as `e0edca297d80c96fccca5a1ded7a948ce3520bd2`.
+- Primary donors: RFC 9162 asynchronous/split-view boundary, TUF freeze/rollback semantics, transparency-dev witness/C2SP witness durable checkpoint progression.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- PR creation/merge endpoints can occasionally be externally blocked before execution; the repository's audited Contents API fallback remains valid for small conflict-free file-scoped changes.
-- LAB-052 does not provide Byzantine consensus, leader election, quorum commit, reliable gossip delivery, or partition-tolerant liveness.
-- Silence/non-delivery alone is not evidence of split view. An isolated fork can remain undetected indefinitely if independent views never cross a comparison path.
-- HMAC remains a deterministic reference authenticator, not production key custody/HSM behavior.
+- PR creation/merge endpoints can occasionally be externally blocked before execution; audited file-scoped Contents API fallback remains permitted under AGENTS.md.
+- LAB-053 uses one trusted aggregator receipt clock. Observer signatures authenticate authorship, not independent wall-clock truth; distributed cross-observer ordering is therefore the next correctness gap.
+- Silence/non-delivery remains unknowable availability state, not proof of malice.
+- Reliable gossip delivery, Byzantine consensus, and fork prevention remain out of scope.
 
 ## Exact next action
 
-Start Issue #101 / LAB-053. Build `experiments/ctv2_bundle_gossip_evidence/` on LAB-052 identities. Persist authenticated peer/view observations with stable observation identity and last-seen watermarks. Classify timely catch-up, missing/delayed exchange (`UNKNOWN/PARTITIONED`), authenticated stale view after independently observed newer same-lineage evidence (`FREEZE_SUSPECTED`), and incomparable authenticated histories (`SPLIT_VIEW`). Replayed/duplicate exchange records must not refresh evidence; restart must preserve peer observation state; trusted-clock rollback must fail closed. Include an unsafe timeout-means-equivocation baseline. Do not build a production gossip network or consensus protocol.
+Start Issue #103 / LAB-054. Build `experiments/ctv2_bundle_causal_gossip/` so freeze suspicion is derived from authenticated causal sequence/predecessor evidence rather than cross-observer wall-clock ordering. Test observer replay/rollback, observer fork/equivocation, malicious timestamp manipulation, duplicate identity/quorum inflation, independent corroboration, restart watermarks, and continued UNKNOWN classification for partitions. Keep causal detection/attribution separate from consensus or reliable delivery.
 
 ## Backlog
 
-- #101 / LAB-053 — gossip evidence durability and partition/freeze classification — READY.
-- Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless LAB-053 evidence makes them the next correctness bottleneck.
+- #103 / LAB-054 — causal gossip ordering and observer-credibility conformance — READY.
+- Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
