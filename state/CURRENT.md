@@ -4,57 +4,57 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-LAB-062 — integrate LAB-061 authenticated pruning/archive semantics directly with the real LAB-059/060 threshold-authenticated transition/checkpoint stack, proving compaction does not weaken signed-history verification.
+LAB-063 — reclaim crash-created or otherwise unreferenced local archive artifacts without ever deleting an archive still reachable from the authenticated LAB-062 compaction chain.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-061.
-- Completed Issue #113 / LAB-061.
-- Merged PR #114 / LAB-061 as `22a0604c18100db1c79980d069ff2d4b4c0763d4`.
-- Next: Issue #115 / LAB-062 — READY.
+- Completed: LAB-001 through LAB-062.
+- Completed Issue #115 / LAB-062.
+- Merged PR #116 / LAB-062 as `88c7de6da45c31e994130dcdcbcd0b42debfccf3`.
+- Next: Issue #117 / LAB-063 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-061 built and integrated a deterministic local history-compaction reference model. A current authenticated checkpoint authorizes pruning. Exact canonical archive bytes and a content-addressed manifest are written/fsynced first; then one SQLite `BEGIN IMMEDIATE` transaction revalidates the checkpoint/archive, records the new compacted live-history base, registers archive metadata, and deletes the checkpointed prefix. Normal restart uses authenticated base + retained suffix; forensic archive audit separately recomputes archive SHA-256 and the cumulative prefix commitment.
+LAB-062 directly integrated LAB-061 pruning/archive semantics with the real LAB-059 threshold-authenticated transition proof stack. Retained suffix and forensic archived rows reuse the existing authority content-ID lookup, `rotation_payload`, `recovery_payload`, `verify_threshold`, payload reconstruction, and transition-digest rules. A signed checkpoint authorizes the compaction boundary; exact archive bytes are written/fsynced first; then one SQLite `BEGIN IMMEDIATE` transaction revalidates inputs, records the archive/base, and deletes only the checkpointed prefix.
 
-Two audit defects were found and fixed before merge: (1) substituted archive `history_id` initially survived normal restart, so manifest content identity and current history binding are now recomputed; (2) compacted base initially trusted derived fields without re-verifying the persisted checkpoint, so restart now verifies exact checkpoint content/signature and base binding.
+A separate audit found and fixed a cross-layer defect: a content-addressed archive manifest could previously authenticate an arbitrary start authority/commitment. The corrected design binds each archive start to the signed checkpoint `(base_sequence, base_archive_id)` and either the exact bootstrap state or the previous authenticated archive's terminal authority IDs/commitment. Explicit forensic audit also requires the selected archive to be reachable from the current authenticated archive chain.
 
 ## Evidence produced
 
-- `experiments/transition_history_pruning/core.py`
-- `experiments/transition_history_pruning/live.py`
-- `experiments/transition_history_pruning/compaction.py`
-- `experiments/transition_history_pruning/protocol.py`
-- `experiments/transition_history_pruning/tests/test_protocol.py`
-- `experiments/transition_history_pruning/tests/unsafe_delete_first_expected_failure.py`
-- `experiments/transition_history_pruning/README.md`
-- `research/2026-08-20-authenticated-history-pruning.md`
-- Corrected exact-source deterministic suite: 16/16 passed.
-- Unsafe delete-first seed: failed as expected because restartability was destroyed.
+- `experiments/signed_history_compaction/core.py`
+- `experiments/signed_history_compaction/verify.py`
+- `experiments/signed_history_compaction/archive.py`
+- `experiments/signed_history_compaction/protocol.py`
+- `experiments/signed_history_compaction/tests/test_protocol.py`
+- `experiments/signed_history_compaction/tests/unsafe_delete_first_expected_failure.py`
+- `experiments/signed_history_compaction/README.md`
+- `research/2026-08-20-signed-history-compaction.md`
+- Corrected deterministic suite: 15/15 passed.
+- Unsafe delete-first seed: failed as expected because restart verification was destroyed.
 - Compileall: passed.
-- Remote/local Git blob identities matched for executable/test sources.
-- Branch audit before merge: ahead 8 / behind 0; only new LAB-061 paths.
-- PR #114 remote patch-audited and squash-merged as `22a0604c18100db1c79980d069ff2d4b4c0763d4`.
+- Exact branch/local Git blob identities matched for executable/test sources: core `a872eb82dd8ced697116b58778d8f29b52aa816a`; verify `cca6eef6c140043ad9e74dcb5f4cae8c647ff0a4`; archive `34067078f619a4b2421a784e64dfb1acf3f09e01`; protocol `6e52b601a2aa772899b008bdd6c5fc7d1a29dda6`; corrected tests `8cedb4d6d5c97879e296123a5b677e2263578b93`; unsafe seed `03dd6b95ab075b51770dd0620741041f03450f62`.
+- Pre-PR compare: ahead 8 / behind 0; all eight LAB-062 paths were new.
+- PR #116 remote patch-audited, mergeable, and squash-merged as `88c7de6da45c31e994130dcdcbcd0b42debfccf3`.
 
 ## Known blockers / constraints
 
 - No active blocker.
-- LAB-061 intentionally isolates compaction/archive semantics with a reduced transition model; it must not replace LAB-059/060 threshold-signature proof verification in production integration.
-- Archive bytes are not runtime authority; missing/tampered archive bytes fail closed on explicit forensic audit. The SQL manifest and authenticated checkpoint remain part of the live restart boundary.
-- SQL row deletion is not forensic erasure.
-- Whole-store rollback/freshness remains delegated to LAB-034–037 external monotonic-anchor work.
-- Local compaction is not distributed consensus or fork prevention.
+- Direct shell/git network access to GitHub was unavailable in the LAB-062 run because DNS resolution failed; GitHub connector operations remained available and exact published new-source blob identities were checked against the locally executed bytes. Treat this as a per-run capability observation, not a persistent limitation.
+- Archive bytes are not runtime authority; normal restart uses authenticated checkpoint/base/manifest binding plus retained signed suffix. Archive bytes are required for explicit forensic audit.
+- LAB-062 intentionally writes archive files before the SQL prune commit. A crash before commit can therefore leave storage orphans; this is the immediate LAB-063 target.
+- Whole-store rollback/freshness remains delegated to LAB-034–037 external monotonic anchors.
+- SQL/file deletion is storage reclamation, not forensic erasure.
+- Local compaction/scavenging is not distributed consensus, backup durability, or remote-object-store lifecycle management.
 
 ## Exact next action
 
-Start Issue #115 / LAB-062. Extend the existing LAB-059/060 signed-history/checkpoint implementation rather than duplicating it. Build a real threshold-signed root/recovery chain, checkpoint a fully verified prefix, apply LAB-061 archive+atomic-prune semantics, then restart from compacted base + retained suffix while reusing the same threshold-signature/payload/digest verification for every retained transition. Forensic archive audit must replay the same historical proof rules. Inject corrupted retained/archive signatures, payload/digest substitution, suffix gaps, checkpoint/base substitution, crash-before/inside-commit and timeout-after-commit. Prove second compaction after new signed transitions and terminal equivalence with full unpruned replay.
+Start Issue #117 / LAB-063. Extend LAB-062 rather than creating a separate garbage collector. Reproduce an orphan artifact+manifest via the fail-after-archive path, then build a scavenger that derives the protected archive set from authenticated current compaction state and the complete `previous_archive_id` chain. Require an explicit grace/generation boundary, reconcile UNKNOWN compaction outcomes, and re-check reachability immediately before deletion. Test artifact-only/manifest-only debris, current and historical reachable archives, candidate-becomes-referenced races, restart/idempotency, stale retention generation, and content-address substitution. Keep secure deletion, legal retention, backups, remote stores, and distributed GC out of scope.
 
 ## Backlog
 
-- #115 / LAB-062 — threshold-authenticated compaction integration and signed-history conformance — READY.
-- Archive retention/orphan scavenging after successful compaction — candidate only after LAB-062 proves proof-preserving integration.
+- #117 / LAB-063 — crash-safe archive retention and orphan-artifact scavenging conformance — READY.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
