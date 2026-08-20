@@ -83,11 +83,10 @@ class TrustLifecycle:
     if prev is not None and prev.state is not LogState.ACTIVE and new.state is LogState.ACTIVE: raise SnapshotMalformed('inactive log cannot silently reactivate')
   self.current=s; self.history[s.snapshot_id]=s; return s
  def get(self,snapshot_id):
-  if snapshot_id not in self.history: raise SnapshotBindingError('unknown historical snapshot')
+  if snapshot_id not in self.history: raise SnapshotBindingError('snapshot was not authenticated and accepted by this lifecycle')
   return self.history[snapshot_id]
-def evaluate(policy,snapshot,*,expected_snapshot_id,evidence):
- policy.validate()
- if snapshot.snapshot_id!=expected_snapshot_id: raise SnapshotBindingError('policy evaluation is not bound to exact trust snapshot')
+def evaluate(lifecycle,policy,*,snapshot_id,evidence):
+ policy.validate(); snapshot=lifecycle.get(snapshot_id)
  logs={l.log_id:l for l in snapshot.logs}; accepted={}; ignored=set()
  for ev in evidence:
   entry=logs.get(ev.log_id)
