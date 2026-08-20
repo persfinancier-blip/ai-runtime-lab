@@ -4,49 +4,48 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-LAB-059 — prove durable transition-evidence/history integrity across restart after LAB-058 established local atomic serialization of root/recovery authority changes.
+LAB-060 — bound restart verification cost with authenticated history checkpoints without weakening LAB-059 bootstrap→head integrity.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-058.
-- Next: Issue #109 / LAB-059 — READY.
-- LAB-058 implementation branch `lab/058-authority-transition-races` remains as source evidence; exact audited files were integrated to `main` via Contents API fallback.
+- Completed: LAB-001 through LAB-059.
+- Completed Issue #109 / LAB-059.
+- Merged PR #110 / LAB-059 as `3eb014cbad28cc590b02d61dd7cb25a3708db9d0`.
+- Next: Issue #111 / LAB-060 — READY.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-058 built a SQLite transactional/CAS reference model binding the exact predecessor `(root_id, recovery_authority_id, sequence)` at the commit boundary. Recovery-authority rotation and break-glass root recovery can both be individually cryptographically valid from one predecessor pair, but only one may become locally authoritative. The unsafe check-then-write seed accepted two incompatible successors; the corrected store serialized them.
+LAB-059 added exact durable threshold proof material for every winning root/recovery transition and a restart verifier that reconstructs bootstrap→head, reloads historical authorities by content ID, reconstructs canonical payloads, re-verifies historical threshold signatures, recomputes transition digests, and requires the derived terminal pair to equal the SQL head. `UNKNOWN` reconciliation now performs full history verification before returning persisted evidence.
 
-Corrected deterministic suite passed 11/11. A separate concurrency audit repeated the three race classes 20 times each (60 race tests total) with no double winner. Unsafe seed failed as expected. Compileall passed. Remote protocol/test blob SHAs matched locally executed sources. Branch compare was ahead 6 / behind 0 with six new conflict-free files, so exact audited bytes were integrated through the normal Contents API fallback. Issue #108 was closed DONE.
+Corrected deterministic suite passed 9/9. The unsafe evidence-trusting baseline failed as expected after a predecessor row was tampered while its JSON proof remained plausible. Compileall passed. Remote `protocol.py` and corrected-test Git blob SHAs matched the locally executed bytes. PR #110 was remote patch-audited and squash-merged.
 
 ## Evidence produced
 
-- `experiments/authority_transition_races/protocol.py`
-- `experiments/authority_transition_races/tests/test_protocol.py`
-- `experiments/authority_transition_races/tests/unsafe_race_expected_failure.py`
-- `experiments/authority_transition_races/README.md`
-- `research/2026-08-20-authority-transition-races.md`
-- Corrected suite: 11/11 passed.
-- Repeated concurrency audit: 60/60 passed.
-- Unsafe seed: failed as expected because two conflicts were accepted.
+- `experiments/transition_history_integrity/protocol.py`
+- `experiments/transition_history_integrity/tests/test_protocol.py`
+- `experiments/transition_history_integrity/tests/unsafe_evidence_expected_failure.py`
+- `experiments/transition_history_integrity/README.md`
+- `research/2026-08-20-transition-history-integrity.md`
+- Corrected suite: 9/9 passed.
+- Unsafe seed: failed as expected.
 - Compileall: passed.
-- Branch protocol blob SHA `ee5aacc787a6ac023d10540dea742243f7ac103e`; corrected-test blob SHA `500c099166495dedaced84b47472318928fcf033`; both matched locally executed sources before integration.
-- Follow-up Issue #109 / LAB-059 created.
+- Branch protocol blob SHA `2c983c2a0b4ec00bb01f2837e382b6857a6eca20`; corrected-test blob SHA `c5b6b5258246124224eb73d0f8ab5259e39337be`; both matched locally executed sources.
 
 ## Known blockers / constraints
 
 - No active blocker.
-- Local serialization in one SQL store is not distributed consensus and cannot prevent forks across independently writable replicas.
-- Internal SQL history verification cannot by itself detect rollback of the entire database snapshot; LAB-034–037 external-anchor work remains the boundary for that class.
-- Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is supported.
+- Full bootstrap→head replay is intentionally O(N) in transition history length.
+- Internal history verification cannot distinguish a complete rollback to an older internally valid database snapshot; LAB-034–037 external monotonic-anchor work remains the authority for whole-store rollback detection.
+- Local SQL history integrity is not distributed consensus/fork prevention across independently writable replicas.
 
 ## Exact next action
 
-Start Issue #109 / LAB-059. Extend the LAB-058 transition record so exact threshold proof material is durable, then build restart verification that reconstructs bootstrap→head and re-verifies each historical transition against its historical predecessor authorities. Inject tampered predecessor/successor IDs, signer/signature corruption, missing/gapped transition rows, head/history mismatch, and unsafe evidence-trusting reconciliation. Keep database rollback resistance explicitly delegated to the existing external-anchor layer rather than duplicating LAB-034–037.
+Start Issue #111 / LAB-060. Build authenticated history checkpoints only from fully verified prefixes. Bind checkpoint sequence, derived root/recovery IDs, prefix commitment, schema/protocol version and external-anchor identity. Verify checkpoint authenticity before replaying only the suffix, and prove equivalence against full replay. Inject checkpoint tamper, substitution, rollback, head mismatch and skipped-suffix failures. Keep whole-store freshness delegated to LAB-034–037 rather than duplicating anchor protocols.
 
 ## Backlog
 
-- #109 / LAB-059 — transition-evidence integrity and restart history conformance — READY.
+- #111 / LAB-060 — authenticated history checkpoints and bounded restart verification — READY.
 - Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
