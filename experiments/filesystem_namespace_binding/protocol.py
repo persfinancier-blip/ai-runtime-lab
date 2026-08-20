@@ -4,12 +4,14 @@ import ctypes
 import errno
 import hashlib
 import os
+import platform
 import secrets
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
 
-SYS_OPENAT2 = 437  # Linux x86_64/aarch64/generic syscall number.
+SYS_OPENAT2_X86_64 = 437
 RESOLVE_NO_XDEV = 0x01
 RESOLVE_NO_MAGICLINKS = 0x02
 RESOLVE_NO_SYMLINKS = 0x04
@@ -74,11 +76,15 @@ def _validate_name(name: str) -> str:
     return name
 
 
-def _openat2(dirfd: int, relative: str, *, no_xdev=False, syscall=SYS_OPENAT2) -> int:
+def _openat2(dirfd: int, relative: str, *, no_xdev=False, syscall=None) -> int:
     if os.name != "posix" or not hasattr(os, "O_DIRECTORY"):
         raise UnsupportedNamespaceBoundary("Linux/POSIX directory-FD reference required")
     if type(relative) is not str or not relative or relative.startswith("/"):
         raise PathEscape("authorized path must be relative")
+    if syscall is None:
+        if platform.machine().lower() not in {"x86_64", "amd64"}:
+            raise UnsupportedNamespaceBoundary("reference openat2 syscall mapping is x86_64-only")
+        syscall = SYS_OPENAT2_X86_64
     resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS
     if no_xdev:
         resolve |= RESOLVE_NO_XDEV
@@ -125,7 +131,7 @@ class NamespaceHandle:
         relative: str,
         *,
         no_xdev=False,
-        syscall=SYS_OPENAT2,
+        syscall=None,
     ):
         root_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
         try:
@@ -212,12 +218,14 @@ class NamespaceHandle:
         expected_sha = hashlib.sha256(expected_data).hexdigest()
         if receipt.sha256 != expected_sha:
             raise ContentMismatch("receipt digest mismatch")
-        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
         try:
             fd = os.open(name, flags, dir_fd=self.fd)
         except OSError as exc:
             raise ContentMismatch(str(exc)) from exc
         try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ContentMismatch("published object is not a regular file")
             chunks = []
             while True:
                 chunk = os.read(fd, 65536)
