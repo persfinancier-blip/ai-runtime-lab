@@ -11,7 +11,7 @@ class T(unittest.TestCase):
  def test_cross_observer_clock_cannot_frame(self):t=self.t();self.add(t,"a",self.new,-999);self.assertEqual(self.add(t,"b",self.old,999),"CURRENT")
  def test_replay(self):t=self.t();o=t.issue("a",self.new);t.accept(o);self.assertEqual(t.accept(o),"DUPLICATE_IGNORED")
  def test_equiv(self):
-  t=self.t();o=t.issue("a",self.new);t.accept(o);a=t.issue("a",self.old);t.accept(a);v=View.issue("p",("1","x"),self.pk);u={"observer":"a","seq":2,"pred":o.id,"peer":"p","view_id":v.id,"events":list(v.events),"claimed_time":0};b=Obs("a",2,o.id,"p",v.id,v.events,0,sig(b"a",u))
+  t=self.t();o=t.issue("a",self.new);t.accept(o);a=t.issue("a",self.old);t.accept(a);v=View.issue("p",("1","x"),self.pk);u={"observer":"a","seq":2,"pred":o.id,"peer":"p","view_id":v.id,"events":list(v.events),"peer_signature":v.signature,"claimed_time":0};b=Obs("a",2,o.id,"p",v.id,v.events,v.signature,0,sig(b"a",u))
   with self.assertRaises(Equiv):t.accept(b)
  def test_quorum(self):t=self.t();self.add(t,"a",self.new);self.add(t,"a",self.old);self.add(t,"b",self.new);self.assertEqual(self.add(t,"b",self.old),"CORROBORATED_FREEZE")
  def test_dup_no_quorum(self):t=self.t();self.add(t,"a",self.new);o=t.issue("a",self.old);t.accept(o);[t.accept(o) for _ in range(3)];self.assertEqual(t.classify("p"),"LOCAL_FREEZE_SUSPECTED")
@@ -24,4 +24,10 @@ class T(unittest.TestCase):
    s=Store(Path(d)/"s");t=self.t(s);self.add(t,"a",self.new);x=s.load();x["heads"]["a"]["seq"]=9;s.save(x)
    with self.assertRaises(Auth):self.t(s)
  def test_split(self):t=self.t();self.add(t,"a",self.new);v=View.issue("p",("1","x"),self.pk);self.assertEqual(self.add(t,"b",v),"SPLIT_VIEW")
+ def test_fabricated_observer_content_without_peer_signature_rejected(self):
+  t=self.t();first=t.issue("a",self.new);t.accept(first);fake_events=("1","2");fake_peer_sig="00"*32;fake_view=View("p",fake_events,fake_peer_sig);u={"observer":"a","seq":2,"pred":first.id,"peer":"p","view_id":fake_view.id,"events":list(fake_events),"peer_signature":fake_peer_sig,"claimed_time":0};o=Obs("a",2,first.id,"p",fake_view.id,fake_events,fake_peer_sig,0,sig(b"a",u))
+  with self.assertRaises(Auth):t.accept(o)
+ def test_view_id_substitution_rejected(self):
+  t=self.t();o=t.issue("a",self.new);u=o.unsigned.copy();u["view_id"]=self.old.id;forged=Obs(o.observer,o.seq,o.pred,o.peer,self.old.id,o.events,o.peer_signature,o.claimed_time,sig(b"a",u))
+  with self.assertRaises(Auth):t.accept(forged)
 if __name__=="__main__":unittest.main()
