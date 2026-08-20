@@ -38,6 +38,7 @@ class TrustLifecycleTests(unittest.TestCase):
  def test_distrusted_log_cannot_reactivate(self):
   life=TrustLifecycle(ROOT); dead=LogEntry('log-a','ed25519:key-a','op-a',LogState.DISTRUSTED,100); life.accept(snapshot(logs=(dead,LOG_B))); alive=LogEntry('log-a','ed25519:key-a','op-a',LogState.ACTIVE,200)
   with self.assertRaises(SnapshotMalformed): life.accept(snapshot(2,2,200,logs=(alive,LOG_B)))
+
  def test_expired_snapshot_rejected_at_acceptance(self):
   with self.assertRaises(SnapshotRollback): TrustLifecycle(ROOT).accept(snapshot(),now=1001)
  def test_future_lifecycle_timestamp_rejected(self):
