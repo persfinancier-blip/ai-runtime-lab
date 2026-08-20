@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Active objective
 
@@ -9,46 +9,43 @@ LAB-064 — prove the filesystem durability boundary required before SQL may com
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-063.
-- Completed Issue #117 / LAB-063; PR #118 merged as `deecb1f5ddc629c60b9d140a3e792863c3441708`.
 - Issue #119 / LAB-064 — IN_PROGRESS.
 - Active branch: `lab/064-archive-publication-durability`.
-- Active draft PR: #120.
+- Active draft PR: #120 at HEAD `0f8efd7a91f1dd30cc8684e48a33831f16e16f06` before this state-only commit.
 
 ## Last completed step
 
-Primary-source research confirmed the gap: Linux `fsync(2)` explicitly states that syncing a file does not necessarily persist the containing directory entry and that an explicit directory `fsync()` is needed; POSIX rename provides atomic namespace replacement but that is not the same property as sudden-power-loss durability; SQLite's atomic-commit design independently synchronizes directory namespace changes and documents filesystem/storage assumptions.
+The merge-blocking receipt-binding defect from the previous remote audit was fixed. `PublicationReceipt` now binds successful publication to a normalized absolute target path and SHA-256. `require_durable_pair()` requires the exact expected artifact path+bytes and manifest path+bytes and rejects any durable receipt whose path or content digest does not match. LAB-062 `compact()` now supplies those exact expected values before opening the authoritative prune transaction.
 
-An initial implementation slice now exists. `experiments/archive_publication_durability/protocol.py` defines `durable_publish()` as `write -> flush -> fsync(file) -> os.replace -> fsync(parent directory)` and returns a `PublicationReceipt` only after both file and directory barriers succeed. `require_durable_pair()` requires durable receipts for both artifact and manifest. Deterministic fault hooks cover write, file-fsync, rename, and directory-fsync boundaries, and an unsafe rename-only receipt is retained as a negative baseline.
+Regression tests were added for durable-but-wrong manifest path, wrong artifact digest, and wrong manifest digest; each requires SQL history to remain unpruned. A second remote patch audit of the corrected publication primitive, LAB-062 compaction boundary, and integration regressions found no new content defect.
 
-LAB-062 `experiments/signed_history_compaction/archive.py` now delegates `_atomic_file()` to this durable publisher. `compact()` will not open/commit its authoritative SQL mutation unless both publication receipts are durable and the artifact receipt digest matches the signed manifest. Focused unit and real signed-compaction integration tests have been added. Draft PR #120 is intentionally not merge-authorized until exact published-source execution and regression audit are complete.
+Direct shell `git clone` was retried in this invocation and again failed because the runtime could not resolve `github.com`. Therefore exact published branch execution plus LAB-062/LAB-063 regressions remains deliberately unclaimed and is the only known merge gate.
 
 ## Evidence produced
 
-- Issue #119 with primary donor links and explicit failure matrix.
-- `experiments/archive_publication_durability/protocol.py`
-- `experiments/archive_publication_durability/tests/test_protocol.py`
-- `experiments/archive_publication_durability/tests/test_signed_compaction_integration.py`
-- `experiments/archive_publication_durability/README.md`
-- `research/2026-08-20-archive-publication-durability.md`
-- Modified LAB-062 `experiments/signed_history_compaction/archive.py` to require durable artifact+manifest publication receipts before SQL commit.
-- Draft PR #120 opened for auditable continuation.
-- A small local prototype of the same publication sequence was executed successfully before publication and confirmed injected failures at write/file-fsync/rename boundaries, but this is supporting evidence only; exact published branch tests remain to be executed.
+- Corrected publication primitive blob: `135cbf1eb8085dc1067bf0485e0acd2995aa5eb0`.
+- Corrected focused-test blob: `e2e9c9b8a0446d1f4ae8929f675b988ce9e58d0f`.
+- Corrected LAB-062 archive blob: `dcd8a0c0ea90c9aa60d2252b460879e877dde105`.
+- Corrected signed-compaction integration-test blob: `f23a58a49d17644c7e12149e6c180ed418cb0466`.
+- PR #120 remote patch audit confirms the compaction call binds both receipts to exact expected path and bytes.
+- Issue #119 acceptance checklist updated: receipt binding is complete; exact-source execution remains open.
+- Shell clone failure observed again: `Could not resolve host: github.com`.
 
 ## Known blockers / constraints
 
-- No design blocker.
-- Direct git/raw GitHub DNS was unavailable in this runtime, so exact branch checkout was not available through the shell. GitHub connector is the authoritative repository path.
-- Exact published LAB-064 tests and LAB-062/LAB-063 regression suites have not yet been executed as a complete branch-source suite; do not merge or mark PR #120 ready until they are.
-- A successful directory `fsync()` is still a platform/filesystem/storage-stack contract, not a universal physical-media guarantee. The research note must keep this boundary explicit.
+- No known design/content blocker remains after the receipt-binding fix.
+- Exact published LAB-064 tests plus LAB-062/LAB-063 regression suites still must be executed before merge.
+- Direct shell GitHub DNS is unavailable in this runtime; use connector-retrieved exact bytes/local reconstruction if a future invocation can complete the dependency closure safely.
+- Directory `fsync()` is an OS/filesystem/storage-stack durability contract, not a universal physical-media guarantee.
 - Process-crash orphan cleanup remains LAB-063; whole-store rollback/freshness remains LAB-034–037.
 
 ## Exact next action
 
-Resume Issue #119 / draft PR #120 on `lab/064-archive-publication-durability`. Obtain/execute the exact published branch source through the best available connector/local reconstruction path. Run `archive_publication_durability` focused tests, then relevant LAB-062 signed-compaction and LAB-063 scavenging regressions plus compileall. Inspect failures and fix them. Perform a separate remote patch audit, including the modified existing LAB-062 `archive.py`. Only then mark acceptance criteria satisfied, mark PR ready, and merge.
+Resume PR #120. Obtain a complete exact-source runnable checkout of HEAD through a supported route (normal shell clone if DNS works; otherwise connector-reconstruct all dependency bytes and verify local `git hash-object` against GitHub blob IDs). Execute the LAB-064 focused suite, LAB-062 signed-compaction regression suite, LAB-063 scavenging regression suite, and compileall. If all pass, perform one final full PR patch audit, mark the draft ready, integrate, close Issue #119 as DONE, and select the next highest-value gap.
 
 ## Backlog
 
-- #119 / LAB-064 — IN_PROGRESS; draft PR #120.
+- #119 / LAB-064 — IN_PROGRESS; receipt-binding defect fixed; exact-source execution is the only known merge gate.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
