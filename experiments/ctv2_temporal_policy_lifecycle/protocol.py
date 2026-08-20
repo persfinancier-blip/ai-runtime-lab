@@ -19,7 +19,7 @@ class PolicySnapshot:
         if not self.policy_id: raise PolicyError('missing id')
         for n in ('version','generation','issued_at','expires_at','effective_from','required_logs','trust_generation_min'): _pos(n,getattr(self,n))
         if type(self.required_operators) is not int or self.required_operators<0: raise PolicyError('operators')
-        if self.expires_at<=self.issued_at: raise PolicyError('expiry')
+        if self.expires_at<=self.issued_at or self.issued_at>self.effective_from or self.expires_at<=self.effective_from: raise PolicyError('invalid publication/effective window')
         if self.effective_until is not None and (type(self.effective_until) is not int or self.effective_until<=self.effective_from): raise PolicyError('interval')
         if self.trust_generation_max is not None and (type(self.trust_generation_max) is not int or self.trust_generation_max<self.trust_generation_min): raise PolicyError('trust range')
         if not isinstance(self.mode,EvaluationMode): raise PolicyError('mode')
