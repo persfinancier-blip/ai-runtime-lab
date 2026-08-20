@@ -48,7 +48,9 @@ Observed expected failure:
 
 Observed locally:
 
-- corrected deterministic suite: 16/16 passed;
+- initial corrected deterministic suite: 16/16 passed;
+- audit added a separately signed but incorrect STH-root regression so Merkle-root mismatch is tested independently of signature corruption;
+- corrected suite after audit: 17/17 passed;
 - exhaustive small-tree check: every leaf index for tree sizes 1..32 passed;
 - unsafe hash-only seed: expected failure;
 - `python -m compileall -q experiments/ctv2_inclusion_chain`: passed.
