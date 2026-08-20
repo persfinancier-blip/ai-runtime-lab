@@ -4,48 +4,45 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-Advance from LAB-046's correct multi-SCT local-policy aggregation to an authenticated trust-list lifecycle so LogID trust, operator diversity, distrust, and freshness are not caller-self-asserted.
+Advance from authenticated CT log-list/operator authority to time-aware eligibility so historical SCT/evidence decisions use authoritative lifecycle/operator facts at the relevant event time without permitting stale-snapshot cherry-picking.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-046.
-- Completed Issue #88 / LAB-046; PR #89 remote patch-audited and squash-merged as `92d50dcc9ede4a1888ed46598de9a62b2adb9f5d`.
-- Active next: Issue #90 / LAB-047 — READY.
+- Completed: LAB-001 through LAB-047.
+- Completed Issue #90 / LAB-047; PR #91 remote patch-audited and squash-merged as `5a3afd6fef5474b6b9d8858307fbd63d43917cc5`.
+- Active next: Issue #92 / LAB-048 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-046 implemented `experiments/ctv2_multi_sct_policy/`: versioned policy/trust-generation binding, distinct trusted LogID counting, optional distinct operator-group threshold, explicit pending/inconclusive/violation outputs, duplicate suppression, unknown-log exclusion, and authenticated evidence/leaf binding. RFC 9162's protocol/local-policy boundary is documented rather than replaced with browser/vendor policy.
+LAB-047 implemented authenticated/versioned CT log trust snapshots that bind LogID, immutable verification profile, authoritative operator membership, lifecycle state/timestamp, version/generation, freshness and exact snapshot identity. This run's separate audit found a critical authority-boundary defect: the evaluator could consume an arbitrary unauthenticated snapshot object if the caller also supplied its matching deterministic content hash. The API was corrected so evaluation resolves snapshots only from `TrustLifecycle` history populated by successful authentication/acceptance.
 
 ## Evidence produced
 
-- `experiments/ctv2_multi_sct_policy/protocol.py`
-- `experiments/ctv2_multi_sct_policy/tests/test_protocol.py`
-- `experiments/ctv2_multi_sct_policy/tests/unsafe_duplicate_expected_failure.py`
-- `experiments/ctv2_multi_sct_policy/README.md`
-- `research/2026-08-20-ctv2-multi-sct-policy.md`
-- Corrected deterministic suite: 13/13 passed.
-- Unsafe duplicate/self-asserted baseline: expected failure because one LogID was counted twice.
-- `python -m compileall -q experiments/ctv2_multi_sct_policy` passed.
-- Exact branch protocol blob matched locally executed source: `782779ebe3428ae184408c6f0e2d1006fa369ad1`.
-- Exact branch corrected tests blob matched locally executed source: `40778d47f9f8ba4529555a368e709bf40e9ba51c`.
-- Primary provenance: RFC 9162 §§6.2–6.4, 8.1.6, 11.4.
+- `experiments/ctv2_log_trust_lifecycle/`
+- `research/2026-08-20-ctv2-log-trust-lifecycle.md`
+- Corrected local deterministic suite after audit fix: 18/18 passed.
+- `python -m compileall -q experiments/ctv2_log_trust_lifecycle` passed.
+- Unsafe self-asserted trust/operator baseline: expected failure because caller metadata satisfied threshold without authenticated authority.
+- Remote patch audit completed on PR #91 before merge.
+- Merge SHA: `5a3afd6fef5474b6b9d8858307fbd63d43917cc5`.
+- Fresh primary-source recheck in this run: current Chromium CT proto/log-list documentation models timestamped state and operator history plus list version/timestamp; TUF signed metadata uses roles/version/expiry and consistent snapshots to reject rollback/freeze/mix-and-match; Sigstore recommends TUF-backed TrustRoot distribution.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- LAB-046 does not claim browser/vendor CT compliance; RFC 9162 leaves quantity/form of compliance evidence to local policy.
-- LAB-046's HMAC is a deterministic stand-in for the already authenticated LAB-045 evidence boundary, not a replacement cryptographic authority.
-- `trusted_logs` and `operator_id` are still caller-supplied reference inputs; this is the exact authority gap LAB-047 must close.
+- LAB-047 is a reference authenticated trust-distribution model, not Chrome/browser compliance policy.
+- HMAC remains a deterministic stand-in for a production authenticated metadata chain.
+- LAB-047 preserves historical snapshots but current evaluation still treats lifecycle state at the selected snapshot as a boolean gate; it does not yet resolve eligibility/operator identity at an explicit SCT/evidence timestamp.
 
 ## Exact next action
 
-Start Issue #90 / LAB-047. Research RFC 9162 §4.1/§6.2 plus current primary-source authenticated CT log-list/trust-distribution mechanisms. Build `experiments/ctv2_log_trust_lifecycle/` so an authenticated exact snapshot binds LogID -> verification profile -> operator group -> lifecycle state. Prove rollback/substitution/self-promotion/post-distrust counting fail closed, historical evidence remains attributable, and LAB-046-style evaluation binds to exact snapshot identity rather than trusting caller-supplied operator metadata.
+Start Issue #92 / LAB-048. Research timestamped lifecycle/operator-history semantics using RFC 9162 plus current Chromium CT metadata/policy and one additional primary-source temporal authorization mechanism. Build `experiments/ctv2_temporal_log_eligibility/` consuming authenticated LAB-047 lifecycle history. Define non-overlapping eligibility/operator intervals and deterministic boundary rules, then prove historical decisions are not retroactively rewritten while current/future decisions cannot select stale snapshots to bypass newer distrust.
 
 ## Backlog
 
-- #90 / LAB-047 — authenticated CT log-list lifecycle and operator-identity binding — READY.
+- #92 / LAB-048 — temporal CT eligibility windows and historical-policy conformance — READY.
 - Independent witness/gossip transport reliability and Byzantine consensus remain intentionally out of scope unless later product requirements justify them.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
