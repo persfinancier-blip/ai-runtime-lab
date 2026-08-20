@@ -80,6 +80,15 @@ class InclusionChainTests(unittest.TestCase):
         with self.assertRaises(Exception):
             verify_authenticated_inclusion(self.entries[self.index],bytes(bad),self.wire,self.profile)
 
+    def test_different_but_validly_signed_root_rejected_by_merkle_proof(self):
+        wrong_root=bytearray(self.root); wrong_root[0]^=1
+        other_sth=sign_sth(
+            TreeHeadDataV2(123456790,7,bytes(wrong_root)),
+            log_id=self.log_id,private_key=self.sk,hash_size=32
+        )
+        with self.assertRaises(RootMismatch):
+            verify_authenticated_inclusion(self.entries[self.index],other_sth,self.wire,self.profile)
+
     def test_trailing_bytes_rejected(self):
         with self.assertRaises(TrailingData):
             decode_inclusion_proof(self.wire+b"x",hash_size=32)
