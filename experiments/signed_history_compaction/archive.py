@@ -87,9 +87,17 @@ class ArchiveMixin:
                 q.close()
 
             artifact_path, manifest_path = self._archive_paths(manifest.archive_id)
+            manifest_bytes = canon(asdict(manifest))
             artifact_receipt = self._atomic_file(artifact_path, artifact_bytes)
-            manifest_receipt = self._atomic_file(manifest_path, canon(asdict(manifest)))
-            publication = require_durable_pair(artifact_receipt, manifest_receipt)
+            manifest_receipt = self._atomic_file(manifest_path, manifest_bytes)
+            publication = require_durable_pair(
+                artifact_receipt,
+                manifest_receipt,
+                artifact_path=artifact_path,
+                artifact_data=artifact_bytes,
+                manifest_path=manifest_path,
+                manifest_data=manifest_bytes,
+            )
             if publication["artifact_sha256"] != manifest.artifact_sha256:
                 raise ArchiveError("durable artifact receipt digest mismatch")
             if fail_after_archive:
