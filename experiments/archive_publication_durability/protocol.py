@@ -44,6 +44,12 @@ class FaultPlan:
             raise InjectedPublicationFailure(event)
 
 
+def _normalized_path(path) -> str:
+    """Return the lexical absolute publication target used for receipt binding."""
+
+    return os.path.abspath(os.fspath(path))
+
+
 def _fsync_directory(directory: Path, *, fault: FaultPlan):
     if os.name != "posix":
         raise UnsupportedDurabilityBoundary("directory fsync reference path requires POSIX")
@@ -85,7 +91,7 @@ def durable_publish(path, data: bytes, *, fault: FaultPlan | None = None):
         fault.hit("after_rename")
         _fsync_directory(path.parent, fault=fault)
         return PublicationReceipt(
-            path=str(path),
+            path=_normalized_path(path),
             sha256=hashlib.sha256(data).hexdigest(),
             file_synced=True,
             directory_synced=True,
@@ -97,12 +103,62 @@ def durable_publish(path, data: bytes, *, fault: FaultPlan | None = None):
             os.unlink(temp_name)
 
 
-def require_durable_pair(artifact: PublicationReceipt, manifest: PublicationReceipt):
-    if not artifact.durable or not manifest.durable:
-        raise PublicationError("archive pair has not crossed durable publication boundary")
+def require_durable_receipt(
+    receipt: PublicationReceipt,
+    *,
+    expected_path,
+    expected_data: bytes,
+    label: str,
+):
+    """Bind a durability claim to the exact target namespace and content bytes."""
+
+    if not isinstance(expected_data, bytes):
+        raise TypeError("expected_data must be bytes")
+    if not receipt.durable:
+        raise PublicationError(f"{label} has not crossed durable publication boundary")
+    expected_path_value = _normalized_path(expected_path)
+    if receipt.path != expected_path_value:
+        raise PublicationError(
+            f"{label} durable receipt path mismatch: expected={expected_path_value!r} actual={receipt.path!r}"
+        )
+    expected_sha256 = hashlib.sha256(expected_data).hexdigest()
+    if receipt.sha256 != expected_sha256:
+        raise PublicationError(
+            f"{label} durable receipt digest mismatch: expected={expected_sha256} actual={receipt.sha256}"
+        )
     return {
-        "artifact_sha256": artifact.sha256,
-        "manifest_sha256": manifest.sha256,
+        "path": expected_path_value,
+        "sha256": expected_sha256,
+        "durable": True,
+    }
+
+
+def require_durable_pair(
+    artifact: PublicationReceipt,
+    manifest: PublicationReceipt,
+    *,
+    artifact_path,
+    artifact_data: bytes,
+    manifest_path,
+    manifest_data: bytes,
+):
+    artifact_bound = require_durable_receipt(
+        artifact,
+        expected_path=artifact_path,
+        expected_data=artifact_data,
+        label="artifact",
+    )
+    manifest_bound = require_durable_receipt(
+        manifest,
+        expected_path=manifest_path,
+        expected_data=manifest_data,
+        label="manifest",
+    )
+    return {
+        "artifact_path": artifact_bound["path"],
+        "artifact_sha256": artifact_bound["sha256"],
+        "manifest_path": manifest_bound["path"],
+        "manifest_sha256": manifest_bound["sha256"],
         "publication_durable": True,
     }
 
@@ -120,7 +176,7 @@ class UnsafeRenameReceipt:
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
         return PublicationReceipt(
-            path=str(path),
+            path=_normalized_path(path),
             sha256=hashlib.sha256(data).hexdigest(),
             file_synced=True,
             directory_synced=False,
