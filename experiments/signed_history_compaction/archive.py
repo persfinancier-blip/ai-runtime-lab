@@ -1,4 +1,5 @@
 from .core import *
+from experiments.archive_publication_durability.protocol import durable_publish, require_durable_pair
 
 class ArchiveMixin:
     def _build_archive(self, q, cp):
@@ -55,16 +56,11 @@ class ArchiveMixin:
             )
 
     def _atomic_file(self, path, data):
-            fd, temp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
-            try:
-                with os.fdopen(fd, "wb") as handle:
-                    handle.write(data)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temp_name, path)
-            finally:
-                if os.path.exists(temp_name):
-                    os.unlink(temp_name)
+            # LAB-064: a successful publication receipt requires both the file
+            # contents and the containing directory entry to have crossed an
+            # explicit fsync boundary. Atomic rename alone is not treated as
+            # power-loss durability.
+            return durable_publish(path, data)
 
     def compact(self, cp, *, fail_after_archive=False, fail_before_commit=False, timeout_after_commit=False):
             q = self.store._con()
@@ -91,10 +87,13 @@ class ArchiveMixin:
                 q.close()
 
             artifact_path, manifest_path = self._archive_paths(manifest.archive_id)
-            self._atomic_file(artifact_path, artifact_bytes)
-            self._atomic_file(manifest_path, canon(asdict(manifest)))
+            artifact_receipt = self._atomic_file(artifact_path, artifact_bytes)
+            manifest_receipt = self._atomic_file(manifest_path, canon(asdict(manifest)))
+            publication = require_durable_pair(artifact_receipt, manifest_receipt)
+            if publication["artifact_sha256"] != manifest.artifact_sha256:
+                raise ArchiveError("durable artifact receipt digest mismatch")
             if fail_after_archive:
-                raise UnknownOutcome("archive exported before live-store commit")
+                raise UnknownOutcome("durably published archive exported before live-store commit")
 
             q = self.store._con()
             try:
@@ -103,6 +102,8 @@ class ArchiveMixin:
                 artifact2, manifest2 = self._build_archive(q, cp)
                 if manifest2 != manifest or sha(artifact2) != manifest.artifact_sha256:
                     raise ArchiveError("archive changed before commit")
+                if not publication.get("publication_durable"):
+                    raise ArchiveError("archive publication durability not established")
                 if not artifact_path.exists() or not manifest_path.exists():
                     raise ArchiveError("archive files missing")
                 if sha(artifact_path.read_bytes()) != manifest.artifact_sha256:
