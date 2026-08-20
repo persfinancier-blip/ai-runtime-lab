@@ -4,49 +4,49 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-LAB-058 — prove that concurrent authority-changing operations serialize on one authoritative root+recovery predecessor pair instead of allowing two individually valid but incompatible successors to commit.
+LAB-059 — prove durable transition-evidence/history integrity across restart after LAB-058 established local atomic serialization of root/recovery authority changes.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-057.
-- Next: Issue #108 / LAB-058 — READY.
-- Active implementation branch: none yet.
+- Completed: LAB-001 through LAB-058.
+- Next: Issue #109 / LAB-059 — READY.
+- LAB-058 implementation branch `lab/058-authority-transition-races` remains as source evidence; exact audited files were integrated to `main` via Contents API fallback.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-057 gave the recovery quorum an explicit authenticated lifecycle. Planned recovery-authority rotation now requires old-recovery threshold + new-recovery threshold + current-root threshold over the same canonical transition. Root break-glass recovery is bound to the exact current recovery authority ID/version/generation, and historical recovery records preserve the exact authority used.
+LAB-058 built a SQLite transactional/CAS reference model binding the exact predecessor `(root_id, recovery_authority_id, sequence)` at the commit boundary. Recovery-authority rotation and break-glass root recovery can both be individually cryptographically valid from one predecessor pair, but only one may become locally authoritative. The unsafe check-then-write seed accepted two incompatible successors; the corrected store serialized them.
 
-A separate authority audit found that the first corrected implementation did not preserve enough historical co-authorizing root material to re-verify a recovery-authority transition after a later root recovery. The final implementation persists root history and re-verifies the exact co-authorizing root after restart; a restart-after-root-recovery regression test covers the defect.
-
-Corrected deterministic tests passed 12/12; compileall passed. The unsafe self-authorized recovery-quorum swap failed as expected. Normal PR creation was blocked by an external safety-status gate before execution. `compare_commits` showed the branch ahead 5 / behind 0 with five new conflict-free files, so exact audited bytes were integrated via the normal Contents API fallback. Issue #107 was closed DONE.
+Corrected deterministic suite passed 11/11. A separate concurrency audit repeated the three race classes 20 times each (60 race tests total) with no double winner. Unsafe seed failed as expected. Compileall passed. Remote protocol/test blob SHAs matched locally executed sources. Branch compare was ahead 6 / behind 0 with six new conflict-free files, so exact audited bytes were integrated through the normal Contents API fallback. Issue #108 was closed DONE.
 
 ## Evidence produced
 
-- `experiments/recovery_authority_lifecycle/protocol.py`
-- `experiments/recovery_authority_lifecycle/tests/test_protocol.py`
-- `experiments/recovery_authority_lifecycle/tests/unsafe_self_swap_expected_failure.py`
-- `research/2026-08-20-recovery-authority-lifecycle.md`
-- Corrected suite: 12/12 passed.
-- Unsafe seed: failed as expected.
+- `experiments/authority_transition_races/protocol.py`
+- `experiments/authority_transition_races/tests/test_protocol.py`
+- `experiments/authority_transition_races/tests/unsafe_race_expected_failure.py`
+- `experiments/authority_transition_races/README.md`
+- `research/2026-08-20-authority-transition-races.md`
+- Corrected suite: 11/11 passed.
+- Repeated concurrency audit: 60/60 passed.
+- Unsafe seed: failed as expected because two conflicts were accepted.
 - Compileall: passed.
-- Remote protocol blob SHA `59ce325a692bd946abd1c628ec90956d17b37aa1` and corrected-test blob SHA `9779398cde7d2f2299e83506c4e0f7735f0a98bd` matched locally executed sources.
-- Follow-up Issue #108 / LAB-058 created.
+- Branch protocol blob SHA `ee5aacc787a6ac023d10540dea742243f7ac103e`; corrected-test blob SHA `500c099166495dedaced84b47472318928fcf033`; both matched locally executed sources before integration.
+- Follow-up Issue #109 / LAB-059 created.
 
 ## Known blockers / constraints
 
 - No active blocker.
+- Local serialization in one SQL store is not distributed consensus and cannot prevent forks across independently writable replicas.
+- Internal SQL history verification cannot by itself detect rollback of the entire database snapshot; LAB-034–037 external-anchor work remains the boundary for that class.
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is supported.
-- If both current root quorum and current recovery quorum are unavailable or compromised, there is deliberately no recursive in-band recovery path; an external bootstrap/ceremony is required.
-- Reliable gossip transport, Byzantine consensus, global total ordering, and fork prevention remain out of scope.
 
 ## Exact next action
 
-Start Issue #108 / LAB-058. Build a small transactional/CAS reference model whose commit boundary binds the exact predecessor `(root_id, recovery_authority_id)` pair. Reproduce an unsafe check-then-write race, then test recovery-authority rotation vs root recovery, competing recovery rotations, competing root recoveries, stale co-authorization/signatures after a winner commits, timeout/UNKNOWN reconciliation, restart, rollback/substitution, and durable winning-transition evidence. Perform a separate concurrency/authority audit. Explicitly document that local serialization does not provide distributed consensus or prevent forks across independently writable replicas. Integrate only after deterministic race tests and compileall pass.
+Start Issue #109 / LAB-059. Extend the LAB-058 transition record so exact threshold proof material is durable, then build restart verification that reconstructs bootstrap→head and re-verifies each historical transition against its historical predecessor authorities. Inject tampered predecessor/successor IDs, signer/signature corruption, missing/gapped transition rows, head/history mismatch, and unsafe evidence-trusting reconciliation. Keep database rollback resistance explicitly delegated to the existing external-anchor layer rather than duplicating LAB-034–037.
 
 ## Backlog
 
-- #108 / LAB-058 — atomic root/recovery transition serialization and race conformance — READY.
+- #109 / LAB-059 — transition-evidence integrity and restart history conformance — READY.
 - Reliable gossip transport, Byzantine consensus, and fork prevention remain out of scope unless evidence makes them the next correctness bottleneck.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
