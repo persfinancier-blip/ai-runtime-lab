@@ -4,49 +4,47 @@ Last updated: 2026-08-20
 
 ## Active objective
 
-Advance from time-aware authenticated CT log eligibility to an authenticated/versioned compliance-policy lifecycle so historical decisions are reproducible against the exact policy generation that governed them, while current/future evaluations cannot downgrade to stale weaker policy.
+Advance from authenticated temporal policy selection/replay to authenticating policy delivery itself and binding policy + CT trust metadata into one atomic authoritative bundle so independently valid but mismatched histories cannot be mixed.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-048.
-- Completed Issue #92 / LAB-048; PR #93 remote patch-audited and squash-merged as `c6eb43653447bdf7bc6916e0dbe4e4ccbecd101e`.
-- Active next: Issue #94 / LAB-049 — READY.
+- Completed: LAB-001 through LAB-049.
+- Completed Issue #94 / LAB-049; PR #95 remote patch-audited and squash-merged as `3eaf582e211b425e7798421105608f360fe1b1b2`.
+- Active next: Issue #96 / LAB-050 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-048 added authenticated temporal lifecycle/operator intervals over LAB-047 history. Historical mode evaluates lifecycle at evidence time so later retirement/distrust does not retroactively erase earlier attribution; current-policy mode evaluates lifecycle at policy time so old evidence cannot bypass a newer ineligibility transition. Operator identity is always resolved at evidence time. Caller-selected stale snapshots, frozen trust metadata, conflicting temporal events, and future-dated evidence fail closed.
+LAB-049 made compliance policy itself versioned, time-bounded, automatically selected by `policy_time`, cross-bound to the exact LAB-048 trust generation, and persisted into each decision by exact policy identity/version/generation/content digest/effective interval plus exact trust identity. Historical replay re-evaluates exact recorded policy+trust+evidence and cannot downgrade a new current decision.
 
-A separate audit fixed two defects before publication: operator changes are now bound to explicit authenticated `operator_since` timestamps rather than inferred snapshot-publication time, and `evidence_time > policy_time` is rejected.
+A separate remote audit added two fail-closed fixes before integration: successor policy snapshots must preserve stable `policy_id` lineage, and policy metadata cannot be published retroactively (`issued_at > effective_from`) or expire before becoming effective.
 
 ## Evidence produced
 
-- `experiments/ctv2_temporal_log_eligibility/`
-- `research/2026-08-20-ctv2-temporal-log-eligibility.md`
-- Corrected local deterministic suite: 15/15 passed.
-- Unsafe stale-snapshot baseline: expected failure demonstrating a caller-selected old ACTIVE snapshot can bypass later retirement.
-- `python -m compileall -q experiments/ctv2_temporal_log_eligibility` passed.
-- Exact remote protocol/test/unsafe Git blob SHAs matched the locally executed source.
-- PR #93 remote patch audit completed before integration.
-- Merge SHA: `c6eb43653447bdf7bc6916e0dbe4e4ccbecd101e`.
-- Fresh primary-source recheck: current Chromium CT metadata models timestamped log states and operator history; current Chromium policy resolves operator by timestamp and rejects stale log data; current log-list data uses `start_inclusive`/`end_exclusive` temporal intervals. RFC 9162 leaves concrete client policy local. RFC 5280 was used as a comparison temporal-validity mechanism and explicitly uses inclusive certificate validity endpoints.
+- `experiments/ctv2_temporal_policy_lifecycle/`
+- `research/2026-08-20-authenticated-temporal-policy-lifecycle.md`
+- Corrected local deterministic suite: 14/14 passed.
+- Unsafe caller-selected weak-policy baseline: expected failure demonstrating stale weaker policy can falsely accept evidence if callers choose policy directly.
+- `python -m compileall -q experiments/ctv2_temporal_policy_lifecycle` passed.
+- PR #95 remote patch audit completed after fixes.
+- Merge SHA: `3eaf582e211b425e7798421105608f360fe1b1b2`.
+- Primary donors: TUF version/expiry/rollback/freeze + mix-and-match protection; Chromium CT metadata version/timestamp/compatibility and PKI Metadata freshness rejection; RFC 5280 explicit temporal authority interval as comparison mechanism.
 
 ## Known blockers / constraints
 
 - Local shell DNS to GitHub remains unavailable/unreliable; GitHub connector plus local execution is the supported path.
-- LAB-048 is a reference temporal eligibility policy, not Chrome/browser certificate compliance policy.
-- LAB-047 authentication remains upstream authority; LAB-048 does not itself authenticate arbitrary snapshot objects.
-- LAB-047's minimal schema did not expose operator-history timestamps, so LAB-048 makes authenticated `operator_since` explicit instead of guessing from current ownership.
-- The compliance `Policy` object itself is still an unversioned trusted input. That is now the highest-value correctness gap.
+- LAB-049 still treats `AuthenticatedPolicyHistory.add_accepted()` as an upstream authentication boundary; it does not itself prove who authorized policy metadata.
+- Policy/trust compatibility is currently a generation range, not proof that both snapshots were issued in the same authoritative release.
+- Local LAB-049 tests used an interface-compatible LAB-048 shadow after inspection of the exact remote LAB-048 implementation; remote patch audit found no interface mismatch.
 
 ## Exact next action
 
-Start Issue #94 / LAB-049. Research authenticated/versioned policy lifecycle semantics using TUF signed-metadata version/expiry/rollback protections, current Chromium CT configuration/update mechanisms, and one additional primary-source temporal-policy mechanism. Build `experiments/ctv2_temporal_policy_lifecycle/` integrating with LAB-048. The evaluator must derive the authoritative policy snapshot from time, persist exact policy identity/version/generation/effective interval, reject stale-policy downgrade/substitution/mix-and-match, and support deterministic replay of historical decisions without allowing future policy transitions to rewrite them.
+Start Issue #96 / LAB-050. Research TUF snapshot/targets consistent-snapshot and mix-and-match protections, Sigstore/TUF TrustedRoot-style authenticated distribution, and one primary-source atomic multi-object update mechanism. Build `experiments/ctv2_policy_trust_bundle/` so an authenticated bundle binds exact policy digest + exact trust snapshot digest under one release identity/generation. Prove stale/rollback/substitution, policy/trust mix-and-match, partial update/crash, retry/idempotency, historical replay and signer/authority rotation behavior with deterministic tests. Keep general configuration-service design out of scope.
 
 ## Backlog
 
-- #94 / LAB-049 — authenticated temporal compliance-policy lifecycle and decision replay — READY.
+- #96 / LAB-050 — authenticated policy delivery + atomic trust-policy bundle — READY.
 - Independent witness/gossip transport reliability and Byzantine consensus remain intentionally out of scope unless later product requirements justify them.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
