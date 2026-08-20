@@ -11,7 +11,7 @@ LAB-064 — prove the filesystem durability boundary required before SQL may com
 - Completed: LAB-001 through LAB-063.
 - Issue #119 / LAB-064 — IN_PROGRESS.
 - Active branch: `lab/064-archive-publication-durability`.
-- Active draft PR: #120 at HEAD `0f8efd7a91f1dd30cc8684e48a33831f16e16f06` before this state-only commit.
+- Active draft PR: #120 at HEAD `14943e32c033e046596b5e356f5ce819cdc9bbbc` before this state-only synchronization commit.
 
 ## Last completed step
 
