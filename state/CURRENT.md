@@ -9,46 +9,45 @@ LAB-064 — prove the filesystem durability boundary required before SQL may com
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-063.
-- Completed Issue #117 / LAB-063.
-- Merged PR #118 / LAB-063 as `deecb1f5ddc629c60b9d140a3e792863c3441708`.
-- Next: Issue #119 / LAB-064 — READY.
-- Active branch: none yet.
-- Active PR: none.
+- Completed Issue #117 / LAB-063; PR #118 merged as `deecb1f5ddc629c60b9d140a3e792863c3441708`.
+- Issue #119 / LAB-064 — IN_PROGRESS.
+- Active branch: `lab/064-archive-publication-durability`.
+- Active PR: create a draft PR after this state update.
 
 ## Last completed step
 
-LAB-063 corrected its initial fake-layer-only gap and integrated scavenging with the real LAB-062 `SignedPrunableHistory`. Unreferenced content-addressed archive files are now reclaimed only after an authenticated reachability mark, a durable grace generation, a SQL write-locked reachability recheck, and content-address verification. Real `fail_after_archive=True`, committed-UNKNOWN, multi-archive reachability, restart, and compaction-vs-GC behavior were exercised; the race was repeated 20 times without an authoritative committed base referencing missing archive files.
+Primary-source research confirmed the gap: Linux `fsync(2)` explicitly states that syncing a file does not necessarily persist the containing directory entry and that an explicit directory `fsync()` is needed; POSIX rename provides atomic namespace replacement but that is not the same property as sudden-power-loss durability; SQLite's atomic-commit design independently synchronizes directory namespace changes and documents filesystem/storage assumptions.
 
-PR #118 was remote-audited and squash-merged as `deecb1f5ddc629c60b9d140a3e792863c3441708`; Issue #117 is DONE.
+An initial implementation slice now exists. `experiments/archive_publication_durability/protocol.py` defines `durable_publish()` as `write -> flush -> fsync(file) -> os.replace -> fsync(parent directory)` and returns a `PublicationReceipt` only after both file and directory barriers succeed. `require_durable_pair()` requires durable receipts for both artifact and manifest. Deterministic fault hooks cover write, file-fsync, rename, and directory-fsync boundaries, and an unsafe rename-only receipt is retained as a negative baseline.
+
+LAB-062 `experiments/signed_history_compaction/archive.py` now delegates `_atomic_file()` to this durable publisher. `compact()` will not open/commit its authoritative SQL mutation unless both publication receipts are durable and the artifact receipt digest matches the signed manifest. Focused unit and real signed-compaction integration tests have been added but have NOT yet been claimed as passed from the published branch source.
 
 ## Evidence produced
 
-- `experiments/archive_scavenging/protocol.py`
-- `experiments/archive_scavenging/tests/test_protocol.py`
-- `experiments/archive_scavenging/tests/test_signed_integration.py`
-- `experiments/archive_scavenging/tests/unsafe_eager_delete_expected_failure.py`
-- `research/2026-08-20-crash-safe-archive-scavenging.md`
-- Isolated algorithm suite: 9/9 passed; unsafe eager-delete seed failed as expected; compileall passed.
-- Real integration: uncommitted archive orphan reclaimed safely; committed archive protected; two compaction archives remained reachable; 20/20 compaction-vs-GC race repetitions preserved the authoritative-file invariant.
-- Linux `fsync(2)` confirms that syncing file data/metadata does not necessarily persist the containing directory entry; explicit directory `fsync()` is separately required.
-- SQLite atomic-commit documentation independently uses directory synchronization around journal namespace changes and documents filesystem/power-loss assumptions.
+- Issue #119 with primary donor links and explicit failure matrix.
+- `experiments/archive_publication_durability/protocol.py`
+- `experiments/archive_publication_durability/tests/test_protocol.py`
+- `experiments/archive_publication_durability/tests/test_signed_compaction_integration.py`
+- `experiments/archive_publication_durability/README.md`
+- `research/2026-08-20-archive-publication-durability.md`
+- Modified LAB-062 `experiments/signed_history_compaction/archive.py` to require durable artifact+manifest publication receipts before SQL commit.
+- A small local prototype of the same publication sequence was executed successfully before publication and confirmed injected failures at write/file-fsync/rename boundaries, but this is supporting evidence only; exact published branch tests remain to be executed.
 
 ## Known blockers / constraints
 
-- No active repository blocker.
-- Direct GitHub DNS/checkout was unavailable in the LAB-063 runtime; connector-retrieved repository source remained the authoritative source path and no GitHub Actions/workers were used.
-- LAB-062 `_atomic_file()` currently fsyncs the temporary file and then `os.replace()`s it, but does not fsync the parent directory. Atomic rename and durable namespace publication are therefore not yet equivalent in the lab's model.
-- Filesystem/storage durability depends on platform, filesystem, mount/storage stack and device behavior; LAB-064 must state assumptions and fail closed rather than claim universal power-loss guarantees.
-- Whole-store rollback/freshness remains delegated to LAB-034–037 external monotonic anchors.
-- PostgreSQL-specific locking/performance validation remains deferred until a representative runtime exists.
+- No design blocker.
+- Direct git/raw GitHub DNS was unavailable in this runtime, so exact branch checkout was not available through the shell. GitHub connector is the authoritative repository path.
+- Exact published LAB-064 tests and LAB-062/LAB-063 regression suites have not yet been executed as a complete branch-source suite; do not merge until they are.
+- A successful directory `fsync()` is still a platform/filesystem/storage-stack contract, not a universal physical-media guarantee. The research note must keep this boundary explicit.
+- Process-crash orphan cleanup remains LAB-063; whole-store rollback/freshness remains LAB-034–037.
 
 ## Exact next action
 
-Start Issue #119 / LAB-064. Extend the existing LAB-062 archive publication primitive rather than creating a parallel archive subsystem. Build an explicit publication state/fault model around `write temp -> fsync(file) -> rename/replace -> fsync(parent directory)` for both artifact and manifest, then prove that SQL compaction cannot commit an archive reference until both names have crossed the required durable publication barrier. Inject failures at each step, preserve LAB-062/LAB-063 semantics, and distinguish process-crash evidence from sudden power-loss/filesystem guarantees.
+Resume Issue #119 on `lab/064-archive-publication-durability`. Obtain/execute the exact published branch source through the best available connector/local reconstruction path. Run `archive_publication_durability` focused tests, then relevant LAB-062 signed-compaction and LAB-063 scavenging regressions plus compileall. Inspect failures and fix them. Perform a separate remote patch audit, including the modified existing LAB-062 `archive.py`. Only then mark acceptance criteria satisfied and merge.
 
 ## Backlog
 
-- #119 / LAB-064 — filesystem archive-publication durability and fsync-boundary conformance — READY.
+- #119 / LAB-064 — IN_PROGRESS.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
