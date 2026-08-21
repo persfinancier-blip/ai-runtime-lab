@@ -118,6 +118,25 @@ class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuity
             if row != (old.record_id, "ACTIVE", chain_commitment):
                 raise RetirementIntegrationError("successor lineage reconciliation failed")
 
+    def migrate_archive_namespace(self, permit):
+            # Keep retirement authority linear. Otherwise gen2->gen3 could make an
+            # unretired gen1 predecessor unreachable from the current one-step permit
+            # path. A later design may generalize this to a retirement queue, but the
+            # current correctness kernel fails closed instead of accumulating hidden
+            # superseded generations.
+            q = self.store._con()
+            try:
+                pending = q.execute(
+                    "SELECT COUNT(*) FROM archive_namespace_records WHERE status='RETIRED_PENDING'"
+                ).fetchone()[0]
+            finally:
+                q.close()
+            if pending:
+                raise RetirementIntegrationError(
+                    "retire the pending predecessor before another namespace migration"
+                )
+            return super().migrate_archive_namespace(permit)
+
     @property
     def _active_namespace_handle(self):
         return getattr(self._namespace_thread_state, "handle", None)
