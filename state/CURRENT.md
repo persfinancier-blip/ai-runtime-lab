@@ -4,49 +4,43 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-073 — replace LAB-072's trusted external-sink idempotency/reconciliation assumption with an explicit observed capability contract and fail-closed UNKNOWN policy.
+LAB-073 — replace LAB-072's trusted external-sink idempotency/reconciliation assumption with an authenticated, behaviorally verified capability contract and fail-closed UNKNOWN policy.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-072.
-- LAB-072 PR #136 squash-merged as `4f2b58abd08e80af175d5e75e29439de44f6d56a`; Issue #135 DONE.
 - Active Issue #137 / LAB-073 — IN_PROGRESS.
 - Active branch: `lab/073-sink-capability-contract`.
 - Draft PR #138 `[LAB-073] Sink idempotency/reconciliation capability contract`.
-- Current PR head at publication: `38b44c61f4a3c4bb538020fea702c75fd520c4db`.
+- Latest known PR HEAD after fixes/docs: refresh before integration; executable protocol/test commits include `2599f770...` and `1bae0099...`.
 
 ## Last completed step
 
-The previous integration-only LAB-072 blocker cleared: the normal draft→ready operation succeeded on the unchanged audited HEAD, followed by a normal squash merge.
+A separate security audit of PR #138 found two defects in the first slice. First, `observed=True` and `behavioral_probe_passed=True` were forgeable structural fields inside an adapter-constructible capability object. Second, `retention_seconds=None` accidentally behaved like an infinite idempotency window.
 
-No open issues remained, so the next correctness bottleneck was selected from LAB-072's explicit boundary: its strong timeout/UNKNOWN behavior requires a concrete sink to provide stable request-bound idempotency and, for automatic reconciliation, durable lookup of a committed result. LAB-073 turns this from an adapter assumption into a versioned capability contract.
-
-A first deterministic reference prototype was implemented and published. Policy is derived only from observed, behaviorally verified capabilities; adapter/tool self-description alone cannot upgrade retry authority. Capability generation changes invalidate stale plans, known idempotency retention expiry downgrades retry authority, and a later stronger capability observation cannot silently upgrade an already-issued plan.
+The protocol now separates adapter/provider capability claims from a trusted `ProbeAuthority`. The authority executes behavioral checks and authenticates the exact claim digest plus probe generation. Planner and broker verify that attestation before deriving retry authority. Claim substitution, forged attestation, stale probe generation, unknown retention and clock rollback fail closed.
 
 ## Evidence produced
 
-- `experiments/sink_capability_contract/protocol.py`
-- `experiments/sink_capability_contract/tests/test_protocol.py`
-- `experiments/sink_capability_contract/tests/unsafe_generic_retry_expected_failure.py`
-- `experiments/sink_capability_contract/README.md`
-- `research/2026-08-21-sink-capability-contract.md`
-- Local corrected suite before publication: 12/12 passed.
-- Unsafe generic-retry seed failed as intended because timeout-after-commit followed by a new retry key produced 2 side effects instead of 1.
+- Published protocol Git blob: `981b4a39ef3a69a02ebd087f2259077d38fb9270`.
+- Published corrected-tests Git blob: `c100506bc0bb6156ef8a4a5b137f1b17c5eb1a81`.
+- Local `git hash-object` matched both published blobs exactly.
+- Corrected exact executable-byte suite: 16/16 passed.
+- Unsafe generic-retry seed failed as intended with 2 side effects instead of 1.
 - compileall passed.
-- Primary-source evidence recorded from current AWS idempotency guidance, AWS Durable Execution replay/idempotency guidance, and Google Cloud idempotent-vs-non-idempotent retry guidance.
+- Research/README updated to document the authenticated probe boundary and conservative retention semantics.
 
 ## Known blockers / constraints
 
 - No owner-level blocker.
-- PR #138 is intentionally draft pending remote patch audit and exact published-source revalidation.
-- The first slice uses a deterministic simulated sink; it does not yet prove a generic behavioral-probe interface cannot be forged by adapter-returned metadata. The audit should specifically examine the trust boundary between probe execution and capability issuance.
-- `SAFE_RETRY_IDEMPOTENT_ONLY` intentionally does not auto-retry an already-UNKNOWN outcome when reconciliation is unavailable; a stable key makes duplicate processing less likely within its retention window but does not prove whether the first attempt committed.
-- Idempotency-key retention expiry is a real semantic boundary: after expiry, the generic broker must not assume the old key still deduplicates.
-- This work does not claim universal exactly-once delivery or distributed transactions.
+- PR #138 remains draft pending one fresh full remote patch audit after the latest protocol/tests/docs updates.
+- Behavioral probing can directly verify same-key deduplication, request binding and reconciliation, but cannot cheaply wait out a provider retention horizon; finite retention remains separately sourced contract material bound into the authenticated claim.
+- `SAFE_RETRY_IDEMPOTENT_ONLY` does not automatically repeat an already-UNKNOWN operation inside the generic broker when reconciliation is unavailable.
+- This work does not provide universal exactly-once delivery.
 
 ## Exact next action
 
-Re-fetch draft PR #138 at HEAD `38b44c61f4a3c4bb538020fea702c75fd520c4db`, fetch the full patch and perform a separate security/correctness audit. Focus on whether `observed=True` / `behavioral_probe_passed=True` can be structurally forged, whether retention-window boundaries are conservative enough, and whether an idempotent-but-non-reconcilable sink can ever safely auto-retry after an UNKNOWN outcome. Fix any findings in-branch, then reconstruct exact published bytes and rerun LAB-073 corrected/unsafe suites before considering ready/merge.
+Re-fetch full PR #138 and current HEAD, perform a fresh remote correctness/security audit of all five changed files. Specifically test whether the probe-attestation boundary can be bypassed through claim substitution, stale issuer/generation, same-generation capability mutation, or retention-time edge cases. If no blocker is found and executable blobs are unchanged, mark PR ready and squash-merge it, close Issue #137 DONE, then create the next highest-value issue from LAB-073's remaining concrete integration boundary.
 
 ## Backlog
 
