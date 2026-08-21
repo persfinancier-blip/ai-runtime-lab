@@ -40,8 +40,6 @@ class Tests(unittest.TestCase):
    delattr(os,'memfd_create');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
   finally:setattr(os,'memfd_create',original)
  def test_missing_sealing_primitive_routes_named_fallback(self):
-  with patch('experiments.memfd_credential_transport.protocol.fcntl.F_SEAL_WRITE',new=None,create=True):
-   original=fcntl.F_SEAL_WRITE
   saved=fcntl.F_SEAL_WRITE
   try:
    delattr(fcntl,'F_SEAL_WRITE');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
