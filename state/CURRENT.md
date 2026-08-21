@@ -4,54 +4,53 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-067 — prove a real authenticated, generation-bound retirement lifecycle for superseded LAB-066 archive namespace generations without giving current-generation LAB-063 scavenging implicit authority over historical/detached namespaces.
+LAB-068 — close the deferred LAB-027 crash gap for named credential-file fallback without deleting a file still owned by a live/recoverable process or trusting pathname-only identity.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-066.
-- LAB-066 Issue #123 DONE; PR #124 squash-merged as `6eabf19baa76e231d366e9a43d0a788d5421623b` after exact-source 58/58 regression evidence.
-- Active Issue #125 / LAB-067 — IN_PROGRESS.
-- Active branch: `lab/067-namespace-retirement`.
-- Draft PR #126 — current audited working HEAD `21e77f976ec1c05177072d3ec4ae7aa73b627eda`; GitHub reports mergeable, but it intentionally remains draft until exact-source execution.
+- Completed: LAB-001 through LAB-067.
+- LAB-067 Issue #125 DONE; PR #126 squash-merged as `a7b24440007b22ccc35ae358af0cdd287a84109f` after exact-source 64/64 regression evidence.
+- Active Issue #127 / LAB-068 — IN_PROGRESS.
+- Active branch: `lab/068-credential-scavenging`.
+- Draft PR #128 — published first slice at HEAD `ffc0c2df862f81ccedb6f209a3f0eca7325a8353`; merge intentionally blocked by audit findings below.
 
 ## Last completed step
 
-Resumed the unfinished LAB-067 first slice and integrated it with real `SignedPrunableHistory`/LAB-066 continuity rather than leaving it as an isolated authority model.
+Started LAB-068 and built the named-credential cleanup reference path using existing lab primitives: non-secret durable lease/evidence, cleanup-generation fencing, LAB-032 PID+starttime+fresh-pidfd process-instance reconciliation, LAB-065 no-symlink directory-FD namespace binding, keyed HMAC secret identity, and idempotent UNKNOWN-after-unlink reconciliation.
 
-The branch now persists a PREPARED migration intent before LAB-066 relocation, then predecessor→successor namespace lineage and `RETIRED_PENDING` state. Permit issuance re-audits the full currently reachable signed archive chain in the successor namespace and binds its commitment, exact predecessor/successor continuity IDs, both generations, and retirement-policy generation. Cleanup strongly reacquires the exact superseded namespace object and unlinks only content-addressed archive files relative to a held directory FD. Authorization is durable before cleanup and a retirement receipt/watermark is durable afterward. LAB-063 remains scoped to the current-generation namespace handle.
+The first local corrected slice passed 10/10 tests and the unsafe glob/path baseline failed as expected because it deleted a live child's credential file. Audit then found two deeper correctness defects:
+1. `(st_dev, st_ino)` can be reused immediately after unlink/recreate in the observed filesystem. `st_ctime_ns` detected the replacement but is not stable across writing the secret, so it cannot be the durable pre-write object authority.
+2. More importantly, the first published creation path writes+fsyncs secret bytes before inserting the durable lease. A crash in that window can leave plaintext filesystem debris with no authoritative lease. This is a merge blocker.
 
-A separate audit found and fixed two real design defects before merge eligibility:
-1. if continuity CAS committed but the process crashed before lineage finalization, restart could preinsert the current successor as a standalone ACTIVE row and then lose the predecessor through `INSERT OR IGNORE`; concrete `SignedPrunableHistory` reconciliation now verifies immutable row bytes and explicitly repairs predecessor/status/commitment;
-2. allowing gen2→gen3 while gen1 remained `RETIRED_PENDING` could strand gen1 outside the one-step permit path; another relocation is now fail-closed until the pending predecessor has a retirement receipt.
-
-Expanded real integration tests were added for signed-chain audit, restart receipt persistence, continuity-CAS crash reconciliation, crash-after-authorize, crash-after-cleanup, byte-identical and symlink replacement, unsupported strong reopen, incomplete successor chain, stale policy/commitment, current-generation protection, and LAB-063 generation fencing.
+A corrected local design now persists `PREPARED` non-secret intent before any secret bytes exist, allocates an empty 0600 file, captures/persists LAB-066-style opaque `name_to_handle_at` object evidence as `ALLOCATED`, only then writes+fsyncs the secret, and finally advances to `CREATED`. Cleanup compares the opaque file-handle evidence plus directory identity; ctime is retained only as a diagnostic observation. A live old-generation child still blocks deletion after credential rotation. This corrected local design passes 11/11 against interface-compatible copies of the existing LAB-032/LAB-065/LAB-066 dependencies.
 
 ## Evidence produced
 
-- Existing isolated LAB-067 authority model remains at `experiments/namespace_retirement/protocol.py` with prior observed corrected evidence 10/10, unsafe baseline failure, and compileall pass.
-- New real integration: `experiments/namespace_retirement/integration.py`.
-- New real integration tests: `experiments/namespace_retirement/tests/test_signed_integration.py`.
-- Concrete composition update: `experiments/signed_history_compaction/protocol.py`.
-- Research/README updated to describe the real lifecycle and remaining execution gate.
-- Draft PR #126 remote patch inspection found and fixed the two defects above.
-- Direct `git clone` was re-probed in this invocation and still failed with `Could not resolve host: github.com`.
+- Draft experiment: `experiments/credential_file_scavenging/protocol.py`.
+- Failure matrix: `experiments/credential_file_scavenging/tests/test_protocol.py`.
+- Unsafe seed: `experiments/credential_file_scavenging/tests/unsafe_glob_expected_failure.py`.
+- Research note: `research/2026-08-21-credential-file-scavenging.md`.
+- Draft PR #128 opened.
+- First published/local slice: 10/10 corrected tests passed; unsafe glob seed failed as expected.
+- Audit reproduction: byte-identical unlink/recreate reused `(dev,ino)` in the observed runtime.
+- Locally corrected PREPARED->ALLOCATED->secret-write design with opaque handle evidence: 11/11 passed against interface-compatible dependency copies.
+- Direct `git clone` was probed again and failed before checkout with `Could not resolve host: github.com`; therefore 11/11 is supporting development evidence, not exact published-source evidence.
 
 ## Known blockers / constraints
 
-- No owner-level blocker and no known remaining content defect from current remote inspection.
-- PR #126 remains intentionally draft because the newly integrated exact branch bytes have not yet been executed. Prior 10/10 evidence covers only the isolated reference slice and must not be misrepresented as real-integration evidence.
-- Direct shell GitHub DNS is unavailable in the observed runtime. Use connector reconstruction as the supported exact-source fallback if this persists.
-- Strong reacquisition remains fail-closed when the exact old object cannot be re-proven; never weaken retirement to pathname/byte equality.
-- The implementation intentionally leaves the emptied retired directory object in place. Removing the pathname itself would reintroduce an unlink-by-path TOCTOU race; this work is storage reclamation, not forensic erasure.
-- Whole-store rollback/freshness remains delegated to LAB-034–037.
+- PR #128 must remain draft. Its currently published code still has the audit-discovered secret-before-durable-lease creation-order defect and ctime-based object-identity design.
+- The corrected PREPARED/ALLOCATED + opaque file-handle version exists locally but has not yet been published to PR #128.
+- Direct shell GitHub DNS remains unavailable in this runtime. Connector reconstruction is the supported exact-source fallback.
+- Opaque file-handle support is runtime/filesystem dependent; named fallback must fail closed if the required strong identity cannot be captured. Do not silently downgrade to pathname or `(dev,ino)` alone.
+- Filesystem deletion is lifetime/storage reclamation, not forensic erasure.
+- A live child remains authoritative for lifetime even after credential rotation; stale credential generation alone is not deletion authority.
 
 ## Exact next action
 
-Resume draft PR #126 at HEAD `21e77f976ec1c05177072d3ec4ae7aa73b627eda`. First re-fetch PR metadata in case the head moved. Probe normal clone once; if DNS remains unavailable, reconstruct the exact executable branch files through the GitHub connector and verify each local file with `git hash-object` against its GitHub blob SHA. Execute: (1) real LAB-067 `test_signed_integration.py`; (2) isolated LAB-067 corrected/unsafe suites; (3) LAB-066 namespace-reacquisition protocol + signed-compaction restart integration regressions; (4) LAB-063 scavenger protocol + signed integration regressions; and (5) compileall for the affected experiment tree. Fix every observed failure, rerun the full matrix, then perform a fresh remote patch audit. Only after exact-source execution and a clean audit may PR #126 be marked ready and integrated; otherwise keep Issue #125 IN_PROGRESS with the precise failing case.
+Resume draft PR #128. Publish the locally corrected creation ordering and LAB-066 `name_to_handle_at` file-object evidence to `protocol.py`, add the crash-after-secret-write-before-READY regression, and update the research note to remove any implication that ctime is authoritative. Re-fetch the PR and perform a fresh remote patch audit. If direct clone remains unavailable, reconstruct exact PR #128 executable bytes plus the repository's actual LAB-027/LAB-032/LAB-065/LAB-066 dependencies through the GitHub connector, verify local `git hash-object` values against GitHub blob SHAs, and run: LAB-068 corrected + unsafe suites, relevant LAB-027 credential regressions, LAB-032 supervisor-restart/process-lifetime regressions, LAB-065 namespace-binding regressions, LAB-066 reacquisition regressions, and compileall. Fix every failure and rerun. Only after exact-source execution and a clean audit may PR #128 be marked ready/integrated and Issue #127 closed.
 
 ## Backlog
 
-- #125 / LAB-067 — authenticated namespace retirement and detached-generation cleanup — IN_PROGRESS.
-- Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
+- #127 / LAB-068 — crash-resilient credential-file scavenging and stale-secret cleanup — IN_PROGRESS.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
