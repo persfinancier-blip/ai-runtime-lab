@@ -6,9 +6,10 @@ from .verify import VerifyMixin
 from .archive import ArchiveMixin
 from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
 from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin
+from experiments.namespace_retirement.integration import NamespaceRetirementMixin
 
 
-class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
+class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
             self._namespace_thread_state = threading.local()
             self.store = store
@@ -64,6 +65,7 @@ class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchi
             finally:
                 q.close()
             self._init_restart_namespace_continuity()
+            self._init_namespace_retirement()
 
     @property
     def _active_namespace_handle(self):
