@@ -150,10 +150,14 @@ class TransactionalJournal:
             q.close()
 
     @staticmethod
-    def _effect_key(request: Request) -> str:
+    def _effect_key_from_digest(request_id: str, request_digest: str) -> str:
         return "broker-effect:" + hashlib.sha256(
-            (request.request_id + "\0" + request.digest).encode()
+            (request_id + "\0" + request_digest).encode()
         ).hexdigest()
+
+    @staticmethod
+    def _effect_key(request: Request) -> str:
+        return TransactionalJournal._effect_key_from_digest(request.request_id, request.digest)
 
     def reserve(self, request: Request) -> tuple[str, str, str | None]:
         digest = request.digest
@@ -284,7 +288,12 @@ class TransactionalJournal:
                     raise CorruptJournal("invalid digest")
                 if type(generation) is not int or generation < 1 or generation > meta[0][1]:
                     raise CorruptJournal("invalid generation")
-                if not isinstance(effect_key, str) or not effect_key or effect_key in seen_effects:
+                expected_effect_key = self._effect_key_from_digest(rid, digest)
+                if (
+                    not isinstance(effect_key, str)
+                    or effect_key != expected_effect_key
+                    or effect_key in seen_effects
+                ):
                     raise CorruptJournal("invalid effect key")
                 seen_effects.add(effect_key)
                 if status not in {"INTENT", "UNKNOWN", "CONFIRMED"}:
