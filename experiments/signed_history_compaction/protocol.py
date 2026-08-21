@@ -1,3 +1,5 @@
+import threading
+
 from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
@@ -6,6 +8,7 @@ from experiments.filesystem_namespace_binding.integration import NamespaceBoundA
 
 class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
+            self._namespace_thread_state = threading.local()
             self.store = store
             self.archive_dir = Path(archive_dir)
             self.archive_dir.mkdir(parents=True, exist_ok=True)
@@ -40,6 +43,18 @@ class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixi
                     )
             finally:
                 q.close()
+
+    @property
+    def _active_namespace_handle(self):
+        return getattr(self._namespace_thread_state, "handle", None)
+
+    @_active_namespace_handle.setter
+    def _active_namespace_handle(self, handle):
+        if handle is None:
+            if hasattr(self._namespace_thread_state, "handle"):
+                del self._namespace_thread_state.handle
+        else:
+            self._namespace_thread_state.handle = handle
 
 
 class UnsafeDeleteFirst:
