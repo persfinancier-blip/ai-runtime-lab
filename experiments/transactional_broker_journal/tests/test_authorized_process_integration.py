@@ -105,7 +105,10 @@ class ProcessIntegrationTests(unittest.TestCase):
             target.terminate()
             target.join(5)
             broker.close()
-            return results, journal, sink
+            record = journal.record("request-1")
+            sink_count = sink.apply_count()
+            durable_ok = journal.verify_durable()
+            return results, record, sink_count, durable_ok
 
     @staticmethod
     def body(payload: str = "payload", *, request_id: str = "request-1", generation: int = 1) -> dict:
@@ -138,22 +141,23 @@ class ProcessIntegrationTests(unittest.TestCase):
         return authority, journal, sink, worker
 
     def test_two_real_broker_processes_same_authorized_request_apply_once(self):
-        results, journal, sink = self._run_two([self.body(), self.body()])
+        results, record, sink_count, durable_ok = self._run_two([self.body(), self.body()])
         self.assertTrue(all(item[0] == "ok" for item in results), results)
-        self.assertEqual(sink.apply_count(), 1)
+        self.assertEqual(sink_count, 1)
         self.assertEqual(results[0][2], results[1][2])
-        self.assertEqual(journal.record("request-1")[1], "CONFIRMED")
-        self.assertTrue(journal.verify_durable())
+        self.assertEqual(record[1], "CONFIRMED")
+        self.assertTrue(durable_ok)
 
     def test_two_real_broker_processes_substitution_has_one_winner(self):
-        results, journal, sink = self._run_two([self.body("alpha"), self.body("beta")])
+        results, record, sink_count, durable_ok = self._run_two([self.body("alpha"), self.body("beta")])
         oks = [item for item in results if item[0] == "ok"]
         errors = [item for item in results if item[0] == "error"]
         self.assertEqual(len(oks), 1, results)
         self.assertEqual(len(errors), 1, results)
         self.assertEqual(errors[0][1], RequestConflict.__name__)
-        self.assertEqual(sink.apply_count(), 1)
-        self.assertEqual(journal.record("request-1")[1], "CONFIRMED")
+        self.assertEqual(sink_count, 1)
+        self.assertEqual(record[1], "CONFIRMED")
+        self.assertTrue(durable_ok)
 
     def test_failed_kernel_sender_authority_creates_no_reservation(self):
         ctx = mp.get_context("fork")
