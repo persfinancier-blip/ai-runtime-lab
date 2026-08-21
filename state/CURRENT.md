@@ -12,35 +12,34 @@ LAB-071 — make credential authority revocable at operation time by retaining r
 - Active Issue #133 / LAB-071 — IN_PROGRESS.
 - Active branch: `lab/071-brokered-credential-use`.
 - Draft PR: #134 `[LAB-071] Brokered credential use and revocable operation authority`.
-- Audited PR-head commit: `ebd9ac6b9b288ff2847fca6b666f5275049c2b35`.
+- Current branch commit after this run's fix: `78e5bc0015e625aa076a0d7be22fe4fa56baaa97`.
 
 ## Last completed step
 
-A fresh connector-based audit inspected the exact published PR #134 protocol and tests. It found a merge-blocking ordering defect in `CredentialBroker.execute`: current credential-generation validation happens before lookup of an already committed `request_id`. Thus `commit -> UNKNOWN -> credential rotation -> retry` incorrectly raises `StaleCredential` instead of reconciling the already committed effect. The same ordering would undermine durable restart reconciliation.
+Fixed the merge-blocking rotation/idempotency ordering defect directly on PR #134. `CredentialBroker.execute` now validates canonical request shape and computes the exact request digest, then reconciles an exact already-committed request before consulting current credential generation. Therefore rotation revokes genuinely new operations but does not make `commit -> UNKNOWN -> rotate -> retry` unrecoverable. Request-ID substitution remains fail-closed because a different digest is rejected before reconciliation.
 
-Issue #133 now records the defect and required correction. Direct shell clone was probed again in this run and failed because `github.com` DNS resolution was unavailable; connector reads succeeded. No exact-source test execution is claimed for this run.
+The fix was applied through the supported GitHub Contents API because connector access is available while direct shell GitHub access was unavailable in the prior run. No test execution is claimed for this run after the patch; exact-source execution remains a gate.
 
 ## Evidence produced
 
-- Published PR #134 protocol blob inspected: `52bc89d1ded9ad91f9e8f14104ae3cf445322d0e`.
-- Published PR #134 corrected test blob inspected: `df2194477fe2452b991002b35a36755a27c74016`.
-- Published unsafe seed blob inspected: `b98623b0c2e0a8c72b65d0faaf15a9456491704f`.
-- Existing prior evidence remains: LAB-071 local pre-publication corrected suite 10/10, unsafe socket-possession seed failed as expected, compileall passed, and live SCM_CREDENTIALS probe distinguished target/grandchild PIDs over the same transferred socket FD.
-- New audit counterexample: an effect committed under generation N cannot currently be reconciled after rotation to N+1 because stale-generation rejection precedes idempotency lookup.
+- Previous published protocol blob: `52bc89d1ded9ad91f9e8f14104ae3cf445322d0e`.
+- Corrected protocol blob: `52237a188fed35dc2c0048b7664a78962e302e39`.
+- Corrected branch commit: `78e5bc0015e625aa076a0d7be22fe4fa56baaa97`.
+- Prior evidence remains: LAB-071 local pre-publication corrected suite 10/10, unsafe socket-possession seed failed as expected, compileall passed, and live SCM_CREDENTIALS probe distinguished target/grandchild PIDs over the same transferred socket FD.
+- The previously recorded counterexample is structurally fixed: committed-effect lookup now precedes stale-generation rejection while exact digest binding is preserved.
 
 ## Known blockers / constraints
 
 - No owner-level/external blocker.
 - PR #134 remains intentionally draft.
-- Merge blocker: fix idempotency/reconciliation ordering so an exact already-committed request can be reconciled after rotation, while a new request under a stale generation remains rejected and request-ID substitution still fails closed.
+- Required regression tests for `UNKNOWN -> rotate -> exact retry` and `request_id substitution after rotation` still need to be added and executed from exact published bytes.
 - Broker restart/durable permit recovery remains incomplete. Persist only non-secret permit/effect identity; never persist a pidfd or treat numeric PID as authority after restart. Reacquire using PID/starttime plus a fresh pidfd before consequential use.
-- Direct shell GitHub access is unavailable in this run due DNS; GitHub connector is available for durable repository operations.
 - SCM_CREDENTIALS/SO_PASSCRED remain Linux-specific; privileged credential spoofing capabilities must not be delegated to an untrusted target.
 - Broker mediation revokes future operations, not results/data already returned.
 
 ## Exact next action
 
-Resume Issue #133 / PR #134. First fix the published branch so canonical request shape/digest and durable-effect lookup occur before current-generation rejection for exact retries: `commit -> UNKNOWN -> rotate -> retry` must return the prior committed receipt, while request-ID substitution after rotation must still fail and any genuinely new stale-generation request must be rejected. Add both regressions. Then implement the narrow durable restart layer: persist non-secret permit/effect identity, reacquire target authority after restart using saved PID/starttime plus a fresh pidfd, and never accept caller-provided numeric PID as authority. Execute exact LAB-071 corrected/unsafe suites plus LAB-069/LAB-070/LAB-031 regressions and compileall from exact published bytes; perform a second remote audit before marking PR #134 ready or merging.
+Resume Issue #133 / PR #134. Add explicit regressions proving `commit -> UNKNOWN -> rotate -> exact retry` returns the prior receipt with no second effect, while same request_id with changed content after rotation is rejected and a genuinely new stale-generation request is rejected. Then implement the narrow durable restart layer: persist non-secret permit/effect identity, reacquire target authority after restart using saved PID/starttime plus a fresh pidfd, and never accept caller-provided numeric PID as authority. Execute exact LAB-071 corrected/unsafe suites plus LAB-069/LAB-070/LAB-031 regressions and compileall from exact published bytes; perform a second remote audit before marking PR #134 ready or merging.
 
 ## Backlog
 
