@@ -273,6 +273,68 @@ class Tests(unittest.TestCase):
                     self.capability(authority, generation=1, retention=1000)
                 )
 
+    def test_capability_head_change_between_observe_and_insert_blocks_stale_intent(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            cap1 = self.capability(authority, generation=1)
+            cap2 = self.capability(authority, generation=2)
+            original = bound.observe_capability
+            fired = {"done": False}
+
+            def racing_observe(capability):
+                claim = original(capability)
+                if capability.claim.generation == 1 and not fired["done"]:
+                    fired["done"] = True
+                    original(cap2)
+                return claim
+
+            bound.observe_capability = racing_observe
+            with self.assertRaises(cap.StaleCapability):
+                bound.reserve(
+                    Request("r", "task", "scope", 1, "payload"), cap1, now=0
+                )
+            q = journal._con()
+            try:
+                self.assertEqual(
+                    q.execute("SELECT COUNT(*) FROM broker_requests").fetchone()[0], 0
+                )
+            finally:
+                q.close()
+
+    def test_durable_verifier_rejects_request_capability_ahead_of_head(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            request = Request("r", "task", "scope", 1, "payload")
+            bound.reserve(request, self.capability(authority, generation=1), now=0)
+            q = sqlite3.connect(Path(td) / "journal.db")
+            q.execute(
+                "UPDATE broker_requests SET capability_generation=2 WHERE request_id='r'"
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(CapabilityBindingError):
+                bound.verify_durable()
+
+    def test_rotation_to_no_reconciliation_capability_cannot_probe_unknown_effect(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            request = Request("r", "task", "scope", 1, "payload")
+            worker = self.worker(bound, sink)
+            with self.assertRaises(UnknownOutcome):
+                worker.process(
+                    request,
+                    self.capability(authority, generation=1, reconcile=True),
+                    now=0,
+                    timeout_after_commit=True,
+                )
+            with self.assertRaises(CapabilityExecutionBlocked):
+                worker.process(
+                    request,
+                    self.capability(authority, generation=2, reconcile=False),
+                    now=1,
+                )
+            self.assertEqual(sink.apply_count(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
