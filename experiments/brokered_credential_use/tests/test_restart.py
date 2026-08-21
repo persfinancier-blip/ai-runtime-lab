@@ -67,6 +67,29 @@ class RestartTests(unittest.TestCase):
                 finally:b2.close()
             finally:p.kill(); p.wait(timeout=2); bs.close()
 
+    def test_unknown_rotate_restart_exact_retry_returns_prior_receipt(self):
+        with tempfile.TemporaryDirectory() as td:
+            state=Path(td)/'broker.json'; bs,s=credential_socketpair(); p=spawn(s.fileno(),[req('r'),req('r')],delay=.35); s.close()
+            b1=CredentialBroker(b'old',state_path=state)
+            try:
+                permit1=b1.permit('task','seller-read',p.pid)
+                with self.assertRaises(UnknownOutcome):
+                    b1.execute(recv_kernel_request(bs),permit1,timeout_after_commit=True)
+                prior=b1._effects['r'][1]
+                b1.rotate(b'new')
+                b1.close()
+                b2=CredentialBroker(b'new',generation=2,state_path=state)
+                try:
+                    permit2=b2.reacquire_permit('task','seller-read')
+                    ev=b2.execute(recv_kernel_request(bs),permit2)
+                    self.assertEqual(ev.outcome,'ALREADY_COMMITTED')
+                    self.assertEqual(ev.receipt,prior)
+                    self.assertEqual(b2.apply_count,1)
+                finally:
+                    b2.close()
+            finally:
+                b1.close(); p.kill(); p.wait(timeout=2); bs.close()
+
     def test_restart_rejects_wrong_supplied_credential_generation(self):
         with tempfile.TemporaryDirectory() as td:
             state=Path(td)/'broker.json'; b1=CredentialBroker(b'old',state_path=state)
