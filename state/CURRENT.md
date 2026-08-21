@@ -4,54 +4,62 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-065 — bind durable archive publication to the exact authorized filesystem directory object so symlink/path-prefix/CWD substitution cannot redirect publication between configuration, authorization, receipt validation, and SQL commit.
+LAB-066 — reconstruct archive namespace authority after process restart without silently trusting a pathname, recycled inode/mount identifier, or byte-identical replacement directory; safely classify detached artifacts and intentional relocation.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-064.
-- Active Issue #121 / LAB-065 — IN_PROGRESS.
-- Active branch: `lab/065-filesystem-namespace-binding`.
-- Active draft PR: #122.
-- Current tested/audited target HEAD after this run: `e61b6a707b1319477d37526dcc4232d73df9ac7a` (not yet exact-source regression executed).
+- Completed: LAB-001 through LAB-065.
+- Completed Issue #121 / LAB-065.
+- Merged PR #122 / LAB-065 as `ff5fb48f2971ff50859607584bd309e9f3d515c1`.
+- Active Issue #123 / LAB-066 — IN_PROGRESS.
+- Active branch: `lab/066-namespace-reacquisition`.
+- Active PR: none yet.
 
 ## Last completed step
 
-A fresh audit resumed PR #122 and re-probed direct checkout. Shell `git clone` still failed with `Could not resolve host: github.com`, so connector reconstruction remains the supported fallback.
+LAB-065 exact-source validation was completed after reconstructing the current PR HEAD through the GitHub connector because direct shell checkout still could not resolve `github.com`. Executable source/test files were verified with `git hash-object` against GitHub blob IDs.
 
-The audit then found a new namespace-authority defect: `SignedPrunableHistory.__init__` retained `archive_dir` as a relative `Path`. If the process changed cwd after object construction, both authorization and `_archive_paths()` could silently retarget the same history object to a different directory. This violated LAB-065's stable namespace-authority goal even without a symlink attack.
+A final audit found one additional pre-authorization side effect: `Path.mkdir(parents=True)` in `SignedPrunableHistory.__init__` could create a missing archive directory through an intermediate symlink before the later openat2 boundary rejected the path. It was replaced with component-by-component directory creation from `/` using held dirfds plus `O_NOFOLLOW`, and a regression proves no directory is created under the symlink target.
 
-The branch now binds the configured archive directory lexically to an absolute path at construction using `os.path.abspath(os.fspath(archive_dir))`; it deliberately does not use `Path.resolve()` and therefore does not bless symlink traversal. A real SignedPrunableHistory regression changes cwd after construction, creates a competing relative `archives` directory under the new cwd, performs compaction, and requires bytes to appear only under the original construction-time directory.
+Observed current-HEAD results: LAB-065 isolated 11/11; LAB-065 real SignedPrunableHistory integration 8/8; LAB-062 signed compaction 15/15; LAB-064 publication core 10/10; LAB-064 signed integration 6/6; LAB-063 scavenging core 9/9; LAB-063 real signed integration 4/4; relevant compileall passed. Exact unsafe lexical-path baseline failed as expected after retargeting to an attacker directory. `main` had advanced only in this state file, with no code overlap. PR #122 was marked ready and squash-merged normally.
 
-The earlier full-root `openat2` path-prefix fix and thread-local namespace-handle fix remain in place.
+LAB-066 was then selected as the next correctness bottleneck. Primary-source research confirms that Linux opaque file handles can cross processes but are filesystem-dependent, can become stale, and `open_by_handle_at` requires `CAP_DAC_READ_SEARCH`; mount IDs are not universal persistent filesystem identities.
+
+A real runtime probe observed:
+- Linux 6.18.35 x86_64;
+- libc exposes `name_to_handle_at` and `open_by_handle_at`;
+- `name_to_handle_at` succeeded for a real directory with an 8-byte type-1 handle and mount id 50;
+- `open_by_handle_at` failed `EPERM` because the runtime lacks `CAP_DAC_READ_SEARCH`;
+- `/proc/sys/kernel/random/boot_id` is available for explicit same-boot classification.
 
 ## Evidence produced
 
-- Direct shell clone retried: failed before checkout due DNS resolution of `github.com`.
-- PR #122 current HEAD after fixes: `e61b6a707b1319477d37526dcc4232d73df9ac7a`; GitHub reports it mergeable and still draft.
-- `experiments/signed_history_compaction/protocol.py` audit fix commit: `5252b619decad734794239d2c1c376db0cd01add`.
-- Relative-path/CWD regression commit: `e61b6a707b1319477d37526dcc4232d73df9ac7a`.
-- Earlier isolated LAB-065 evidence remains: 11/11 corrected tests passed, unsafe lexical seed failed as expected, compileall passed, runtime openat2 probe succeeded on x86_64.
-- Exact connector bytes for current LAB-065 protocol/integration and key LAB-062/LAB-064 dependencies were inspected in this run, but the complete updated dependency closure has not yet been executed; do not claim the current HEAD validated.
+- LAB-065 merge: `ff5fb48f2971ff50859607584bd309e9f3d515c1`.
+- LAB-065 tested PR HEAD: `bb05c9dfee2c470748e4327c437445dcb9e861dd`.
+- Key exact blobs included namespace protocol `d7b3ea96631e5b1fdf312953db23d55f0dbfc52a`, integration `0aca43fc493d8041d2538b9d53c1ada992494da6`, signed-compaction protocol `02d9277e35bef52021bff039196fb55719dfb6d2`, and constructor/integration tests `8e38d5a8c3b9ae8cf4ad83f80dddd7429c7be4ee`.
+- Issue #121 closed DONE; completion evidence recorded in its comment thread.
+- Issue #123 / LAB-066 created and moved to IN_PROGRESS.
+- Branch `lab/066-namespace-reacquisition` created from current main.
+- LAB-066 capability probe recorded in Issue #123.
 
 ## Known blockers / constraints
 
-- PR #122 must remain draft until exact-source execution of current HEAD is observed.
-- Direct shell GitHub DNS is unavailable in this runtime; connector reconstruction is the safe supported fallback.
-- Required merge gate remains: LAB-065 isolated + SignedPrunableHistory integration, LAB-064 focused + integration regressions, LAB-062 suite, LAB-063 unit + real signed integration regressions, compileall, then final unchanged-HEAD remote patch audit.
-- x86_64 openat2 syscall mapping intentionally fails closed on unsupported architectures.
-- Full-root openat2 removes symlink components from configured absolute path authorization but does not claim mount-namespace/chroot/bind-mount immutability.
-- Directory fsync remains an OS/filesystem/storage-stack durability contract, not a universal physical-media guarantee.
-- Namespace-detached non-authoritative bytes after relocation remain a follow-up cleanup/reacquisition concern.
+- No owner-level blocker.
+- Direct shell GitHub DNS remains unavailable in this runtime; GitHub connector reconstruction is the supported fallback when exact source is needed.
+- `open_by_handle_at` is not currently usable because `CAP_DAC_READ_SEARCH` is absent even though `name_to_handle_at` succeeds. LAB-066 must treat this as an observed capability limitation, not silently weaken authority to pathname-only trust.
+- `st_dev/st_ino` and mount IDs must not be described as universal cross-reboot identities.
+- Opaque handles may be unsupported or stale depending on filesystem/runtime.
+- Intentional archive relocation must be an authenticated namespace-generation transition, not automatic path rebinding.
 - Whole-store rollback/freshness remains LAB-034–037.
+- Local cleanup is not forensic secure erasure.
 
 ## Exact next action
 
-Resume Issue #121 / draft PR #122 at HEAD `e61b6a707b1319477d37526dcc4232d73df9ac7a`. First retry normal checkout; if DNS still fails, finish reconstructing the exact runnable dependency closure through GitHub connector and verify every executable file with `git hash-object` against GitHub blob IDs. Execute the full LAB-065/064/062/063 regression matrix and compileall, including the new cwd-retarget regression. Fix any failure. Then re-fetch the unchanged tested PR HEAD, perform a final remote patch audit, and only after a clean result mark ready/integrate and close #121 DONE.
+Resume Issue #123 on branch `lab/066-namespace-reacquisition`. First implement the minimal authenticated namespace-continuity record and capability/identity-strength model. Use real LAB-065 openat2 path reauthorization on restart. Build deterministic cases for unchanged object, symlink/path replacement with copied valid archive bytes, missing/detached directory, unavailable/stale strong handle, tampered continuity record, and explicit migration/rebind that advances a namespace generation and fences stale evidence. Keep `open_by_handle_at` optional and capability-gated; the current runtime should produce an explicit `UNSUPPORTED_STRONG_REACQUISITION` path where elevated reopen cannot be demonstrated. Integrate with real SignedPrunableHistory and LAB-063 before declaring DONE.
 
 ## Backlog
 
-- #121 / LAB-065 — filesystem namespace identity and symlink/CWD-swap conformance — IN_PROGRESS.
-- Candidate after LAB-065: persisted namespace identity/reacquisition and cleanup of namespace-detached non-authoritative archive artifacts after restart/path relocation.
+- #123 / LAB-066 — restart namespace reacquisition and detached-artifact reconciliation — IN_PROGRESS.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
