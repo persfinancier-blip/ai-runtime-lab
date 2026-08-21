@@ -9,6 +9,7 @@ from pathlib import Path
 
 from experiments.brokered_credential_use.protocol import (
     CredentialBroker,
+    ReceivedRequest,
     UnauthorizedSender,
     credential_socketpair,
     recv_kernel_request,
@@ -76,8 +77,11 @@ class ProcessIntegrationTests(unittest.TestCase):
             sink = IdempotentSink(sink_path)
             broker, sender = credential_socketpair()
             ready_r, ready_w = os.pipe()
-            target = ctx.Process(target=_sender, args=(sender.detach(), bodies, ready_w))
+            sender_fd = sender.detach()
+            target = ctx.Process(target=_sender, args=(sender_fd, bodies, ready_w))
             target.start()
+            # Do not let broker workers inherit an ambient sender capability.
+            os.close(sender_fd)
             os.close(ready_w)
             self.assertEqual(os.read(ready_r, 1), b"1")
             os.close(ready_r)
@@ -140,8 +144,6 @@ class ProcessIntegrationTests(unittest.TestCase):
             try:
                 permit = authority.permit("task", "read", sleeper.pid)
                 # No durable reservation is allowed before the LAB-071 process-instance check.
-                from experiments.brokered_credential_use.protocol import ReceivedRequest
-
                 forged = ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
                 worker = KernelAuthorizedBrokerWorker(
                     authority=authority,
@@ -158,6 +160,57 @@ class ProcessIntegrationTests(unittest.TestCase):
                 authority.close()
                 sleeper.terminate()
                 sleeper.join(5)
+
+    def test_exact_committed_retry_survives_journal_rotation(self):
+        with tempfile.TemporaryDirectory() as td:
+            authority = CredentialBroker(b"unused", 1)
+            journal = TransactionalJournal(Path(td) / "journal.db", 1)
+            sink = IdempotentSink(Path(td) / "sink.db")
+            try:
+                permit = authority.permit("task", "read", os.getpid())
+                received = ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
+                worker = KernelAuthorizedBrokerWorker(
+                    authority=authority,
+                    permit=permit,
+                    journal=journal,
+                    sink=sink,
+                    secret=b"effect-secret",
+                )
+                first = worker.process_received(received)
+                self.assertEqual(first.outcome, "COMMITTED")
+                self.assertEqual(journal.rotate(), 2)
+                retry = worker.process_received(received)
+                self.assertEqual(retry.outcome, "ALREADY_COMMITTED")
+                self.assertEqual(retry.receipt, first.receipt)
+                self.assertEqual(sink.apply_count(), 1)
+            finally:
+                authority.close()
+
+    def test_substitution_after_rotation_still_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            authority = CredentialBroker(b"unused", 1)
+            journal = TransactionalJournal(Path(td) / "journal.db", 1)
+            sink = IdempotentSink(Path(td) / "sink.db")
+            try:
+                permit = authority.permit("task", "read", os.getpid())
+                worker = KernelAuthorizedBrokerWorker(
+                    authority=authority,
+                    permit=permit,
+                    journal=journal,
+                    sink=sink,
+                    secret=b"effect-secret",
+                )
+                worker.process_received(
+                    ReceivedRequest(self.body("alpha"), os.getpid(), os.getuid(), os.getgid())
+                )
+                self.assertEqual(journal.rotate(), 2)
+                with self.assertRaises(RequestConflict):
+                    worker.process_received(
+                        ReceivedRequest(self.body("beta"), os.getpid(), os.getuid(), os.getgid())
+                    )
+                self.assertEqual(sink.apply_count(), 1)
+            finally:
+                authority.close()
 
 
 if __name__ == "__main__":
