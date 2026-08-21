@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from experiments.filesystem_namespace_binding.protocol import NamespaceMismatch, PathEscape
+from experiments.namespace_reacquisition.integration import NamespaceAuthorityUnavailable
 from experiments.signed_history_compaction.protocol import SignedPrunableHistory
 from experiments.signed_history_compaction.tests.test_protocol import ChainBuilder
 
@@ -56,7 +57,7 @@ class SignedCompactionNamespaceIntegrationTests(unittest.TestCase):
             def swap(_handle):
                 archive.rename(original); os.symlink(attacker, archive, target_is_directory=True)
             layer._after_namespace_authorized = swap
-            with self.assertRaises(NamespaceMismatch): layer.compact(checkpoint)
+            with self.assertRaises((NamespaceMismatch, NamespaceAuthorityUnavailable)): layer.compact(checkpoint)
             self.assert_uncompacted(layer); self.assertEqual(list(attacker.iterdir()), []); self.assertTrue(original.is_dir())
 
     def test_swap_after_publication_receipt_fails_before_sql_commit(self):
@@ -66,7 +67,7 @@ class SignedCompactionNamespaceIntegrationTests(unittest.TestCase):
             def swap(_handle, manifest):
                 published["archive_id"] = manifest.archive_id; archive.rename(original); os.symlink(attacker, archive, target_is_directory=True)
             layer._after_namespace_published = swap
-            with self.assertRaises(NamespaceMismatch): layer.compact(checkpoint)
+            with self.assertRaises((NamespaceMismatch, NamespaceAuthorityUnavailable)): layer.compact(checkpoint)
             self.assert_uncompacted(layer); aid = published["archive_id"]; self.assertIsNotNone(aid)
             self.assertTrue((original / f"{aid}.json").exists()); self.assertTrue((original / f"{aid}.manifest.json").exists()); self.assertEqual(list(attacker.iterdir()), [])
 

@@ -5,18 +5,33 @@ from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
 from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
+from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin
 
 
-class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
+class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
             self._namespace_thread_state = threading.local()
             self.store = store
             # Bind a relative configured path to the process namespace at construction.
             # Later cwd changes must not silently retarget archive publication authority.
             self.archive_dir = Path(os.path.abspath(os.fspath(archive_dir)))
-            # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks and
-            # can create external state before LAB-065's namespace authorization.
-            self._ensure_archive_directory_exists()
+            # On first initialization LAB-065 may create the archive directory safely.
+            # On restart, however, a missing/detached authoritative directory must not
+            # be silently replaced by a newly-created pathname object before LAB-066
+            # has a chance to classify the loss of continuity.
+            probe = self.store._con()
+            try:
+                continuity_table = probe.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='archive_namespace_continuity'"
+                ).fetchone()
+                persisted_continuity = bool(continuity_table) and probe.execute(
+                    "SELECT 1 FROM archive_namespace_continuity WHERE singleton=1"
+                ).fetchone() is not None
+            finally:
+                probe.close()
+            if not persisted_continuity:
+                # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks.
+                self._ensure_archive_directory_exists()
             self.key = checkpoint_key
             self.anchor = external_anchor_id
             if not self.key or not self.anchor:
@@ -48,6 +63,7 @@ class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixi
                     )
             finally:
                 q.close()
+            self._init_restart_namespace_continuity()
 
     @property
     def _active_namespace_handle(self):
