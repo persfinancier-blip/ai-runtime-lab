@@ -99,6 +99,21 @@ class RestartNamespaceContinuityMixin:
             raise NamespaceAuthorityUnavailable("archive namespace generation mismatch")
         return record
 
+    def _namespace_handle(self):
+        """Acquire LAB-065 dirfd and bind it to the authenticated continuity object.
+
+        This closes the gap between a successful pathname reacquisition and a later
+        directory-FD acquisition: even if the path is swapped and swapped back during
+        that interval, the held FD must name the exact `(st_dev, st_ino)` recorded in
+        the authenticated continuity record.
+        """
+        record = self.require_namespace_authority()
+        handle = super()._namespace_handle()
+        if (handle.directory.st_dev, handle.directory.st_ino) != (record.st_dev, record.st_ino):
+            handle.close()
+            raise NamespaceAuthorityUnavailable("acquired directory FD does not match continuity record")
+        return handle
+
     def migrate_archive_namespace(self, permit: MigrationPermit):
         old = self._namespace_continuity_record
         new = migrate(old, permit, self.key)
