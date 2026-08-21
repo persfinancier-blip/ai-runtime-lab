@@ -73,15 +73,17 @@ def verify_seals(transport:MemfdTransport):
     required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL
     return transport.sealed and (got & required)==required
 
-def path_compatibility_probe(transport:MemfdTransport):
+def python_path_consumer_probe(transport:MemfdTransport):
     try: return child_read_via_path(transport)==os.pread(transport.fd,1<<20,0)
     except (subprocess.SubprocessError,OSError): return False
 
-def route_for_path_only_tool(vault:MemfdVault,permit:CredentialPermit):
+def route_for_path_only_tool(vault:MemfdVault,permit:CredentialPermit,*,compatibility_probe):
     try: t=vault.open_transport(permit)
     except UnsupportedMemfd as exc: return {'route':'LAB-068_NAMED_FALLBACK','reason':str(exc)}
-    if not path_compatibility_probe(t):
-        t.close(); return {'route':'LAB-068_NAMED_FALLBACK','reason':'procfd path incompatible'}
+    try: compatible=bool(compatibility_probe(t))
+    except Exception: compatible=False
+    if not compatible:
+        t.close(); return {'route':'LAB-068_NAMED_FALLBACK','reason':'target-specific procfd path incompatible or unverified'}
     return {'route':'MEMFD_PROCFD','transport':t}
 
 class UnsafeNamedPath:
