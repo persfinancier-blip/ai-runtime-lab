@@ -276,7 +276,11 @@ class TransactionalJournal:
             for rid, digest, generation, effect_key, status, receipt in rows:
                 if not isinstance(rid, str) or not rid:
                     raise CorruptJournal("invalid request id")
-                if not isinstance(digest, str) or len(digest) != 64:
+                if (
+                    not isinstance(digest, str)
+                    or len(digest) != 64
+                    or any(char not in "0123456789abcdef" for char in digest)
+                ):
                     raise CorruptJournal("invalid digest")
                 if type(generation) is not int or generation < 1 or generation > meta[0][1]:
                     raise CorruptJournal("invalid generation")
