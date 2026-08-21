@@ -106,7 +106,7 @@ class CredentialLeaseStore:
             if q.in_transaction:q.rollback()
             raise
         finally:q.close()
-    def create_named_fallback(self,*,task_id,credential_id,scope,secret,directory,credential_generation=None,simulate_crash_after_secret_write=False):
+    def create_named_fallback(self,*,task_id,credential_id,scope,secret,directory,credential_generation=None,simulate_crash_after_secret_write=False,simulate_crash_after_partial_write=False):
         generation=self.current_credential_generation() if credential_generation is None else credential_generation
         absolute=os.path.abspath(os.fspath(directory)); lease_id=str(uuid.uuid4()); name=f'cred-{lease_id}.tmp'; fingerprint=fp(self.audit_key,secret)
         with open_ns(absolute) as ns:
@@ -130,7 +130,11 @@ class CredentialLeaseStore:
                 evidence=_handle_for(ns,name)
                 fileid=_file_identity(st,evidence)
                 self._set_status(lease_id,'PREPARED','ALLOCATED',file=fileid)
-                os.write(fd,secret); os.fsync(fd)
+                if simulate_crash_after_partial_write:
+                    prefix=secret[:max(1,len(secret)//2)]; os.write(fd,prefix); os.fsync(fd); raise SimulatedCreationCrash(lease_id)
+                offset=0
+                while offset<len(secret): offset+=os.write(fd,secret[offset:])
+                os.fsync(fd)
                 if simulate_crash_after_secret_write: raise SimulatedCreationCrash(lease_id)
                 self._set_status(lease_id,'ALLOCATED','READY')
             return self.load(lease_id)
@@ -187,7 +191,7 @@ class CredentialLeaseStore:
                 if not chunk:break
                 data+=chunk
         finally:os.close(fd)
-        if data and not hmac.compare_digest(fp(self.audit_key,data),lease.fingerprint): ns.close(); raise SecretIdentityMismatch('content mismatch')
+        if lease.status!='ALLOCATED' and not hmac.compare_digest(fp(self.audit_key,data),lease.fingerprint): ns.close(); raise SecretIdentityMismatch('content mismatch')
         return ns
     def cleanup(self,lease_id,*,expected_cleanup_generation,simulate_unknown_after_unlink=False):
         q=self._con(); ns=None
