@@ -1,6 +1,5 @@
 import fcntl,json,os,tempfile,unittest
 from pathlib import Path
-from unittest.mock import patch
 from experiments.memfd_credential_transport.protocol import *
 SECRET=b'memfd-secret-value'
 class Tests(unittest.TestCase):
@@ -32,21 +31,25 @@ class Tests(unittest.TestCase):
   with self.assertRaises(StaleCredential):self.v.open_transport(old)
  def test_retry_reuses_nonsecret_permit_identity(self):
   a=evidence(self.p);b=evidence(self.v.permit());self.assertEqual(a,b);self.assertNotIn(SECRET,repr(a).encode())
- def test_compatibility_probe_routes_memfd(self):
-  r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'MEMFD_PROCFD');r['transport'].close()
+ def test_target_specific_probe_routes_memfd(self):
+  r=route_for_path_only_tool(self.v,self.p,compatibility_probe=python_path_consumer_probe);self.assertEqual(r['route'],'MEMFD_PROCFD');r['transport'].close()
  def test_unavailable_memfd_routes_named_fallback(self):
   original=getattr(os,'memfd_create')
   try:
-   delattr(os,'memfd_create');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
+   delattr(os,'memfd_create');r=route_for_path_only_tool(self.v,self.p,compatibility_probe=python_path_consumer_probe);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
   finally:setattr(os,'memfd_create',original)
  def test_missing_sealing_primitive_routes_named_fallback(self):
   saved=fcntl.F_SEAL_WRITE
   try:
-   delattr(fcntl,'F_SEAL_WRITE');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
+   delattr(fcntl,'F_SEAL_WRITE');r=route_for_path_only_tool(self.v,self.p,compatibility_probe=python_path_consumer_probe);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
   finally:setattr(fcntl,'F_SEAL_WRITE',saved)
- def test_procfd_incompatibility_routes_named_fallback(self):
-  with patch('experiments.memfd_credential_transport.protocol.path_compatibility_probe',return_value=False):
-   r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK');self.assertEqual(r['reason'],'procfd path incompatible')
+ def test_target_specific_incompatibility_routes_named_fallback(self):
+  r=route_for_path_only_tool(self.v,self.p,compatibility_probe=lambda _t:False);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK');self.assertIn('target-specific',r['reason'])
+ def test_probe_exception_fails_closed_to_named_fallback(self):
+  def broken(_t): raise RuntimeError('tool cannot consume procfd')
+  r=route_for_path_only_tool(self.v,self.p,compatibility_probe=broken);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
+ def test_missing_target_probe_is_not_silently_assumed(self):
+  with self.assertRaises(TypeError): route_for_path_only_tool(self.v,self.p)
  def test_unsafe_named_path_leaves_directory_entry(self):
   with tempfile.TemporaryDirectory() as td:
    p=UnsafeNamedPath().create(td,SECRET);self.assertTrue(Path(p).exists());self.assertEqual(Path(p).read_bytes(),SECRET)
