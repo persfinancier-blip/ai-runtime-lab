@@ -24,6 +24,7 @@ class BoundPublicationReceipt:
     file_synced: bool
     directory_synced: bool
     namespace_receipt: NamespaceReceipt
+    namespace_generation: int
 
     @property
     def durable(self):
@@ -112,10 +113,21 @@ class NamespaceBoundArchiveMixin:
         finally:
             current.close()
 
+    def _required_namespace_generation(self) -> int:
+        require = getattr(self, "require_namespace_authority", None)
+        if require is None:
+            return 0
+        record = require()
+        generation = getattr(record, "namespace_generation", None)
+        if type(generation) is not int or generation < 1:
+            raise NamespaceMismatch("namespace authority lacks valid generation")
+        return generation
+
     def _atomic_file(self, path, data):
         handle = self._active_namespace_handle
         if handle is None:
             raise NamespaceMismatch("namespace handle not active")
+        generation = self._required_namespace_generation()
         path = Path(path)
         receipt = handle.publish(path.name, data)
         return BoundPublicationReceipt(
@@ -124,6 +136,7 @@ class NamespaceBoundArchiveMixin:
             file_synced=receipt.file_synced,
             directory_synced=receipt.directory_synced,
             namespace_receipt=receipt,
+            namespace_generation=generation,
         )
 
     def _require_namespace_pair(
@@ -139,6 +152,11 @@ class NamespaceBoundArchiveMixin:
             manifest_receipt, BoundPublicationReceipt
         ):
             raise NamespaceMismatch("durable receipt lacks namespace-object binding")
+        expected_generation = self._required_namespace_generation()
+        if artifact_receipt.namespace_generation != manifest_receipt.namespace_generation:
+            raise NamespaceMismatch("artifact/manifest namespace generations disagree")
+        if artifact_receipt.namespace_generation != expected_generation:
+            raise NamespaceMismatch("stale namespace generation publication receipt")
         bound = verify_pair(
             handle,
             artifact_receipt.namespace_receipt,
@@ -150,7 +168,7 @@ class NamespaceBoundArchiveMixin:
             raise NamespaceMismatch("namespace verification missing")
         if bound["artifact_sha256"] != publication["artifact_sha256"]:
             raise NamespaceMismatch("LAB-064/LAB-065 artifact digest disagreement")
-        return {**publication, **bound}
+        return {**publication, **bound, "namespace_generation": expected_generation}
 
     def _after_namespace_authorized(self, handle):
         """Fault-injection hook used only by deterministic integration tests."""
