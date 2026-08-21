@@ -4,44 +4,51 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-075 — authenticate and persist the mapping from logical `sink_id` to the concrete adapter/code profile and endpoint/origin used by LAB-074, so a caller cannot satisfy capability binding while substituting a different implementation or destination.
+LAB-075 — remove the remaining trusted `sink_id -> runtime adapter/endpoint` mapping behind LAB-074 by binding each new broker reservation to an authenticated/versioned registry entry and enforcing safe rotation/reconciliation semantics.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-074.
 - Active: Issue #141 / LAB-075 — IN_PROGRESS.
-- Active branch: `lab/075-sink-registry-binding-v2` (current with main; original `lab/075-sink-registry-binding` is one commit behind).
-- Active PR: none yet.
+- Active branch: `lab/075-sink-registry-binding-v2`.
+- PR: none. Normal draft PR creation was attempted in this run and blocked by an external safety-status gate before execution.
 
 ## Last completed step
 
-Inspected the exact merged LAB-074 `experiments/transactional_broker_journal/capability.py` blob `0cfe0e2e555a234df96393abdf3e14b75ccff2f6`. The unresolved boundary is confirmed: `CapabilityBrokerWorker._assert_sink_binding()` checks only the logical sink string, then `_reconcile()` / `process()` invoke the caller-supplied sink object.
+Implemented and published the first executable LAB-075 slice. Registry entries bind `sink_id`, registry generation, stable adapter/profile digest, canonical endpoint origin, operation profile, exact predecessor entry digest and registry issuer generation. Registry entries/heads and request bindings live in the same SQLite journal authority.
 
-Defined the smallest LAB-075 registry identity: authenticated `(sink_id, registry_generation, adapter_digest, canonical_endpoint_origin, operation_profile, predecessor_entry_digest)` plus issuer identity/generation. New reservations must persist exact entry digest/generation and serialize registry-head verification with request insertion in the same SQLite authority boundary.
+The first wrapper implementation failed its concurrency test because LAB-074 could commit an `INTENT` before the registry entry was bound; a concurrent registry rotation could therefore leave a durable request with NULL registry identity. The corrected design inserts request identity + LAB-074 capability identity + exact LAB-075 registry identity in one SQL transaction after rechecking both capability and registry heads.
 
-The audit found an important design correction before code integration: a free-form `reconciliation_lineage` label is not sufficient authority for historical UNKNOWN reconciliation. An unrelated successor could reuse the label. Compatibility must bind to the exact predecessor entry digest (or an explicit signed historical digest set). Therefore endpoint rotation may reconcile an old UNKNOWN only through a signed successor that explicitly names the historical entry; it may never re-execute that old reservation. CONFIRMED remains receipt-only.
-
-The local execution sandbox reset before the first prototype test run completed, so no code/test success is claimed for this run. Issue #141 records the design evidence and exact limitation.
+A separate remote audit then found three more cross-layer conditions: a pre-existing content-address registry row must be reread before head activation; terminal CONFIRMED must be receipt-only and not depend on new registry/capability input; historical UNKNOWN reconciliation must require the current capability to authorize `reconcile_by_key`. These corrections are published in `audit_fixes.py` with regressions.
 
 ## Evidence produced
 
-- Exact audited LAB-074 capability blob: `0cfe0e2e555a234df96393abdf3e14b75ccff2f6`.
-- Current main: `df007058e0ca765d5b20ed69a628fc3bbee979d7`.
-- `lab/075-sink-registry-binding-v2` is identical to current main and is the correct implementation branch.
-- Original LAB-075 branch is behind main by one commit.
-- Issue #141 updated with the concrete trust-boundary finding, minimal registry schema and predecessor-digest reconciliation rule.
+- `experiments/sink_registry_binding/protocol.py`
+- `experiments/sink_registry_binding/tests/test_protocol.py`
+- `experiments/sink_registry_binding/tests/unsafe_string_only_expected_failure.py`
+- `experiments/sink_registry_binding/audit_fixes.py`
+- `experiments/sink_registry_binding/tests/test_audit_fixes.py`
+- `experiments/sink_registry_binding/README.md`
+- `research/2026-08-22-sink-registry-binding.md`
+- Local interface-compatible main matrix: 14/14 passed.
+- Audit-fix suite plus inherited matrix: 30/30 passed.
+- Unsafe string-only baseline: failed as expected because attacker adapter executed one side effect.
+- Compileall: passed. Python startup emits an unrelated artifact-tool warmup timeout but unittest/compileall exit statuses are authoritative.
+- Published initial protocol blob before audit overlay: `0e2671d4c14681267d25ff7aea9afeafbb976621`.
+- PR creation attempt blocked before execution; no PR exists.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Local Python execution reset during prototype execution in this run; treat as transient and retry next run.
-- LAB-075 must reuse rather than duplicate LAB-022–025 transport/destination enforcement.
-- Python object identity is not production code identity; use stable declared adapter/profile digest in the reference experiment and document production signed artifact/build identity requirement.
-- Universal exactly-once external effects and distributed registry consensus remain non-goals.
+- Direct GitHub clone is unavailable in this runtime due DNS; connector remains the durable read/write path.
+- Branch is based on the prior main commit and is one state-only commit behind current main; all LAB-075 paths are new.
+- `audit_fixes.py` currently overlays corrections rather than consolidating them into the primary protocol surface. Do not merge this branch until that is resolved.
+- Interface-compatible local tests are not a substitute for exact execution against the real merged LAB-074 `CapabilityBoundJournal` and `TransactionalJournal`.
+- LAB-075 must reuse LAB-022–025 transport/destination enforcement; stable adapter digest is a reference profile identity, not a claim that Python object identity is production code identity.
 
 ## Exact next action
 
-Resume Issue #141 on `lab/075-sink-registry-binding-v2`. Implement the authenticated registry with exact predecessor-entry-digest lineage, unsafe string-only baseline, durable registry head and reservation binding. Run the minimum 12-case failure matrix, especially attacker adapter, endpoint substitution, rollback, same-generation substitution, head-change race, old INTENT after rotation, UNKNOWN compatible/incompatible successor, CONFIRMED after rotation and durable relational corruption. Then integrate it behind `CapabilityBoundJournal`, run LAB-074/LAB-073/LAB-072 regressions, perform a separate patch audit, and only then open/integrate a PR.
+Resume Issue #141 on `lab/075-sink-registry-binding-v2`. First consolidate the `audit_fixes.py` corrections into the supported LAB-075 protocol surface (or make the corrected classes the only documented/exported surface) without weakening the 14-case matrix. Then reconstruct exact merged LAB-074/LAB-073/LAB-072 executable sources through the GitHub connector, run LAB-075 against the real `CapabilityBoundJournal`/`TransactionalJournal`, run LAB-074/LAB-073/LAB-072 regressions and compileall, and perform a fresh remote patch audit. If all gates are clean, retry normal draft PR creation; if that endpoint is still blocked before execution, keep work on the branch and use only the documented safe integration fallback after exact conflict/audit checks.
 
 ## Backlog
 
