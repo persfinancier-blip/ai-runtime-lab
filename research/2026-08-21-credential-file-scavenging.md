@@ -1,0 +1,7 @@
+# LAB-068 — crash-resilient credential-file scavenging
+
+LAB-027 leaves a narrow gap: SIGKILL/power loss can strand a named 0600 fallback file. The corrected model composes existing lab authority instead of trusting pathnames. It reuses LAB-032 PID+starttime+fresh-pidfd liveness and LAB-065 directory-FD/no-symlink namespace identity. A durable lease stores only non-secret identifiers and keyed HMAC identity. A live old-generation child still blocks deletion after credential rotation. Cleanup requires exact cleanup generation, exact directory and regular-file object identity, keyed content identity, unlink relative to the held dirfd and directory fsync. An unlink whose acknowledgement is lost becomes UNKNOWN and reconciles from exact-file absence plus the durable lease.
+
+The first local implementation exposed a further identity boundary: `(st_dev, st_ino)` alone was insufficient because immediate unlink/recreate reused the inode in the observed runtime. The corrected reference adds `st_ctime_ns` as an additional same-runtime witness; it remains a reference identity signal rather than a universal filesystem generation number. Strong cross-restart directory authority remains delegated to the LAB-066/067 namespace lineage mechanisms.
+
+The unsafe baseline uses `glob("cred-*.tmp")` as authority and can delete a live child's credential. Deletion is not forensic erasure and this experiment is not a secrets manager, OS keyring, distributed lease system, backup policy or secure-erasure mechanism.
