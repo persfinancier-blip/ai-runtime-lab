@@ -6,6 +6,8 @@ The first slice stored `observed=True` and `behavioral_probe_passed=True` inside
 
 The audit also found that `retention_seconds=None` was accidentally treated as an infinite idempotency window. Unknown retention is now conservative `NO_AUTOMATIC_RETRY`. Clock rollback relative to key creation also fails closed.
 
+A later audit found a subtler same-generation mutation bug: a plan created under a short finite retention could be revalidated against a newly attested claim with the same capability generation but a longer retention, silently extending retry authority. Plans now bind the exact authenticated claim digest as well as capability/probe generations. Any same-generation claim mutation invalidates the plan rather than changing its retry horizon.
+
 Behavioral probing can test same-key deduplication, request binding and reconciliation. It cannot cheaply wait out a provider's documented retention horizon, so a finite retention claim is separately sourced contract material bound into the authenticated claim.
 
 ## Policy
@@ -15,7 +17,7 @@ Behavioral probing can test same-key deduplication, request binding and reconcil
 - `NO_AUTOMATIC_RETRY`: non-idempotent, unbound, expired, unknown-retention, unauthenticated or failed-probe sink.
 - `READ_ONLY`: no mutating effect.
 
-Plan generation is part of the authority boundary. Capability or probe generation changes invalidate it, and a later stronger capability cannot silently upgrade an already-issued plan.
+Plan identity is part of the authority boundary. Capability generation, exact claim digest, or probe generation changes invalidate it, and a later stronger capability cannot silently upgrade an already-issued plan.
 
 ## Boundary
 
