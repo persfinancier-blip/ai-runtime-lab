@@ -61,6 +61,24 @@ class SignedCompactionNamespaceIntegrationTests(unittest.TestCase):
             self.assert_uncompacted(layer); aid = published["archive_id"]; self.assertIsNotNone(aid)
             self.assertTrue((original / f"{aid}.json").exists()); self.assertTrue((original / f"{aid}.manifest.json").exists()); self.assertEqual(list(attacker.iterdir()), [])
 
+    def test_relative_archive_path_is_bound_at_construction_across_chdir(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td); original_cwd = Path.cwd(); creator = td / "creator"; later = td / "later"
+            creator.mkdir(); later.mkdir()
+            try:
+                os.chdir(creator)
+                builder = ChainBuilder(td / "db").append(4)
+                layer = self.layer(builder, Path("archives"))
+                expected_archive_dir = creator / "archives"
+                os.chdir(later)
+                (later / "archives").mkdir()
+                manifest = layer.compact(layer.create_checkpoint())
+                self.assertTrue((expected_archive_dir / f"{manifest.archive_id}.json").exists())
+                self.assertTrue((expected_archive_dir / f"{manifest.archive_id}.manifest.json").exists())
+                self.assertEqual(list((later / "archives").iterdir()), [])
+            finally:
+                os.chdir(original_cwd)
+
     def test_directory_identity_is_stable_across_rename_without_path_retarget(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td); archive = td / "archives"; archive.mkdir()
