@@ -4,53 +4,49 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-072 — serialize concurrent broker requests and credential rotation around one durable local transaction boundary while preserving LAB-071 per-message sender authority, stable idempotency identity, UNKNOWN reconciliation, and no raw-secret persistence.
+LAB-072 — finish proof that concurrent broker workers serialize one mediated effect behind LAB-071 kernel sender authority, with one durable credential-generation authority and rotation-safe retry semantics.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-071.
-- LAB-071 Issue #133 closed DONE; PR #134 squash-merged as `f1ae711bc4b934529187756b401c80b618601afa`.
 - Active Issue #135 / LAB-072 — IN_PROGRESS.
 - Active branch: `lab/072-transactional-broker-journal`.
 - Draft PR #136 `[LAB-072] Transactional broker request journal`.
-- Published first-slice head: `a6ac75116ba6b91f2e7d6cf3b26a0ad0f5a146ef`.
+- Current PR HEAD: `82332de6fbf43909a7400662a740e5326033fd70`; GitHub reports mergeable, still draft intentionally.
 
 ## Last completed step
 
-LAB-071 was exact-source reconstructed from GitHub connector bytes, blob-verified, and regression-tested before merge. Final published LAB-071 evidence: corrected protocol/restart 18/18, LAB-069 14/14, LAB-070 8/8, LAB-031 8/8; unsafe socket-possession seed failed as expected. A final audit also hardened durable JSON parsing and required supplied credential generation to match durable state generation.
+LAB-072's first exact-source journal slice had already passed 13/13 tests, an unsafe duplicate-effect seed, compileall, and 20 repeated reservation-vs-rotation races.
 
-LAB-072 then started. Its first executable SQLite reference slice atomically serializes request reservation and credential rotation, persists canonical request digest + stable effect key + `INTENT/UNKNOWN/CONFIRMED`, and uses a separate idempotent side-effect sink for reconciliation. An unsafe check-then-act baseline duplicated one logical request.
+This run integrated the journal behind LAB-071's real process-instance authority boundary. `KernelAuthorizedBrokerWorker` validates `SCM_CREDENTIALS`-derived sender identity with LAB-071 PID/starttime/fresh-pidfd logic before any new durable reservation or sink effect.
 
-A semantic audit found and fixed a rotation race: rotation must not commit while current-generation `INTENT`/`UNKNOWN` requests remain unresolved unless old secret generations are explicitly retained. The reference rule now blocks rotation until those requests are reconciled/confirmed.
+A separate audit found a new cross-layer design defect: treating LAB-071 durable JSON generation and LAB-072 SQL generation as two authorities would require a cross-store rotation transaction and could split after crash. The fix makes LAB-072 SQL the single durable credential-generation authority. LAB-071 is reused only for sender identity. `bind_sender_to_journal_generation()` binds the current SQL generation to the exact process instance.
 
-The published LAB-072 protocol blob `6066d90b3032eeefc0f2dbbd272c09a9a716b5b2` and corrected-test blob `656284062a96b7915e3283b181c58bd7a8e9281d` matched the exact locally executed bytes.
+Published process-level regressions now cover two broker worker processes contending on one journal/sink, same-ID substitution, failed sender authority with no reservation, exact committed retry after rotation, new-operation permit rebinding after rotation, and substitution-after-rotation.
 
 ## Evidence produced
 
-- LAB-071 merge: `f1ae711bc4b934529187756b401c80b618601afa`.
-- LAB-071 final protocol blob: `44c46e30f537cffea26cdf76c2f0be8493711026`.
-- LAB-071 final restart-test blob: `4897f884b2c669418ac0fc4d4bef621af2243681`.
-- LAB-072 first-slice protocol: `experiments/transactional_broker_journal/protocol.py`.
-- LAB-072 failure matrix: `experiments/transactional_broker_journal/tests/test_protocol.py`.
-- LAB-072 unsafe seed: `experiments/transactional_broker_journal/tests/unsafe_concurrent_expected_failure.py`.
-- LAB-072 research note: `research/2026-08-21-transactional-broker-journal.md`.
-- LAB-072 corrected exact-source suite: 13/13 passed.
-- LAB-072 20 repeated rotation-vs-reservation races: only safe serial outcomes observed.
-- LAB-072 unsafe seed: failed as expected because two identical requests produced two side effects instead of one.
-- LAB-072 compileall: passed.
+- First-slice exact protocol blob: `6066d90b3032eeefc0f2dbbd272c09a9a716b5b2`.
+- First-slice exact corrected-test blob: `656284062a96b7915e3283b181c58bd7a8e9281d`.
+- First-slice exact suite: 13/13 passed; unsafe seed failed as expected; compileall passed.
+- 20 reservation-vs-rotation races: only safe serial outcomes observed.
+- Current `authorized.py` blob: `cb2b664eef11cd5036fd529ddd31c0fb90d73d74`.
+- Current process-integration test blob: `074e3feafca3c1857901448c7ffeb0a834a2bf29`.
+- Interface-compatible local Linux smoke reconstruction: real process identical-request, substitution, and new-generation-permit scenarios passed. This is supporting evidence only, not exact-source validation of current PR HEAD.
+- Research note updated with the single-generation-authority decision and process-level integration model.
 
 ## Known blockers / constraints
 
 - No owner-level blocker.
-- PR #136 is intentionally draft; LAB-072 is not merge-ready.
-- Current LAB-072 slice isolates SQL/effect semantics and still accepts an abstract `Request`; it does not yet sit behind LAB-071's actual kernel `SCM_CREDENTIALS` + live pidfd/starttime authority boundary.
-- Current concurrency evidence uses separate SQLite connections/worker objects in threads; add real process-level multi-worker contention before completion.
-- The idempotent sink is an adapter contract. A real external system that cannot expose stable idempotency/reconciliation cannot inherit the same UNKNOWN semantics; do not claim universal exactly-once behavior.
-- SQLite single-writer behavior is a local correctness reference, not a PostgreSQL production performance/locking result.
+- PR #136 remains draft because current integration HEAD has not yet been executed from exact published bytes.
+- Direct `git clone`/checkout failed in this runtime because `github.com` DNS resolution is unavailable.
+- The GitHub connector is available for exact source reconstruction, but the current run did not complete full local reconstruction of all LAB-072 + LAB-071/LAB-015/LAB-031 regression files.
+- The idempotent sink remains an adapter contract. External systems without stable idempotency/reconciliation cannot inherit the same UNKNOWN semantics.
+- SQLite is a local serialization reference, not a PostgreSQL performance claim or distributed consensus layer.
 
 ## Exact next action
 
-Resume Issue #135 / draft PR #136. Integrate `TransactionalJournal.reserve/process` behind LAB-071's real `ReceivedRequest` sender validation so kernel-observed SCM_CREDENTIALS and fresh pidfd/starttime authorization occur before any new durable reservation/effect, while exact already-committed retries remain digest-bound and reconcilable. Add a real process-level multi-worker race against one journal/sink, including same-request and substitution cases. Then reconstruct exact published PR bytes, run LAB-072 plus exact LAB-071/LAB-015/LAB-031 regressions and compileall, perform a separate remote patch audit, fix findings, and only then consider marking PR #136 ready/merging.
+Resume Issue #135 / draft PR #136. Reconstruct exact current HEAD `82332de6fbf43909a7400662a740e5326033fd70` executable bytes through the GitHub connector, write them locally, and verify each file with `git hash-object` against GitHub blob IDs. Execute the exact LAB-072 journal suite and `test_authorized_process_integration`, then exact LAB-071, LAB-015, and LAB-031 regressions plus compileall. Perform one fresh full PR patch audit after those runs; fix any defect and rerun. Only if exact-source evidence is clean should PR #136 be marked ready, merged, Issue #135 closed, and the next highest-value unblocked task selected.
 
 ## Backlog
 
