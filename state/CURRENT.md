@@ -4,49 +4,50 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-066 — reconstruct archive namespace authority after process restart without silently trusting pathname, recycled inode/mount identifiers, or byte-identical replacement; support explicit generation-bound relocation and fail-closed detached-artifact handling.
+LAB-067 — add an authenticated, generation-bound retirement lifecycle for superseded archive namespace generations after LAB-066 relocation, without giving current-generation scavenging implicit authority over historical/detached namespaces.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-065.
-- Active Issue #123 / LAB-066 — IN_PROGRESS.
-- Active branch: `lab/066-namespace-reacquisition`.
-- Draft PR #124 / LAB-066 — HEAD `58635a7ab26226bc88e7d024044563e61a58a468`.
+- Completed: LAB-001 through LAB-066.
+- LAB-066 Issue #123 DONE; PR #124 squash-merged as `6eabf19baa76e231d366e9a43d0a788d5421623b` after exact-source 58/58 regression evidence.
+- Active Issue #125 / LAB-067 — IN_PROGRESS.
+- Active branch: `lab/067-namespace-retirement`.
+- Draft PR #126 — HEAD `f3047139e022927234a643cf0a3bfb63f5988f2e` at first slice publication.
 
 ## Last completed step
 
-Integrated the authenticated continuity record into real `SignedPrunableHistory` on PR #124. The history now persists `archive_namespace_continuity`, authenticates the stored record on restart, attempts strong reacquisition before consequential compaction, and exposes explicit reacquisition status/generation. Authenticated migration uses an exact predecessor record/generation CAS before advancing namespace generation.
+Recovered repository truth after LAB-066 merge and started LAB-067. Direct shell clone was re-probed and still failed DNS (`Could not resolve host: github.com`), so GitHub connector remains the supported source/write fallback.
 
-A separate audit caught an important restart bug in the first integration: the existing LAB-065 constructor always created a missing archive directory before LAB-066 could classify it, which would turn a detached/missing authoritative object into a newly-created pathname object. The constructor now probes for a persisted continuity row first and only creates the archive directory on first initialization; restart never recreates a missing authoritative namespace before reacquisition.
-
-Added real SignedPrunableHistory integration tests for unchanged restart, byte-identical directory replacement blocking compaction, and symlink replacement. Direct shell clone was probed again in this run and failed with `Could not resolve host: github.com`; exact-source regression execution therefore remains a required connector-reconstruction gate, not assumed evidence.
+Built and published the first LAB-067 authority-policy slice. It defines an authenticated retirement permit binding exact predecessor/successor record IDs, both namespace generations, the successor archive-chain commitment and policy generation. The policy protects the current generation, requires the successor to be current and auditable, requires strong reacquisition of the superseded object immediately before destructive cleanup, and emits an idempotent retirement receipt/watermark. A deliberately unsafe pathname-only cleanup baseline demonstrates deletion without namespace authority.
 
 ## Evidence produced
 
-- Existing isolated LAB-066 suite before this integration: 10/10 passed; unsafe path+bytes baseline failed as expected; compileall passed.
-- New branch integration: `experiments/namespace_reacquisition/integration.py`.
-- Real `experiments/signed_history_compaction/protocol.py` now includes `RestartNamespaceContinuityMixin` and restart-safe no-recreate behavior.
-- New real integration tests: `experiments/namespace_reacquisition/tests/test_signed_compaction_restart_integration.py`.
-- Audit defect fixed: missing/detached restart no longer silently creates a replacement archive directory.
-- PR #124 remains draft/non-mergeable; no merge attempted without exact-source regression evidence.
+- `experiments/namespace_retirement/protocol.py`
+- `experiments/namespace_retirement/tests/test_protocol.py`
+- `experiments/namespace_retirement/tests/unsafe_path_expected_failure.py`
+- `experiments/namespace_retirement/README.md`
+- `research/2026-08-21-namespace-retirement.md`
+- Isolated corrected suite: 10/10 passed.
+- Unsafe baseline: failed as expected because pathname-only cleanup deleted the protected directory.
+- `compileall` passed.
+- Branch was ahead 6 / behind 0 when draft PR #126 was opened; all six paths were new.
 
 ## Known blockers / constraints
 
 - No owner-level blocker.
-- Direct shell GitHub DNS remains unavailable in this run; GitHub connector reconstruction is the supported exact-source fallback.
-- `open_by_handle_at` is not usable in the observed runtime without `CAP_DAC_READ_SEARCH`; do not silently weaken detached recovery to pathname trust.
-- Opaque handles are filesystem-dependent and can become stale; mount IDs and `st_dev/st_ino` are not universal persistent cross-boot identities.
-- LAB-063 scavenger is not yet fenced by `require_namespace_authority()`; this is the remaining cross-layer correctness gap.
-- Namespace generation is persisted and migration-fenced, but LAB-065 publication receipts/evidence do not yet carry the generation; bind it before declaring DONE.
-- Whole-store rollback/freshness remains LAB-034–037. Local cleanup is not forensic secure erasure.
+- Draft PR #126 is intentionally not merge-ready: the current code is an isolated authority model, not yet real `SignedPrunableHistory` / LAB-063 integration.
+- Strong reacquisition remains fail-closed when `open_by_handle_at` is unavailable; do not weaken detached retirement to pathname/byte trust.
+- Old namespace bytes are storage-reclamation candidates only; deletion is not forensic secure erasure.
+- Whole-store rollback/freshness remains delegated to LAB-034–037.
+- Direct shell GitHub DNS is unavailable in the observed runtime; connector reconstruction is required for exact-source validation if this persists.
 
 ## Exact next action
 
-Resume PR #124. First fence LAB-063 `scan` and destructive cleanup on `layer.require_namespace_authority()` when the layer exposes it, so detached/replaced namespaces cannot be enumerated or erased. Then bind `namespace_generation` into LAB-065 publication evidence/receipts and reject stale-generation publication at pre-SQL-commit verification. Add missing/detached restart, authenticated relocation, stale-generation, and scavenger-refusal integration tests. Reconstruct the exact PR HEAD source through the GitHub connector if shell DNS remains unavailable; run LAB-066 plus LAB-065/LAB-062/LAB-063 regressions and compileall; perform a separate remote patch audit; merge only if all gates are clean.
+Resume Issue #125 / draft PR #126. Extend the real LAB-066 `RestartNamespaceContinuityMixin` so successful relocation durably records authenticated predecessor→successor lineage and a `RETIRED_PENDING` retirement row before/with the generation CAS. Add a real retirement integration layer that: (1) verifies the exact current successor continuity row; (2) audits the complete reachable committed archive chain in the successor namespace; (3) strongly reacquires the exact superseded continuity object, never pathname/bytes alone; (4) uses a permit bound to predecessor/successor IDs, generations, chain commitment and policy generation; (5) records idempotent durable retirement watermark/receipt; and (6) fences LAB-063 cleanup so current-generation authority cannot erase retired-generation paths implicitly. Add real tests for stale permit, wrong pair, byte-identical replacement, symlink replacement, current-generation target, incomplete successor chain, crash/retry and unsupported strong reopen. Then reconstruct exact PR source through connector if clone remains unavailable, run LAB-067 plus LAB-066/LAB-063 regressions and compileall, perform a separate remote patch audit, and merge only if all gates are clean.
 
 ## Backlog
 
-- #123 / LAB-066 — restart namespace reacquisition and detached-artifact reconciliation — IN_PROGRESS.
+- #125 / LAB-067 — authenticated namespace retirement and detached-generation cleanup — IN_PROGRESS.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
