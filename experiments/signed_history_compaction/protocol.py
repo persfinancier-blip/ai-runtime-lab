@@ -1,3 +1,4 @@
+import hmac
 import os
 import threading
 
@@ -5,7 +6,12 @@ from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
 from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
-from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin
+from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin, _parse_record
+from experiments.namespace_reacquisition.protocol import (
+    MigrationPermit,
+    mac as continuity_mac,
+    verify_record as verify_continuity_record,
+)
 from experiments.namespace_retirement.integration import NamespaceRetirementMixin, RetirementIntegrationError
 
 
@@ -117,6 +123,41 @@ class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuity
             ).fetchone()
             if row != (old.record_id, "ACTIVE", chain_commitment):
                 raise RetirementIntegrationError("successor lineage reconciliation failed")
+
+    def _load_namespace_record_locked(self, q, record_id):
+            record, status, predecessor_id = super()._load_namespace_record_locked(q, record_id)
+            if predecessor_id is None:
+                if record.namespace_generation != 1:
+                    raise RetirementIntegrationError("non-bootstrap namespace lacks authenticated predecessor")
+                return record, status, predecessor_id
+
+            predecessor_row = q.execute(
+                "SELECT body_json FROM archive_namespace_records WHERE record_id=?",
+                (predecessor_id,),
+            ).fetchone()
+            if not predecessor_row:
+                raise RetirementIntegrationError("authenticated predecessor record missing")
+            predecessor = _parse_record(predecessor_row[0])
+            verify_continuity_record(predecessor, self.key)
+            if predecessor.record_id != predecessor_id:
+                raise RetirementIntegrationError("predecessor record id mismatch")
+
+            intent = q.execute(
+                "SELECT permit_json,status FROM archive_namespace_migration_intents WHERE old_record_id=?",
+                (predecessor_id,),
+            ).fetchone()
+            if not intent or intent[1] != "COMMITTED":
+                raise RetirementIntegrationError("committed authenticated migration proof missing")
+            permit = MigrationPermit(**json.loads(intent[0]))
+            if not hmac.compare_digest(permit.mac, continuity_mac(self.key, permit.unsigned())):
+                raise RetirementIntegrationError("migration permit authentication failed")
+            if permit.old_record_id != predecessor.record_id:
+                raise RetirementIntegrationError("migration permit predecessor mismatch")
+            if permit.new_generation != record.namespace_generation:
+                raise RetirementIntegrationError("migration permit generation mismatch")
+            if os.path.abspath(permit.new_path) != os.path.abspath(record.archive_path):
+                raise RetirementIntegrationError("migration permit successor path mismatch")
+            return record, status, predecessor_id
 
     def migrate_archive_namespace(self, permit):
             # Keep retirement authority linear. Otherwise gen2->gen3 could make an
