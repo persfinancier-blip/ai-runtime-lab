@@ -14,8 +14,10 @@ The reference route keeps `MFD_CLOEXEC` by default and uses explicit `pass_fds` 
 
 Durable evidence contains only credential ID, generation, scope, keyed fingerprint, and transport type. Stale permits are rejected after rotation. Retry reuses the same non-secret permit/evidence identity rather than persisting another secret copy.
 
-Capability/compatibility is observed, not assumed. If memfd creation or procfd path use is unavailable for a target runtime/tool, routing explicitly returns to the separately hardened LAB-068 named fallback.
+## Audit findings
+
+A generic runtime probe is not enough to authorize an arbitrary path-only tool: Python may accept `/proc/self/fd/N` while another target rejects it or runs in a different procfs/namespace context. The corrected router therefore requires a caller-supplied **target-specific compatibility probe**. Missing, false, or failing target probes route explicitly to LAB-068. The memfd route also requires the complete sealing primitive set; partial kernel/runtime support fails closed rather than producing an unsealed transport.
 
 ## Boundary
 
-Anonymous volatile-file lifetime is not forensic erasure and does not establish that pages never reach swap. `/proc/self/fd` access can be constrained by procfs mount options, ptrace-style permission checks, user/process namespaces, or tool behavior. This experiment therefore reduces the named-filesystem attack surface where compatibility is proven; it does not remove LAB-068 as the fail-closed compatibility fallback.
+Anonymous volatile-file lifetime is not forensic erasure and does not establish that pages never reach swap. `/proc/self/fd` access can be constrained by procfs mount options, ptrace-style permission checks, user/process namespaces, or tool behavior. This experiment reduces the named-filesystem attack surface only where compatibility of the actual target tool is proven; it does not remove LAB-068 as the fail-closed compatibility fallback.
