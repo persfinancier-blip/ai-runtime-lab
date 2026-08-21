@@ -130,7 +130,7 @@ class CapabilityBoundJournal:
             issuer_id,
             policy,
             created,
-            "",  # filled by _load_binding
+            "",
         )
 
     def _load_binding(self, q, request_id: str) -> DurableCapabilityPlan:
@@ -204,13 +204,23 @@ class CapabilityBoundJournal:
         finally:
             q.close()
 
+    @staticmethod
+    def _assert_head_locked(q, capability: cap.VerifiedCapability) -> None:
+        claim = capability.claim
+        att = capability.attestation
+        row = q.execute(
+            "SELECT capability_generation,claim_digest,probe_generation,issuer_id "
+            "FROM sink_capability_heads WHERE sink_id=?",
+            (claim.sink_id,),
+        ).fetchone()
+        expected = (claim.generation, att.claim_digest, att.probe_generation, att.issuer_id)
+        if row is None or tuple(row) != expected:
+            raise cap.StaleCapability("sink capability head changed before reservation commit")
+
     def reserve(self, request: Request, capability: cap.VerifiedCapability, *, now: int):
         if type(now) is not int or now < 0:
             raise CapabilityBindingError("invalid time")
 
-        # Existing durable identity is authoritative before current capability. This
-        # lets CONFIRMED results survive later capability rotation while performing
-        # no external action. INTENT/UNKNOWN are revalidated by the worker before use.
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
@@ -232,7 +242,6 @@ class CapabilityBoundJournal:
         finally:
             q.close()
 
-        # A genuinely new reservation requires a currently authenticated capability.
         claim = self.observe_capability(capability)
         policy = cap.derive_policy(capability, self.verifier, now=now, key_created_at=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
@@ -242,7 +251,6 @@ class CapabilityBoundJournal:
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
-            # Close the race between the initial lookup and capability verification.
             row = q.execute(
                 "SELECT request_digest,status,effect_key,receipt FROM broker_requests WHERE request_id=?",
                 (request.request_id,),
@@ -254,6 +262,7 @@ class CapabilityBoundJournal:
                 q.commit()
                 return row[1], plan, row[3]
 
+            self._assert_head_locked(q, capability)
             current_generation = q.execute(
                 "SELECT credential_generation FROM broker_meta WHERE singleton=1"
             ).fetchone()[0]
@@ -331,12 +340,11 @@ class CapabilityBoundJournal:
         q = self.journal._con()
         try:
             rows = q.execute("SELECT request_id FROM broker_requests").fetchall()
-            for (request_id,) in rows:
-                self._load_binding(q, request_id)
             heads = q.execute(
                 "SELECT sink_id,capability_generation,claim_digest,probe_generation,issuer_id "
                 "FROM sink_capability_heads"
             ).fetchall()
+            head_map = {}
             for sink_id, generation, claim_digest, probe_generation, issuer_id in heads:
                 if not isinstance(sink_id, str) or not sink_id:
                     raise CapabilityBindingError("invalid capability head sink")
@@ -348,6 +356,16 @@ class CapabilityBoundJournal:
                     raise CapabilityBindingError("invalid capability head probe generation")
                 if not isinstance(issuer_id, str) or not issuer_id:
                     raise CapabilityBindingError("invalid capability head issuer")
+                head_map[sink_id] = (generation, claim_digest, probe_generation, issuer_id)
+            for (request_id,) in rows:
+                plan = self._load_binding(q, request_id)
+                head = head_map.get(plan.sink_id)
+                if head is None or plan.capability_generation > head[0]:
+                    raise CapabilityBindingError("request capability is ahead of durable sink head")
+                if plan.capability_generation == head[0] and (
+                    plan.claim_digest, plan.probe_generation, plan.issuer_id
+                ) != head[1:]:
+                    raise CapabilityBindingError("request capability disagrees with same-generation head")
             return True
         finally:
             q.close()
@@ -395,8 +413,10 @@ class CapabilityBrokerWorker:
             raise cap.StaleCapability("sink changed")
 
         if status == "UNKNOWN" and claim.generation > plan.capability_generation:
-            # Capability rotation can revoke new execution, but not erase proof of an
-            # already-committed effect. This path is reconciliation-only.
+            if not claim.reconcile_by_key:
+                raise CapabilityExecutionBlocked(
+                    "current rotated capability does not authorize reconciliation"
+                )
             observed = self._reconcile(plan)
             if observed is None:
                 raise CapabilityExecutionBlocked(
