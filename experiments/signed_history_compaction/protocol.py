@@ -15,9 +15,23 @@ class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchi
             # Bind a relative configured path to the process namespace at construction.
             # Later cwd changes must not silently retarget archive publication authority.
             self.archive_dir = Path(os.path.abspath(os.fspath(archive_dir)))
-            # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks and
-            # can create external state before LAB-065's namespace authorization.
-            self._ensure_archive_directory_exists()
+            # On first initialization LAB-065 may create the archive directory safely.
+            # On restart, however, a missing/detached authoritative directory must not
+            # be silently replaced by a newly-created pathname object before LAB-066
+            # has a chance to classify the loss of continuity.
+            probe = self.store._con()
+            try:
+                continuity_table = probe.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='archive_namespace_continuity'"
+                ).fetchone()
+                persisted_continuity = bool(continuity_table) and probe.execute(
+                    "SELECT 1 FROM archive_namespace_continuity WHERE singleton=1"
+                ).fetchone() is not None
+            finally:
+                probe.close()
+            if not persisted_continuity:
+                # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks.
+                self._ensure_archive_directory_exists()
             self.key = checkpoint_key
             self.anchor = external_anchor_id
             if not self.key or not self.anchor:
@@ -49,9 +63,6 @@ class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchi
                     )
             finally:
                 q.close()
-            # LAB-066: after the archive/checkpoint schema exists, persist the first
-            # authenticated namespace record or reacquire the saved one. Consequential
-            # compaction is fenced by RestartNamespaceContinuityMixin.compact().
             self._init_restart_namespace_continuity()
 
     @property
