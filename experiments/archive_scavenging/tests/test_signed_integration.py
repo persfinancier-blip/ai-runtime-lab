@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 import threading
 import unittest
@@ -8,6 +9,7 @@ from experiments.archive_scavenging.protocol import (
     CandidateBecameReachable,
     StaleRetentionGeneration,
 )
+from experiments.namespace_reacquisition.integration import NamespaceAuthorityUnavailable
 from experiments.signed_history_compaction.protocol import (
     SignedPrunableHistory,
     UnknownOutcome,
@@ -80,6 +82,40 @@ class SignedCompactionIntegrationTests(unittest.TestCase):
             for archive_id in (first.archive_id, second.archive_id):
                 self.assertTrue(all(path.exists() for path in layer._archive_paths(archive_id)))
                 self.assertGreater(layer.audit_archive(archive_id)["rows_verified"], 0)
+
+    def test_scavenger_refuses_replaced_namespace_even_after_initial_reacquisition(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            builder = ChainBuilder(td / "db").append(5)
+            archive = td / "archives"
+            layer = self.layer(builder, archive)
+            checkpoint = layer.create_checkpoint()
+            with self.assertRaises(UnknownOutcome):
+                layer.compact(checkpoint, fail_after_archive=True)
+            scavenger = ArchiveScavenger(layer, grace_generations=1)
+            self.assertEqual(len(scavenger.scan()), 1)
+
+            old = td / "old-archives"
+            archive.rename(old)
+            shutil.copytree(old, archive)
+            with self.assertRaises(NamespaceAuthorityUnavailable):
+                scavenger.scan()
+            self.age(scavenger, 2)
+            candidate_rows = []
+            q = layer.store._con()
+            try:
+                candidate_rows = q.execute(
+                    "SELECT archive_id,first_seen_generation,last_seen_generation "
+                    "FROM archive_orphan_candidates"
+                ).fetchall()
+            finally:
+                q.close()
+            self.assertEqual(len(candidate_rows), 1)
+            from experiments.archive_scavenging.protocol import Candidate
+            candidate = Candidate(candidate_rows[0][0], candidate_rows[0][2], candidate_rows[0][1], True, True)
+            with self.assertRaises(NamespaceAuthorityUnavailable):
+                scavenger.delete_candidate(candidate)
+            self.assertTrue(any(old.iterdir()))
 
     def test_real_compaction_gc_race_never_commits_missing_archive(self):
         """Either compaction wins and protects the archive, or GC wins and compaction fails closed."""
