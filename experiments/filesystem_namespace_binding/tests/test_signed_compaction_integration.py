@@ -27,18 +27,27 @@ class SignedCompactionNamespaceIntegrationTests(unittest.TestCase):
     def test_archive_directory_symlink_is_rejected_at_authorization(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td); builder = ChainBuilder(td / "db").append(4); attacker = td / "attacker"; attacker.mkdir(); archive = td / "archives"
-            os.symlink(attacker, archive, target_is_directory=True); layer = self.layer(builder, archive)
-            with self.assertRaises(PathEscape): layer.compact(layer.create_checkpoint())
-            self.assert_uncompacted(layer)
+            os.symlink(attacker, archive, target_is_directory=True)
+            with self.assertRaises((PathEscape, NamespaceMismatch)):
+                self.layer(builder, archive)
+            self.assertEqual(list(attacker.iterdir()), [])
+
+    def test_constructor_does_not_create_through_intermediate_symlink(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td); builder = ChainBuilder(td / "db").append(4)
+            real_parent = td / "real-parent"; real_parent.mkdir()
+            alias_parent = td / "alias-parent"; os.symlink(real_parent, alias_parent, target_is_directory=True)
+            with self.assertRaises(NamespaceMismatch):
+                self.layer(builder, alias_parent / "archives")
+            self.assertFalse((real_parent / "archives").exists())
 
     def test_intermediate_path_symlink_is_rejected_at_authorization(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td); builder = ChainBuilder(td / "db").append(4)
             real_parent = td / "real-parent"; real_parent.mkdir(); (real_parent / "archives").mkdir()
             alias_parent = td / "alias-parent"; os.symlink(real_parent, alias_parent, target_is_directory=True)
-            layer = self.layer(builder, alias_parent / "archives")
-            with self.assertRaises(PathEscape): layer.compact(layer.create_checkpoint())
-            self.assert_uncompacted(layer)
+            with self.assertRaises((PathEscape, NamespaceMismatch)):
+                self.layer(builder, alias_parent / "archives")
 
     def test_swap_after_authorization_cannot_redirect_and_blocks_sql_commit(self):
         with tempfile.TemporaryDirectory() as td:
