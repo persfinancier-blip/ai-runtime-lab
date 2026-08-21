@@ -14,7 +14,10 @@ from experiments.brokered_credential_use.protocol import (
     credential_socketpair,
     recv_kernel_request,
 )
-from experiments.transactional_broker_journal.authorized import KernelAuthorizedBrokerWorker
+from experiments.transactional_broker_journal.authorized import (
+    KernelAuthorizedBrokerWorker,
+    bind_sender_to_journal_generation,
+)
 from experiments.transactional_broker_journal.protocol import (
     IdempotentSink,
     RequestConflict,
@@ -28,29 +31,29 @@ def _sender(fd: int, bodies: list[dict], ready_fd: int) -> None:
         for body in bodies:
             sock.send(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
         os.write(ready_fd, b"1")
-        # Stay live so every broker worker can reacquire the exact process instance.
         time.sleep(10)
     finally:
         sock.close()
         os.close(ready_fd)
 
 
-def _broker_worker(
-    broker_fd: int,
-    sender_pid: int,
-    journal_path: str,
-    sink_path: str,
-    out,
-) -> None:
+def _broker_worker(broker_fd: int, sender_pid: int, journal_path: str, sink_path: str, out) -> None:
     sock = socket.socket(fileno=os.dup(broker_fd))
-    authority = CredentialBroker(b"authority-not-used-for-effect", 1)
+    authority = CredentialBroker(b"identity-only", 1)
+    journal = TransactionalJournal(journal_path, 1)
     try:
-        permit = authority.permit("task", "read", sender_pid)
+        permit = bind_sender_to_journal_generation(
+            authority=authority,
+            journal=journal,
+            task_id="task",
+            scope="read",
+            target_pid=sender_pid,
+        )
         received = recv_kernel_request(sock)
         worker = KernelAuthorizedBrokerWorker(
             authority=authority,
             permit=permit,
-            journal=TransactionalJournal(journal_path, 1),
+            journal=journal,
             sink=IdempotentSink(sink_path),
             secret=b"effect-secret",
         )
@@ -80,7 +83,6 @@ class ProcessIntegrationTests(unittest.TestCase):
             sender_fd = sender.detach()
             target = ctx.Process(target=_sender, args=(sender_fd, bodies, ready_w))
             target.start()
-            # Do not let broker workers inherit an ambient sender capability.
             os.close(sender_fd)
             os.close(ready_w)
             self.assertEqual(os.read(ready_r, 1), b"1")
@@ -106,14 +108,34 @@ class ProcessIntegrationTests(unittest.TestCase):
             return results, journal, sink
 
     @staticmethod
-    def body(payload: str = "payload") -> dict:
+    def body(payload: str = "payload", *, request_id: str = "request-1", generation: int = 1) -> dict:
         return {
-            "request_id": "request-1",
+            "request_id": request_id,
             "task_id": "task",
             "scope": "read",
-            "credential_generation": 1,
+            "credential_generation": generation,
             "payload": payload,
         }
+
+    def _self_worker(self, td):
+        authority = CredentialBroker(b"identity-only", 1)
+        journal = TransactionalJournal(Path(td) / "journal.db", 1)
+        sink = IdempotentSink(Path(td) / "sink.db")
+        permit = bind_sender_to_journal_generation(
+            authority=authority,
+            journal=journal,
+            task_id="task",
+            scope="read",
+            target_pid=os.getpid(),
+        )
+        worker = KernelAuthorizedBrokerWorker(
+            authority=authority,
+            permit=permit,
+            journal=journal,
+            sink=sink,
+            secret=b"effect-secret",
+        )
+        return authority, journal, sink, worker
 
     def test_two_real_broker_processes_same_authorized_request_apply_once(self):
         results, journal, sink = self._run_two([self.body(), self.body()])
@@ -140,10 +162,15 @@ class ProcessIntegrationTests(unittest.TestCase):
             sink = IdempotentSink(Path(td) / "sink.db")
             sleeper = ctx.Process(target=time.sleep, args=(5,))
             sleeper.start()
-            authority = CredentialBroker(b"unused", 1)
+            authority = CredentialBroker(b"identity-only", 1)
             try:
-                permit = authority.permit("task", "read", sleeper.pid)
-                # No durable reservation is allowed before the LAB-071 process-instance check.
+                permit = bind_sender_to_journal_generation(
+                    authority=authority,
+                    journal=journal,
+                    task_id="task",
+                    scope="read",
+                    target_pid=sleeper.pid,
+                )
                 forged = ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
                 worker = KernelAuthorizedBrokerWorker(
                     authority=authority,
@@ -163,19 +190,9 @@ class ProcessIntegrationTests(unittest.TestCase):
 
     def test_exact_committed_retry_survives_journal_rotation(self):
         with tempfile.TemporaryDirectory() as td:
-            authority = CredentialBroker(b"unused", 1)
-            journal = TransactionalJournal(Path(td) / "journal.db", 1)
-            sink = IdempotentSink(Path(td) / "sink.db")
+            authority, journal, sink, worker = self._self_worker(td)
             try:
-                permit = authority.permit("task", "read", os.getpid())
                 received = ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
-                worker = KernelAuthorizedBrokerWorker(
-                    authority=authority,
-                    permit=permit,
-                    journal=journal,
-                    sink=sink,
-                    secret=b"effect-secret",
-                )
                 first = worker.process_received(received)
                 self.assertEqual(first.outcome, "COMMITTED")
                 self.assertEqual(journal.rotate(), 2)
@@ -186,20 +203,43 @@ class ProcessIntegrationTests(unittest.TestCase):
             finally:
                 authority.close()
 
-    def test_substitution_after_rotation_still_fails_closed(self):
+    def test_new_operation_after_rotation_uses_new_journal_bound_permit(self):
         with tempfile.TemporaryDirectory() as td:
-            authority = CredentialBroker(b"unused", 1)
-            journal = TransactionalJournal(Path(td) / "journal.db", 1)
-            sink = IdempotentSink(Path(td) / "sink.db")
+            authority, journal, sink, worker = self._self_worker(td)
             try:
-                permit = authority.permit("task", "read", os.getpid())
-                worker = KernelAuthorizedBrokerWorker(
+                worker.process_received(
+                    ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
+                )
+                self.assertEqual(journal.rotate(), 2)
+                permit2 = bind_sender_to_journal_generation(
                     authority=authority,
-                    permit=permit,
+                    journal=journal,
+                    task_id="task",
+                    scope="read",
+                    target_pid=os.getpid(),
+                )
+                worker2 = KernelAuthorizedBrokerWorker(
+                    authority=authority,
+                    permit=permit2,
                     journal=journal,
                     sink=sink,
-                    secret=b"effect-secret",
+                    secret=b"effect-secret-generation-2",
                 )
+                result = worker2.process_received(
+                    ReceivedRequest(
+                        self.body("next", request_id="request-2", generation=2),
+                        os.getpid(), os.getuid(), os.getgid(),
+                    )
+                )
+                self.assertEqual(result.outcome, "COMMITTED")
+                self.assertEqual(sink.apply_count(), 2)
+            finally:
+                authority.close()
+
+    def test_substitution_after_rotation_still_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            authority, journal, sink, worker = self._self_worker(td)
+            try:
                 worker.process_received(
                     ReceivedRequest(self.body("alpha"), os.getpid(), os.getuid(), os.getgid())
                 )
