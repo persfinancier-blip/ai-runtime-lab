@@ -39,6 +39,16 @@ class Tests(unittest.TestCase):
   try:
    delattr(os,'memfd_create');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
   finally:setattr(os,'memfd_create',original)
+ def test_missing_sealing_primitive_routes_named_fallback(self):
+  with patch('experiments.memfd_credential_transport.protocol.fcntl.F_SEAL_WRITE',new=None,create=True):
+   original=fcntl.F_SEAL_WRITE
+  saved=fcntl.F_SEAL_WRITE
+  try:
+   delattr(fcntl,'F_SEAL_WRITE');r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK')
+  finally:setattr(fcntl,'F_SEAL_WRITE',saved)
+ def test_procfd_incompatibility_routes_named_fallback(self):
+  with patch('experiments.memfd_credential_transport.protocol.path_compatibility_probe',return_value=False):
+   r=route_for_path_only_tool(self.v,self.p);self.assertEqual(r['route'],'LAB-068_NAMED_FALLBACK');self.assertEqual(r['reason'],'procfd path incompatible')
  def test_unsafe_named_path_leaves_directory_entry(self):
   with tempfile.TemporaryDirectory() as td:
    p=UnsafeNamedPath().create(td,SECRET);self.assertTrue(Path(p).exists());self.assertEqual(Path(p).read_bytes(),SECRET)
