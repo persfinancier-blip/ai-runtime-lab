@@ -7,7 +7,6 @@ from pathlib import Path
 
 from experiments.archive_publication_durability.protocol import require_durable_pair
 from .protocol import (
-    DirectoryIdentity,
     NamespaceHandle,
     NamespaceMismatch,
     NamespaceReceipt,
@@ -31,43 +30,51 @@ class BoundPublicationReceipt:
 
 
 class NamespaceBoundArchiveMixin:
-    """Strengthens SignedPrunableHistory's publication boundary with a held dirfd.
+    """Strengthen archive publication with one held, symlink-free directory object.
 
-    The lexical archive path is used to acquire and later continuity-check the
-    configured directory, but archive bytes are created, fsynced, renamed, and
-    re-read relative to one held directory FD until the SQL commit completes.
+    Authorization starts at the filesystem root and resolves the complete absolute
+    archive-directory path with openat2 RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS. This
+    avoids treating `archive_dir.parent` as trusted when one of its own path-prefix
+    components may have been substituted by a symlink. Consequential file I/O then
+    remains relative to the held directory FD until SQL commit.
     """
 
     _active_namespace_handle = None
 
-    def _namespace_handle(self):
+    def _absolute_archive_relative_to_root(self) -> str:
         archive_dir = Path(self.archive_dir)
-        parent = archive_dir.parent
-        name = archive_dir.name
-        if not name:
-            raise NamespaceMismatch("archive directory must have a basename")
-        return NamespaceHandle.authorize_beneath(parent, name)
+        absolute = Path(os.path.abspath(os.fspath(archive_dir)))
+        try:
+            relative = absolute.relative_to(Path("/"))
+        except ValueError as exc:
+            raise NamespaceMismatch("archive directory must be an absolute POSIX path") from exc
+        value = os.fspath(relative)
+        if not value or value == ".":
+            raise NamespaceMismatch("archive directory cannot be filesystem root")
+        return value
+
+    def _namespace_handle(self):
+        return NamespaceHandle.authorize_beneath("/", self._absolute_archive_relative_to_root())
 
     def _assert_configured_namespace(self, handle: NamespaceHandle):
-        """Fail closed if the configured pathname stops naming the held object."""
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        """Re-resolve the full configured path without symlinks and compare identity."""
         try:
-            fd = os.open(self.archive_dir, flags)
-        except OSError as exc:
+            current = NamespaceHandle.authorize_beneath(
+                "/", self._absolute_archive_relative_to_root()
+            )
+        except Exception as exc:
             raise NamespaceMismatch("configured archive pathname changed") from exc
         try:
-            st = os.fstat(fd)
-            current = DirectoryIdentity(st.st_dev, st.st_ino)
+            if current.directory != handle.directory:
+                raise NamespaceMismatch(
+                    "configured archive pathname now resolves to another directory object"
+                )
         finally:
-            os.close(fd)
-        if current != handle.directory:
-            raise NamespaceMismatch("configured archive pathname now resolves to another directory object")
+            current.close()
 
     def _atomic_file(self, path, data):
         handle = self._active_namespace_handle
         if handle is None:
-            # This should not occur on the consequential compaction path. Keep a
-            # fail-closed error instead of silently falling back to lexical I/O.
             raise NamespaceMismatch("namespace handle not active")
         path = Path(path)
         receipt = handle.publish(path.name, data)
@@ -80,25 +87,13 @@ class NamespaceBoundArchiveMixin:
         )
 
     def _require_namespace_pair(
-        self,
-        handle,
-        artifact_receipt,
-        manifest_receipt,
-        *,
-        artifact_path,
-        artifact_data,
-        manifest_path,
-        manifest_data,
+        self, handle, artifact_receipt, manifest_receipt, *,
+        artifact_path, artifact_data, manifest_path, manifest_data,
     ):
-        # Preserve LAB-064's exact path/digest/fsync gate first. This also keeps
-        # its fault-injection tests authoritative.
         publication = require_durable_pair(
-            artifact_receipt,
-            manifest_receipt,
-            artifact_path=artifact_path,
-            artifact_data=artifact_data,
-            manifest_path=manifest_path,
-            manifest_data=manifest_data,
+            artifact_receipt, manifest_receipt,
+            artifact_path=artifact_path, artifact_data=artifact_data,
+            manifest_path=manifest_path, manifest_data=manifest_data,
         )
         if not isinstance(artifact_receipt, BoundPublicationReceipt) or not isinstance(
             manifest_receipt, BoundPublicationReceipt
@@ -124,7 +119,6 @@ class NamespaceBoundArchiveMixin:
         """Fault-injection hook used only by deterministic integration tests."""
 
     def compact(self, cp, *, fail_after_archive=False, fail_before_commit=False, timeout_after_commit=False):
-        # The preparation transaction remains unchanged from LAB-062/064.
         q = self.store._con()
         try:
             q.execute("BEGIN")
@@ -158,13 +152,9 @@ class NamespaceBoundArchiveMixin:
                 artifact_receipt = self._atomic_file(artifact_path, artifact_bytes)
                 manifest_receipt = self._atomic_file(manifest_path, manifest_bytes)
                 publication = self._require_namespace_pair(
-                    namespace,
-                    artifact_receipt,
-                    manifest_receipt,
-                    artifact_path=artifact_path,
-                    artifact_data=artifact_bytes,
-                    manifest_path=manifest_path,
-                    manifest_data=manifest_bytes,
+                    namespace, artifact_receipt, manifest_receipt,
+                    artifact_path=artifact_path, artifact_data=artifact_bytes,
+                    manifest_path=manifest_path, manifest_data=manifest_bytes,
                 )
                 self._after_namespace_published(namespace, manifest)
                 if publication["artifact_sha256"] != manifest.artifact_sha256:
@@ -183,42 +173,24 @@ class NamespaceBoundArchiveMixin:
                         raise self._archive_error("archive changed before commit")
                     if not publication.get("publication_durable"):
                         raise self._archive_error("archive publication durability not established")
-
-                    # Re-check both the current configuration and the exact bytes
-                    # using the same held namespace object immediately before SQL
-                    # makes the archive authoritative.
                     self._assert_configured_namespace(namespace)
                     self._require_namespace_pair(
-                        namespace,
-                        artifact_receipt,
-                        manifest_receipt,
-                        artifact_path=artifact_path,
-                        artifact_data=artifact_bytes,
-                        manifest_path=manifest_path,
-                        manifest_data=manifest_bytes,
+                        namespace, artifact_receipt, manifest_receipt,
+                        artifact_path=artifact_path, artifact_data=artifact_bytes,
+                        manifest_path=manifest_path, manifest_data=manifest_bytes,
                     )
                     self._verify_manifest_identity(q, manifest)
                     q.execute(
                         "INSERT INTO signed_archives VALUES(?,?,?)",
-                        (
-                            manifest.archive_id,
-                            manifest.end_sequence,
-                            self._archive_manifest_json(manifest),
-                        ),
+                        (manifest.archive_id, manifest.end_sequence, self._archive_manifest_json(manifest)),
                     )
                     if fail_before_commit:
                         raise self._unknown_outcome("simulated failure before prune commit")
                     q.execute(
                         "UPDATE signed_compaction_base SET base_sequence=?,root_id=?,recovery_id=?,"
                         "prefix_commitment=?,archive_id=?,checkpoint_id=? WHERE singleton=1",
-                        (
-                            cp.sequence,
-                            cp.root_id,
-                            cp.recovery_id,
-                            cp.prefix_commitment,
-                            manifest.archive_id,
-                            cp.checkpoint_id,
-                        ),
+                        (cp.sequence, cp.root_id, cp.recovery_id, cp.prefix_commitment,
+                         manifest.archive_id, cp.checkpoint_id),
                     )
                     q.execute("DELETE FROM transitions WHERE sequence<=?", (cp.sequence,))
                     q.commit()
@@ -234,31 +206,24 @@ class NamespaceBoundArchiveMixin:
             finally:
                 self._active_namespace_handle = None
 
-    # Small adapters keep this mixin independent of star-import details in
-    # signed_history_compaction.archive while still using the exact LAB-062 types.
     def _archive_manifest_parse(self, raw):
         from experiments.signed_history_compaction.core import ArchiveManifest
-
         return ArchiveManifest.parse(raw)
 
     def _archive_manifest_bytes(self, manifest):
         from dataclasses import asdict
         from experiments.signed_history_compaction.core import canon
-
         return canon(asdict(manifest))
 
     def _archive_manifest_json(self, manifest):
         import json
         from dataclasses import asdict
-
         return json.dumps(asdict(manifest), sort_keys=True, separators=(",", ":"))
 
     def _archive_error(self, message):
         from experiments.signed_history_compaction.core import ArchiveError
-
         return ArchiveError(message)
 
     def _unknown_outcome(self, message):
         from experiments.signed_history_compaction.core import UnknownOutcome
-
         return UnknownOutcome(message)
