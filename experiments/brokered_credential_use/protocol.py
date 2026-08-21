@@ -74,9 +74,7 @@ def credential_socketpair() -> tuple[socket.socket, socket.socket]:
 
 
 def recv_kernel_request(sock: socket.socket) -> ReceivedRequest:
-    data, ancillary, _flags, _addr = sock.recvmsg(
-        64 * 1024, socket.CMSG_SPACE(_UCRED.size)
-    )
+    data, ancillary, _flags, _addr = sock.recvmsg(64 * 1024, socket.CMSG_SPACE(_UCRED.size))
     creds = []
     for level, kind, raw in ancillary:
         if level == socket.SOL_SOCKET and kind == socket.SCM_CREDENTIALS:
@@ -116,13 +114,7 @@ class CredentialBroker:
         if old is not None:
             os.close(old)
         self._pidfds[key] = pidfd
-        return OperationPermit(
-            task_id=task_id,
-            scope=scope,
-            credential_generation=self.generation,
-            target_pid=target_pid,
-            target_starttime=starttime,
-        )
+        return OperationPermit(task_id, scope, self.generation, target_pid, starttime)
 
     @staticmethod
     def _pidfd_live(fd: int) -> bool:
@@ -138,9 +130,7 @@ class CredentialBroker:
 
     def _validate_sender(self, request: ReceivedRequest, permit: OperationPermit) -> None:
         if request.sender_pid != permit.target_pid:
-            raise UnauthorizedSender(
-                f"kernel sender pid {request.sender_pid} != authorized target {permit.target_pid}"
-            )
+            raise UnauthorizedSender(f"kernel sender pid {request.sender_pid} != authorized target {permit.target_pid}")
         fd = self._pidfds.get((permit.target_pid, permit.target_starttime))
         if fd is None:
             raise UnauthorizedSender("no live pidfd authority for target process instance")
@@ -161,76 +151,49 @@ class CredentialBroker:
                 pass
         self._pidfds.clear()
 
-    def execute(
-        self,
-        request: ReceivedRequest,
-        permit: OperationPermit,
-        *,
-        timeout_after_commit: bool = False,
-    ) -> BrokerEvidence:
+    @staticmethod
+    def _shape_and_digest(body: dict) -> tuple[str, str]:
+        required = {"request_id", "task_id", "scope", "credential_generation", "payload"}
+        if set(body) != required:
+            raise InvalidRequest("unexpected/missing request fields")
+        if not all(isinstance(body[k], str) for k in ("request_id", "task_id", "scope", "payload")):
+            raise InvalidRequest("string request fields required")
+        if type(body["credential_generation"]) is not int:
+            raise InvalidRequest("integer credential_generation required")
+        digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return body["request_id"], digest
+
+    def execute(self, request: ReceivedRequest, permit: OperationPermit, *, timeout_after_commit: bool = False) -> BrokerEvidence:
         self._validate_sender(request, permit)
         b = request.body
-        required = {"request_id", "task_id", "scope", "credential_generation", "payload"}
-        if set(b) != required:
-            raise InvalidRequest("unexpected/missing request fields")
-        if not all(isinstance(b[k], str) for k in ("request_id", "task_id", "scope", "payload")):
-            raise InvalidRequest("string request fields required")
-        if type(b["credential_generation"]) is not int:
-            raise InvalidRequest("integer credential_generation required")
-        if b["task_id"] != permit.task_id or b["scope"] != permit.scope:
-            raise InvalidRequest("task/scope binding mismatch")
-        if (
-            b["credential_generation"] != permit.credential_generation
-            or permit.credential_generation != self.generation
-        ):
-            raise StaleCredential("credential generation is no longer current")
+        rid, request_digest = self._shape_and_digest(b)
 
-        rid = b["request_id"]
-        request_digest = hashlib.sha256(
-            json.dumps(b, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        # Reconcile an exact already-committed effect before consulting current
+        # credential generation. Rotation revokes future operations; it must not
+        # make an UNKNOWN committed result unrecoverable.
         if rid in self._effects:
             prior_digest, receipt = self._effects[rid]
             if prior_digest != request_digest:
                 raise InvalidRequest("request_id reused with different request content")
-            return BrokerEvidence(
-                rid,
-                request.sender_pid,
-                b["task_id"],
-                b["scope"],
-                b["credential_generation"],
-                "ALREADY_COMMITTED",
-                receipt,
-            )
+            if b["task_id"] != permit.task_id or b["scope"] != permit.scope:
+                raise InvalidRequest("task/scope binding mismatch")
+            return BrokerEvidence(rid, request.sender_pid, b["task_id"], b["scope"], b["credential_generation"], "ALREADY_COMMITTED", receipt)
 
-        material = (
-            rid.encode()
-            + b"\0"
-            + b["task_id"].encode()
-            + b"\0"
-            + b["scope"].encode()
-            + b"\0"
-            + b["payload"].encode()
-        )
+        if b["task_id"] != permit.task_id or b["scope"] != permit.scope:
+            raise InvalidRequest("task/scope binding mismatch")
+        if b["credential_generation"] != permit.credential_generation or permit.credential_generation != self.generation:
+            raise StaleCredential("credential generation is no longer current")
+
+        material = rid.encode() + b"\0" + b["task_id"].encode() + b"\0" + b["scope"].encode() + b"\0" + b["payload"].encode()
         receipt = "receipt:" + hmac.new(self._secret, material, hashlib.sha256).hexdigest()
         self._effects[rid] = (request_digest, receipt)
         self.apply_count += 1
         if timeout_after_commit:
             raise UnknownOutcome(rid)
-        return BrokerEvidence(
-            rid,
-            request.sender_pid,
-            b["task_id"],
-            b["scope"],
-            b["credential_generation"],
-            "COMMITTED",
-            receipt,
-        )
+        return BrokerEvidence(rid, request.sender_pid, b["task_id"], b["scope"], b["credential_generation"], "COMMITTED", receipt)
 
     def evidence_contains_secret(self, evidence: BrokerEvidence, secret: bytes) -> bool:
-        return secret.decode(errors="ignore") in json.dumps(
-            evidence.__dict__, sort_keys=True
-        )
+        return secret.decode(errors="ignore") in json.dumps(evidence.__dict__, sort_keys=True)
 
 
 class UnsafeSocketPossessionBroker:
