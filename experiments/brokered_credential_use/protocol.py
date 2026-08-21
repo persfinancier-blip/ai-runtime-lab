@@ -6,31 +6,20 @@ import json
 import os
 import socket
 import struct
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 
-class BrokerError(RuntimeError):
-    pass
-
-
-class UnauthorizedSender(BrokerError):
-    pass
-
-
-class StaleCredential(BrokerError):
-    pass
-
-
-class InvalidRequest(BrokerError):
-    pass
-
-
-class UnknownOutcome(BrokerError):
-    pass
-
+class BrokerError(RuntimeError): pass
+class UnauthorizedSender(BrokerError): pass
+class StaleCredential(BrokerError): pass
+class InvalidRequest(BrokerError): pass
+class UnknownOutcome(BrokerError): pass
+class DurableStateError(BrokerError): pass
 
 _UCRED = struct.Struct("3i")
+_STATE_SCHEMA = 1
 
 
 def proc_starttime(pid: int) -> int:
@@ -92,29 +81,105 @@ def recv_kernel_request(sock: socket.socket) -> ReceivedRequest:
 
 
 class CredentialBroker:
-    """Reference operation broker: secret bytes never leave this object."""
+    """Reference operation broker: raw secret bytes never leave this object or durable state."""
 
-    def __init__(self, secret: bytes, generation: int = 1):
+    def __init__(self, secret: bytes, generation: int = 1, *, state_path: str | Path | None = None):
         self._secret = bytes(secret)
-        self.generation = generation
-        self._effects: dict[str, tuple[str, str]] = {}
+        self._state_path = None if state_path is None else Path(state_path)
         self._pidfds: dict[tuple[int, int], int] = {}
+        self._permits: dict[tuple[str, str], OperationPermit] = {}
+        self._effects: dict[str, tuple[str, str]] = {}
+        self.generation = generation
         self.apply_count = 0
+        if self._state_path is not None and self._state_path.exists():
+            self._load_state()
+        elif self._state_path is not None:
+            self._persist_state()
+
+    def _state_dict(self) -> dict:
+        return {
+            "schema_version": _STATE_SCHEMA,
+            "generation": self.generation,
+            "permits": [p.__dict__ for p in sorted(self._permits.values(), key=lambda x: (x.task_id, x.scope))],
+            "effects": {rid: {"request_digest": pair[0], "receipt": pair[1]} for rid, pair in sorted(self._effects.items())},
+            "apply_count": self.apply_count,
+        }
+
+    def _persist_state(self) -> None:
+        if self._state_path is None:
+            return
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=self._state_path.name + ".", dir=str(self._state_path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(self._state_dict(), fh, sort_keys=True, separators=(",", ":"))
+                fh.flush(); os.fsync(fh.fileno())
+            os.replace(tmp, self._state_path)
+            dfd = os.open(self._state_path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try: os.fsync(dfd)
+            finally: os.close(dfd)
+        finally:
+            if os.path.exists(tmp): os.unlink(tmp)
+
+    def _load_state(self) -> None:
+        try:
+            raw = json.loads(self._state_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise DurableStateError("invalid durable broker state") from exc
+        if raw.get("schema_version") != _STATE_SCHEMA or type(raw.get("generation")) is not int:
+            raise DurableStateError("unsupported durable broker state")
+        self.generation = raw["generation"]
+        self.apply_count = int(raw.get("apply_count", 0))
+        self._effects = {}
+        for rid, item in raw.get("effects", {}).items():
+            if not isinstance(rid, str) or set(item) != {"request_digest", "receipt"}:
+                raise DurableStateError("invalid durable effect")
+            self._effects[rid] = (item["request_digest"], item["receipt"])
+        self._permits = {}
+        for item in raw.get("permits", []):
+            p = OperationPermit(**item)
+            if type(p.credential_generation) is not int or type(p.target_pid) is not int or type(p.target_starttime) is not int:
+                raise DurableStateError("invalid durable permit")
+            key = (p.task_id, p.scope)
+            if key in self._permits:
+                raise DurableStateError("duplicate durable permit")
+            self._permits[key] = p
 
     def rotate(self, secret: bytes) -> int:
         self._secret = bytes(secret)
         self.generation += 1
+        self._persist_state()
         return self.generation
+
+    def _install_pidfd(self, permit: OperationPermit) -> None:
+        pidfd = os.pidfd_open(permit.target_pid, 0)
+        if self._pidfd_target_pid(pidfd) != permit.target_pid or not self._pidfd_live(pidfd):
+            os.close(pidfd); raise UnauthorizedSender("failed to reacquire target process instance")
+        try:
+            current_start = proc_starttime(permit.target_pid)
+        except (FileNotFoundError, ProcessLookupError) as exc:
+            os.close(pidfd); raise UnauthorizedSender("target exited during reacquisition") from exc
+        if current_start != permit.target_starttime:
+            os.close(pidfd); raise UnauthorizedSender("saved PID now refers to a different process instance")
+        key = (permit.target_pid, permit.target_starttime)
+        old = self._pidfds.pop(key, None)
+        if old is not None: os.close(old)
+        self._pidfds[key] = pidfd
 
     def permit(self, task_id: str, scope: str, target_pid: int) -> OperationPermit:
         starttime = proc_starttime(target_pid)
-        pidfd = os.pidfd_open(target_pid, 0)
-        key = (target_pid, starttime)
-        old = self._pidfds.pop(key, None)
-        if old is not None:
-            os.close(old)
-        self._pidfds[key] = pidfd
-        return OperationPermit(task_id, scope, self.generation, target_pid, starttime)
+        permit = OperationPermit(task_id, scope, self.generation, target_pid, starttime)
+        self._install_pidfd(permit)
+        self._permits[(task_id, scope)] = permit
+        self._persist_state()
+        return permit
+
+    def reacquire_permit(self, task_id: str, scope: str) -> OperationPermit:
+        permit = self._permits.get((task_id, scope))
+        if permit is None:
+            raise UnauthorizedSender("no durable permit for task/scope")
+        self._install_pidfd(permit)
+        return permit
 
     @staticmethod
     def _pidfd_live(fd: int) -> bool:
@@ -145,10 +210,8 @@ class CredentialBroker:
 
     def close(self) -> None:
         for fd in self._pidfds.values():
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+            try: os.close(fd)
+            except OSError: pass
         self._pidfds.clear()
 
     @staticmethod
@@ -167,10 +230,6 @@ class CredentialBroker:
         self._validate_sender(request, permit)
         b = request.body
         rid, request_digest = self._shape_and_digest(b)
-
-        # Reconcile an exact already-committed effect before consulting current
-        # credential generation. Rotation revokes future operations; it must not
-        # make an UNKNOWN committed result unrecoverable.
         if rid in self._effects:
             prior_digest, receipt = self._effects[rid]
             if prior_digest != request_digest:
@@ -178,16 +237,15 @@ class CredentialBroker:
             if b["task_id"] != permit.task_id or b["scope"] != permit.scope:
                 raise InvalidRequest("task/scope binding mismatch")
             return BrokerEvidence(rid, request.sender_pid, b["task_id"], b["scope"], b["credential_generation"], "ALREADY_COMMITTED", receipt)
-
         if b["task_id"] != permit.task_id or b["scope"] != permit.scope:
             raise InvalidRequest("task/scope binding mismatch")
         if b["credential_generation"] != permit.credential_generation or permit.credential_generation != self.generation:
             raise StaleCredential("credential generation is no longer current")
-
         material = rid.encode() + b"\0" + b["task_id"].encode() + b"\0" + b["scope"].encode() + b"\0" + b["payload"].encode()
         receipt = "receipt:" + hmac.new(self._secret, material, hashlib.sha256).hexdigest()
         self._effects[rid] = (request_digest, receipt)
         self.apply_count += 1
+        self._persist_state()
         if timeout_after_commit:
             raise UnknownOutcome(rid)
         return BrokerEvidence(rid, request.sender_pid, b["task_id"], b["scope"], b["credential_generation"], "COMMITTED", receipt)
@@ -197,11 +255,7 @@ class CredentialBroker:
 
 
 class UnsafeSocketPossessionBroker:
-    """Deliberately unsafe: possession of the transferred socket is treated as identity."""
-
-    def __init__(self):
-        self.apply_count = 0
-
+    def __init__(self): self.apply_count = 0
     def execute(self, request: ReceivedRequest) -> str:
         self.apply_count += 1
         return f"accepted:{request.sender_pid}"
