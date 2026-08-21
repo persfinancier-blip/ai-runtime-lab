@@ -1,8 +1,10 @@
 from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
+from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
 
-class SignedPrunableHistory(ArchiveMixin, VerifyMixin):
+
+class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
             self.store = store
             self.archive_dir = Path(archive_dir)
@@ -38,6 +40,7 @@ class SignedPrunableHistory(ArchiveMixin, VerifyMixin):
                     )
             finally:
                 q.close()
+
 
 class UnsafeDeleteFirst:
     def prune(self, db_path, through):
