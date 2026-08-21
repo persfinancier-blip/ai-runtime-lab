@@ -14,7 +14,9 @@ class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixi
             # Bind a relative configured path to the process namespace at construction.
             # Later cwd changes must not silently retarget archive publication authority.
             self.archive_dir = Path(os.path.abspath(os.fspath(archive_dir)))
-            self.archive_dir.mkdir(parents=True, exist_ok=True)
+            # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks and
+            # can create external state before LAB-065's namespace authorization.
+            self._ensure_archive_directory_exists()
             self.key = checkpoint_key
             self.anchor = external_anchor_id
             if not self.key or not self.anchor:
