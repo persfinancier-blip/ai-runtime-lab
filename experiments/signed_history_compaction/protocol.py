@@ -1,3 +1,4 @@
+import hmac
 import os
 import threading
 
@@ -5,10 +6,16 @@ from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
 from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
-from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin
+from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin, _parse_record
+from experiments.namespace_reacquisition.protocol import (
+    MigrationPermit,
+    mac as continuity_mac,
+    verify_record as verify_continuity_record,
+)
+from experiments.namespace_retirement.integration import NamespaceRetirementMixin, RetirementIntegrationError
 
 
-class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
+class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
             self._namespace_thread_state = threading.local()
             self.store = store
@@ -64,6 +71,112 @@ class SignedPrunableHistory(RestartNamespaceContinuityMixin, NamespaceBoundArchi
             finally:
                 q.close()
             self._init_restart_namespace_continuity()
+            self._init_namespace_retirement()
+
+    def _finalize_migration_lineage_locked(self, q, old, new):
+            """Upsert the authenticated predecessor link after a crash-gap restart.
+
+            `_init_namespace_retirement()` may have already inserted the current
+            continuity record as a standalone ACTIVE row before reconciling a
+            PREPARED migration intent. Therefore an `INSERT OR IGNORE` alone is not
+            sufficient: the exact authenticated current row must be repaired with
+            its predecessor and migration commitment, while its immutable body is
+            checked for substitution.
+            """
+            old_body = json.dumps(asdict(old), sort_keys=True, separators=(",", ":"))
+            new_body = json.dumps(asdict(new), sort_keys=True, separators=(",", ":"))
+            q.execute(
+                "INSERT OR IGNORE INTO archive_namespace_records VALUES(?,?,?,NULL,'ACTIVE',NULL)",
+                (old.record_id, old.namespace_generation, old_body),
+            )
+            old_row = q.execute(
+                "SELECT generation,body_json FROM archive_namespace_records WHERE record_id=?",
+                (old.record_id,),
+            ).fetchone()
+            if old_row != (old.namespace_generation, old_body):
+                raise RetirementIntegrationError("predecessor record substitution")
+            q.execute(
+                "UPDATE archive_namespace_records SET status='RETIRED_PENDING' WHERE record_id=?",
+                (old.record_id,),
+            )
+            chain_commitment, _ = self._archive_chain_commitment_locked(q)
+            q.execute(
+                "INSERT OR IGNORE INTO archive_namespace_records "
+                "VALUES(?,?,?,?, 'ACTIVE', ?)",
+                (new.record_id, new.namespace_generation, new_body, old.record_id, chain_commitment),
+            )
+            new_row = q.execute(
+                "SELECT generation,body_json FROM archive_namespace_records WHERE record_id=?",
+                (new.record_id,),
+            ).fetchone()
+            if new_row != (new.namespace_generation, new_body):
+                raise RetirementIntegrationError("successor record substitution")
+            q.execute(
+                "UPDATE archive_namespace_records SET predecessor_record_id=?,status='ACTIVE',"
+                "migration_chain_commitment=? WHERE record_id=?",
+                (old.record_id, chain_commitment, new.record_id),
+            )
+            row = q.execute(
+                "SELECT predecessor_record_id,status,migration_chain_commitment "
+                "FROM archive_namespace_records WHERE record_id=?",
+                (new.record_id,),
+            ).fetchone()
+            if row != (old.record_id, "ACTIVE", chain_commitment):
+                raise RetirementIntegrationError("successor lineage reconciliation failed")
+
+    def _load_namespace_record_locked(self, q, record_id):
+            record, status, predecessor_id = super()._load_namespace_record_locked(q, record_id)
+            if predecessor_id is None:
+                if record.namespace_generation != 1:
+                    raise RetirementIntegrationError("non-bootstrap namespace lacks authenticated predecessor")
+                return record, status, predecessor_id
+
+            predecessor_row = q.execute(
+                "SELECT body_json FROM archive_namespace_records WHERE record_id=?",
+                (predecessor_id,),
+            ).fetchone()
+            if not predecessor_row:
+                raise RetirementIntegrationError("authenticated predecessor record missing")
+            predecessor = _parse_record(predecessor_row[0])
+            verify_continuity_record(predecessor, self.key)
+            if predecessor.record_id != predecessor_id:
+                raise RetirementIntegrationError("predecessor record id mismatch")
+
+            intent = q.execute(
+                "SELECT permit_json,status FROM archive_namespace_migration_intents WHERE old_record_id=?",
+                (predecessor_id,),
+            ).fetchone()
+            if not intent or intent[1] != "COMMITTED":
+                raise RetirementIntegrationError("committed authenticated migration proof missing")
+            permit = MigrationPermit(**json.loads(intent[0]))
+            if not hmac.compare_digest(permit.mac, continuity_mac(self.key, permit.unsigned())):
+                raise RetirementIntegrationError("migration permit authentication failed")
+            if permit.old_record_id != predecessor.record_id:
+                raise RetirementIntegrationError("migration permit predecessor mismatch")
+            if permit.new_generation != record.namespace_generation:
+                raise RetirementIntegrationError("migration permit generation mismatch")
+            if os.path.abspath(permit.new_path) != os.path.abspath(record.archive_path):
+                raise RetirementIntegrationError("migration permit successor path mismatch")
+            return record, status, predecessor_id
+
+    def migrate_archive_namespace(self, permit):
+            # Keep retirement authority linear. Otherwise gen2->gen3 could make an
+            # unretired gen1 predecessor unreachable from the current one-step permit
+            # path. A later design may generalize this to a retirement queue, but the
+            # current correctness kernel fails closed instead of accumulating hidden
+            # superseded generations.
+            q = self.store._con()
+            try:
+                pending = q.execute(
+                    "SELECT COUNT(*) FROM archive_namespace_records WHERE status='RETIRED_PENDING'"
+                ).fetchone()[0]
+            finally:
+                q.close()
+            if pending:
+                raise RetirementIntegrationError(
+                    "retire the pending predecessor before another namespace migration"
+                )
+            return super().migrate_archive_namespace(permit)
 
     @property
     def _active_namespace_handle(self):
