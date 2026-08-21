@@ -38,6 +38,8 @@ class ArchiveScavenger:
 
     Reachability comes only from the signed compaction layer's authenticated
     previous_archive_id chain. Filesystem names are candidates, never authority.
+    When LAB-066 namespace authority is available, every enumeration and destructive
+    boundary re-proves it rather than trusting a restart-time cached observation.
     """
 
     def __init__(self, layer, grace_generations=2):
@@ -61,6 +63,12 @@ class ArchiveScavenger:
             )
         finally:
             q.close()
+
+    def _require_namespace_authority(self):
+        require = getattr(self.layer, "require_namespace_authority", None)
+        if require is None:
+            return None
+        return require()
 
     def generation(self):
         q = self.layer.store._con()
@@ -89,6 +97,7 @@ class ArchiveScavenger:
         return set(self.layer._reachable_archive_ids(q))
 
     def _fs(self):
+        self._require_namespace_authority()
         out = {}
         for path in self.layer.archive_dir.iterdir():
             name = path.name
@@ -107,6 +116,7 @@ class ArchiveScavenger:
         return out
 
     def scan(self):
+        self._require_namespace_authority()
         q = self.layer.store._con()
         try:
             q.execute("BEGIN")
@@ -184,11 +194,15 @@ class ArchiveScavenger:
     def delete_candidate(self, candidate, expected_generation=None):
         if not isinstance(candidate, Candidate):
             raise TypeError("candidate")
+        self._require_namespace_authority()
         q = self.layer.store._con()
         try:
             # This write lock serializes final reachability check + unlink
             # against LAB-062's compaction commit transaction.
             q.execute("BEGIN IMMEDIATE")
+            # Re-prove after acquiring the serialization boundary, immediately
+            # before any filesystem validation/unlink decision.
+            self._require_namespace_authority()
             generation = q.execute("SELECT generation FROM archive_retention_state").fetchone()[0]
             if expected_generation is not None and generation != expected_generation:
                 raise StaleRetentionGeneration("generation changed")
@@ -208,6 +222,7 @@ class ArchiveScavenger:
 
             artifact_path, manifest_path = self.layer._archive_paths(candidate.archive_id)
             self._validate(q, candidate.archive_id, artifact_path, manifest_path)
+            self._require_namespace_authority()
             for path in (artifact_path, manifest_path):
                 try:
                     path.unlink()
