@@ -3,7 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.transactional_broker_journal.protocol import CorruptJournal, TransactionalJournal
+from experiments.transactional_broker_journal.protocol import (
+    CorruptJournal,
+    Request,
+    TransactionalJournal,
+)
 from experiments.transactional_broker_journal.reopen import reopen_journal
 
 
@@ -34,6 +38,23 @@ class ReopenTests(unittest.TestCase):
             q.execute("UPDATE broker_meta SET credential_generation=0")
             q.commit()
             q.close()
+            with self.assertRaises(CorruptJournal):
+                reopen_journal(path)
+
+    def test_restart_refuses_non_hex_request_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "journal.db"
+            journal = TransactionalJournal(path, 1)
+            journal.reserve(Request("req-1", "task-1", "scope-1", 1, "payload"))
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE broker_requests SET request_digest=? WHERE request_id='req-1'",
+                ("z" * 64,),
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(CorruptJournal):
+                journal.verify_durable()
             with self.assertRaises(CorruptJournal):
                 reopen_journal(path)
 
