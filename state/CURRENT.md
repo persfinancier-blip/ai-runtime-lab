@@ -4,60 +4,61 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-065 — bind durable archive publication to the exact authorized filesystem directory object so symlink/path-prefix substitution cannot redirect the same lexical path between authorization, publication, and SQL commit.
+LAB-065 — bind durable archive publication to the exact authorized filesystem directory object so symlink/path-prefix substitution cannot redirect publication between authorization and SQL commit.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-064.
-- Completed Issue #119 / LAB-064.
-- PR #120 closed as manually integrated after normal squash merge returned a real conflict caused only by stale `state/CURRENT.md` divergence.
 - Active Issue #121 / LAB-065 — IN_PROGRESS.
 - Active branch: `lab/065-filesystem-namespace-binding`.
-- Active PR: none; draft PR creation was blocked by an external safety-status gate before execution in the latest run.
+- Active draft PR: #122.
+- Current audited PR HEAD: `bfed3746d81aa4030ec69f46761d00dfb09b9e51`.
 
 ## Last completed step
 
-LAB-064's final merge gate was closed by exact-source execution. Direct shell clone still could not resolve `github.com`, so the PR HEAD dependency closure was reconstructed through the GitHub connector and every executable file was checked with local `git hash-object` against its GitHub blob ID before tests ran.
+LAB-065 is now wired into the real LAB-062 `SignedPrunableHistory` compaction path rather than remaining an isolated primitive. Artifact and manifest publication are performed relative to one held archive-directory FD; LAB-064 path/digest/file-fsync/directory-fsync receipt checks are preserved; LAB-065 additionally verifies `(st_dev, st_ino, basename, SHA-256)` through the same handle. Immediately before the SQL prune transaction makes an archive authoritative, the exact bytes are re-read through that held namespace object and the configured archive pathname is checked to still resolve to the same object.
 
-Observed exact-source results: LAB-064 focused 10/10, LAB-064 signed-compaction integration 6/6, LAB-062 regressions 15/15, LAB-063 unit 9/9, LAB-063 signed integration 4/4, compileall passed. The normal squash merge of PR #120 was then attempted at exact HEAD `643aee0e764f70f73f3612d8cb2be035332c34bc` and GitHub returned a merge conflict. `compare_commits` showed main had diverged from the PR merge base only in this CURRENT file; code/research paths did not overlap. The exact audited 7 code/research changes were therefore integrated with the repository-approved file-scoped Contents API fallback, excluding the stale branch CURRENT copy. Issue #119 is DONE and PR #120 is closed as manually integrated.
+Real integration regressions were added for: archive-directory symlink substitution at authorization, pathname retarget immediately after namespace authorization, pathname retarget after durable publication receipt, and stable dirfd identity across rename.
 
-LAB-065 then started. Current x86_64 runtime probing observed `openat2` support: a real directory beneath a trusted dirfd opened; a symlink component was rejected with `ELOOP`; a `..` escape under `RESOLVE_BENEATH` was rejected with `EXDEV`.
+A separate remote patch audit found a concurrency defect in the first integration slice: active namespace authority was ordinary mutable instance state, so concurrent compactions on one object could overwrite each other's handle. `SignedPrunableHistory` now initializes a `threading.local()` namespace slot and exposes the mixin's active-handle field through a thread-local property, preventing cross-thread authority consumption.
 
-An isolated reference implementation is now on `lab/065-filesystem-namespace-binding`: held directory FD is authority, publication/verification are dirfd-relative, receipts bind `(st_dev, st_ino, basename, SHA-256)`, unsupported architecture/openat2 fails closed, and final reread rejects non-regular-file substitution. Corrected local namespace suite passed 11/11; unsafe lexical-path baseline failed as expected after symlink retarget redirected publication into an attacker directory; compileall passed. A separate audit found and fixed unknown-architecture syscall use and special-file blocking risk before handoff.
+Normal draft PR creation, which had been blocked in the previous run, succeeded as PR #122. The PR is currently mergeable and intentionally remains draft.
 
 ## Evidence produced
 
-LAB-064:
-- Main publication protocol blob: `135cbf1eb8085dc1067bf0485e0acd2995aa5eb0`.
-- Main LAB-062 archive integration blob: `dcd8a0c0ea90c9aa60d2252b460879e877dde105`.
-- Exact validation counts: 10/10 + 6/6 + 15/15 + 9/9 + 4/4; compileall passed.
-- Issue #119 closed DONE; PR #120 closed after exact file-scoped integration fallback.
+Earlier isolated LAB-065 evidence remains valid:
+- namespace protocol blob from the isolated slice: `d7b3ea96631e5b1fdf312953db23d55f0dbfc52a`;
+- isolated corrected suite: 11/11 passed;
+- unsafe lexical symlink-retarget seed failed as expected;
+- isolated compileall passed;
+- runtime probe: `openat2` available on x86_64, symlink rejected with `ELOOP`, `..` beneath escape rejected with `EXDEV`.
 
-LAB-065 current branch:
-- Corrected namespace protocol blob: `d7b3ea96631e5b1fdf312953db23d55f0dbfc52a`.
-- Corrected namespace tests blob: `bab566d9d14e6c845b6c79d4720d74d5dc2d7805`.
-- Corrected isolated suite: 11/11 passed.
-- Unsafe lexical symlink-retarget seed: failed as expected.
-- Runtime `openat2` probe: symlink `ELOOP`, beneath escape `EXDEV`.
-- Research note: `research/2026-08-21-filesystem-namespace-binding.md`.
+Current integration evidence:
+- PR #122 exists and is mergeable/draft at HEAD `bfed3746d81aa4030ec69f46761d00dfb09b9e51`.
+- New `experiments/filesystem_namespace_binding/integration.py` binds the real SignedPrunableHistory publication and pre-commit boundary to a held dirfd.
+- `experiments/signed_history_compaction/protocol.py` now composes `NamespaceBoundArchiveMixin` and uses thread-local active namespace authority.
+- Real SignedPrunableHistory path-swap regression file is present on the branch.
+- Remote patch audit found and fixed the shared-handle concurrency defect; no merge has been attempted after the fix.
 
 ## Known blockers / constraints
 
-- No LAB-064 correctness blocker remains.
-- LAB-065 isolated primitive is not yet wired into the real LAB-062 `SignedPrunableHistory` archive publication/pre-SQL-commit path, so LAB-065 is not DONE.
-- Draft PR creation for LAB-065 was blocked by an external safety-status gate before execution; branch/issue state is durable, so retry normal PR creation later rather than bypassing the gate.
-- The LAB-065 reference syscall mapping intentionally fails closed outside x86_64 instead of guessing another architecture's syscall ABI.
-- The trusted-root directory passed into LAB-065 is an authority boundary; this experiment does not claim sandbox/chroot/mount-namespace isolation.
-- Directory `fsync()` remains an OS/filesystem/storage-stack durability contract, not a universal physical-media guarantee.
+- The newly integrated current PR HEAD has **not yet been executed exactly**. A fresh direct shell `git clone` in this runtime failed before checkout because DNS could not resolve `github.com`. Do not claim the integration tests passed until exact-source execution is observed.
+- PR #122 must remain draft until exact-source validation and final remote patch audit complete.
+- Branch is currently ahead of and slightly behind main; no low-level ref update/force bypass should be used. Re-check compare state before integration.
+- The x86_64 syscall mapping intentionally fails closed on other architectures.
+- The trusted root used to acquire the directory FD is itself an authority boundary; this experiment does not claim chroot/mount-namespace isolation.
+- Directory `fsync()` is an OS/filesystem/storage-stack durability contract, not a universal physical-media guarantee.
+- Path relocation after a failed/non-authoritative publication can leave bytes in the held renamed directory; restart reacquisition/cleanup of such namespace-detached artifacts is a separate follow-up concern.
 - Whole-store rollback/freshness remains LAB-034–037.
 
 ## Exact next action
 
-Resume Issue #121 / branch `lab/065-filesystem-namespace-binding`. First retry normal draft PR creation if the connector allows it. Then integrate the namespace-bound handle into the actual LAB-062 `SignedPrunableHistory` publication boundary: artifact and manifest must be created/fsynced/renamed and pre-commit reverified relative to the same authorized directory FD/object identity, while preserving LAB-064 durability receipts. Add real integration regressions that retarget/replace the archive pathname after authorization and after publication receipt and prove SQL either commits against the same held namespace object or fails closed. Execute exact branch source plus LAB-065 focused tests and LAB-064/LAB-062/LAB-063 regressions, perform a separate remote patch audit, and only then integrate/close LAB-065.
+Resume Issue #121 / draft PR #122. Obtain the exact current PR HEAD source using the safest available route; if direct clone still lacks DNS, reconstruct the dependency closure through the GitHub connector and verify each executable file with local `git hash-object` against its GitHub blob ID before running it. Execute: LAB-065 isolated tests, LAB-065 SignedPrunableHistory integration tests, LAB-064 focused and signed-compaction integration regressions, LAB-062 signed-history suite, LAB-063 unit and real signed integration regressions, and compileall. Fix any failure, then re-fetch PR #122 at the same audited HEAD, perform a final remote patch audit, mark ready and integrate only if all exact-source evidence is clean. Close #121 only after that.
 
 ## Backlog
 
 - #121 / LAB-065 — filesystem namespace identity and symlink-swap conformance — IN_PROGRESS.
+- Candidate after LAB-065: persisted namespace identity/reacquisition and cleanup of namespace-detached non-authoritative archive artifacts after restart/path relocation.
 - Crash-resilient scavenging for named credential-file fallback — candidate follow-up.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
