@@ -4,60 +4,52 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-Finish integrating LAB-072 after exact-source validation and fresh audit; no known content/test blocker remains.
+LAB-073 — replace LAB-072's trusted external-sink idempotency/reconciliation assumption with an explicit observed capability contract and fail-closed UNKNOWN policy.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-071.
-- Active Issue #135 / LAB-072 — VERIFY.
-- Active branch: `lab/072-transactional-broker-journal`.
-- Draft PR #136 `[LAB-072] Transactional broker request journal`.
-- Audited PR HEAD: `50a771b3cc8adc743372068d016397367b1611b5`.
+- Completed: LAB-001 through LAB-072.
+- LAB-072 PR #136 squash-merged as `4f2b58abd08e80af175d5e75e29439de44f6d56a`; Issue #135 DONE.
+- Active Issue #137 / LAB-073 — IN_PROGRESS.
+- Active branch: `lab/073-sink-capability-contract`.
+- Draft PR #138 `[LAB-073] Sink idempotency/reconciliation capability contract`.
+- Current PR head at publication: `38b44c61f4a3c4bb538020fea702c75fd520c4db`.
 
 ## Last completed step
 
-A fresh cross-layer audit found that LAB-072 process permits were still checking request credential generation before the SQL journal. That accidentally reintroduced a second generation authority and broke restart semantics: after journal rotation, a freshly reacquired current-generation process permit could not reconcile an exact already-committed historical request.
+The previous integration-only LAB-072 blocker cleared: the normal draft→ready operation succeeded on the unchanged audited HEAD, followed by a normal squash merge.
 
-The branch was fixed so LAB-071 process permits prove only kernel sender process identity plus task/scope. The SQL journal alone decides whether a request is an existing exact retry or a new operation. Added regressions prove a fresh current-generation process permit can reconcile an old committed request, while a genuinely new old-generation request still fails closed.
+No open issues remained, so the next correctness bottleneck was selected from LAB-072's explicit boundary: its strong timeout/UNKNOWN behavior requires a concrete sink to provide stable request-bound idempotency and, for automatic reconciliation, durable lookup of a committed result. LAB-073 turns this from an adapter assumption into a versioned capability contract.
 
-All exact-source validation and regression gates then passed. A normal draft→ready transition was attempted, but the tool operation was blocked by an external OpenAI safety-status gate before execution. No low-level ref/tree/force mutation or alternate integration bypass was attempted.
+A first deterministic reference prototype was implemented and published. Policy is derived only from observed, behaviorally verified capabilities; adapter/tool self-description alone cannot upgrade retry authority. Capability generation changes invalidate stale plans, known idempotency retention expiry downgrades retry authority, and a later stronger capability observation cannot silently upgrade an already-issued plan.
 
 ## Evidence produced
 
-Exact current executable Git blobs reconstructed through GitHub connector and verified locally with `git hash-object`:
-- `authorized.py`: `41e586fd892d211554db9bbbc5e1527960624b00`
-- `protocol.py`: `6817459fca8ac37c11cce71865937b8f65567d83`
-- `reopen.py`: `4e0b5a8e3434db38d898e78c83804551d2db3f47`
-- `test_protocol.py`: `656284062a96b7915e3283b181c58bd7a8e9281d`
-- `test_reopen.py`: `1456b2c59b79e65807418d7992bbcf5ac017e322`
-- `test_authorized_process_integration.py`: `8963a7fbfb94e40806c11b1f3b767fad6d658d67`
-- `test_restart_rotation_authority.py`: `1b68d6b6b20e1f9474ea4f0c2ed2bacea1a90036`
-- unsafe seed: `d9c07f28c9f3f23aab5fa4fcee44b269b0013af7`
-
-Observed validation:
-- LAB-072 exact corrected suite: 26/26 passed.
-- LAB-071 exact regressions: 18/18 passed.
-- LAB-015 exact regressions: 13/13 passed.
-- LAB-031 exact regressions: 8/8 passed.
+- `experiments/sink_capability_contract/protocol.py`
+- `experiments/sink_capability_contract/tests/test_protocol.py`
+- `experiments/sink_capability_contract/tests/unsafe_generic_retry_expected_failure.py`
+- `experiments/sink_capability_contract/README.md`
+- `research/2026-08-21-sink-capability-contract.md`
+- Local corrected suite before publication: 12/12 passed.
+- Unsafe generic-retry seed failed as intended because timeout-after-commit followed by a new retry key produced 2 side effects instead of 1.
 - compileall passed.
-- Exact unsafe seed failed as intended because check-then-act produced 2 side effects instead of 1.
-- Fresh remote patch audit completed; stale README/research/PR claims were corrected.
+- Primary-source evidence recorded from current AWS idempotency guidance, AWS Durable Execution replay/idempotency guidance, and Google Cloud idempotent-vs-non-idempotent retry guidance.
 
 ## Known blockers / constraints
 
-- No owner-level blocker and no known code/test/audit blocker.
-- Integration-only blocker: external safety-status gate blocked the normal PR draft→ready operation before execution.
-- Do not bypass the gate with low-level refs/trees, force updates, or alternate hidden integration.
-- Direct shell DNS to `github.com` remains unavailable in this runtime; GitHub connector exact-byte reconstruction is the proven fallback for validation.
-- The idempotent sink remains an adapter contract; external systems without stable idempotency/reconciliation cannot inherit the same UNKNOWN semantics.
-- SQLite is a local serialization reference, not distributed consensus or a PostgreSQL performance claim.
+- No owner-level blocker.
+- PR #138 is intentionally draft pending remote patch audit and exact published-source revalidation.
+- The first slice uses a deterministic simulated sink; it does not yet prove a generic behavioral-probe interface cannot be forged by adapter-returned metadata. The audit should specifically examine the trust boundary between probe execution and capability issuance.
+- `SAFE_RETRY_IDEMPOTENT_ONLY` intentionally does not auto-retry an already-UNKNOWN outcome when reconciliation is unavailable; a stable key makes duplicate processing less likely within its retention window but does not prove whether the first attempt committed.
+- Idempotency-key retention expiry is a real semantic boundary: after expiry, the generic broker must not assume the old key still deduplicates.
+- This work does not claim universal exactly-once delivery or distributed transactions.
 
 ## Exact next action
 
-Re-fetch PR #136. Confirm it remains draft, mergeable, and at HEAD `50a771b3cc8adc743372068d016397367b1611b5` with unchanged audited patch. Retry the normal draft→ready transition. If it succeeds, perform normal squash merge with the exact expected HEAD, close Issue #135 DONE, and select the highest-value unblocked next task. If the external safety-status gate blocks again before execution, retain LAB-072 in VERIFY, record the repeated tool-level blocker, and do not bypass it.
+Re-fetch draft PR #138 at HEAD `38b44c61f4a3c4bb538020fea702c75fd520c4db`, fetch the full patch and perform a separate security/correctness audit. Focus on whether `observed=True` / `behavioral_probe_passed=True` can be structurally forged, whether retention-window boundaries are conservative enough, and whether an idempotent-but-non-reconcilable sink can ever safely auto-retry after an UNKNOWN outcome. Fix any findings in-branch, then reconstruct exact published bytes and rerun LAB-073 corrected/unsafe suites before considering ready/merge.
 
 ## Backlog
 
-- #135 / LAB-072 — concurrent broker request serialization + transactional effect journal — VERIFY; exact validation/audit complete, integration gate only.
+- #137 / LAB-073 — sink idempotency/reconciliation capability contract — IN_PROGRESS.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
