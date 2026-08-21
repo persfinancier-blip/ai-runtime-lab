@@ -67,6 +67,31 @@ class RestartTests(unittest.TestCase):
                 finally:b2.close()
             finally:p.kill(); p.wait(timeout=2); bs.close()
 
+    def test_restart_rejects_wrong_supplied_credential_generation(self):
+        with tempfile.TemporaryDirectory() as td:
+            state=Path(td)/'broker.json'; b1=CredentialBroker(b'old',state_path=state)
+            try:
+                b1.rotate(b'new')
+            finally:
+                b1.close()
+            with self.assertRaises(StaleCredential):
+                CredentialBroker(b'old',generation=1,state_path=state)
+
+    def test_malformed_durable_state_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            state=Path(td)/'broker.json'
+            malformed = [
+                {'schema_version':True,'generation':1,'permits':[],'effects':{},'apply_count':0},
+                {'schema_version':1,'generation':1,'permits':[],'effects':{'r':{'request_digest':123,'receipt':[]}},'apply_count':1},
+                {'schema_version':1,'generation':1,'permits':[{'task_id':[], 'scope':'seller-read','credential_generation':1,'target_pid':1,'target_starttime':1}],'effects':{},'apply_count':0},
+                {'schema_version':1,'generation':1,'permits':[],'effects':{},'apply_count':1},
+            ]
+            for raw in malformed:
+                state.write_text(json.dumps(raw))
+                with self.subTest(raw=raw):
+                    with self.assertRaises(DurableStateError):
+                        CredentialBroker(b'secret',state_path=state)
+
     def test_durable_state_contains_no_secret(self):
         with tempfile.TemporaryDirectory() as td:
             state=Path(td)/'broker.json'; bs,s=credential_socketpair(); p=spawn(s.fileno(),[req('x')]); s.close(); secret=b'raw-secret-never-persist'
