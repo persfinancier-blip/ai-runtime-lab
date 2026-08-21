@@ -4,18 +4,16 @@ SQLite serializes local request reservation and credential rotation. External ef
 
 Credential rotation fails closed while the current generation still has unresolved `INTENT` or `UNKNOWN` requests. Otherwise a previously authorized old-generation intent could be executed after rotation with the wrong secret generation.
 
-`authorized.py` puts durable reservation behind LAB-071's real process-instance authority boundary: kernel `SCM_CREDENTIALS` plus PID/starttime/pidfd validation must succeed before a new journal row or sink effect is possible. LAB-072 SQL is the single durable credential-generation authority; LAB-071 is reused for sender identity only, avoiding a split generation authority across JSON and SQL stores.
+`authorized.py` puts durable reservation behind LAB-071's real process-instance authority boundary: kernel `SCM_CREDENTIALS` plus PID/starttime/pidfd validation must succeed before a new journal row or sink effect is possible. LAB-072 SQL is the single durable credential-generation authority; LAB-071 is reused for sender identity only, avoiding a split generation authority across JSON and SQL stores. Process permits bind task/scope/process identity; request generation is decided only by the SQL journal so an exact historical retry can still reconcile after rotation while a new stale-generation request is rejected.
 
-Run the journal suite:
-
-```bash
-python -m unittest experiments.transactional_broker_journal.tests.test_protocol -v
-```
-
-Run Linux process-level authority/concurrency integration:
+Run the full LAB-072 corrected suite:
 
 ```bash
-python -m unittest experiments.transactional_broker_journal.tests.test_authorized_process_integration -v
+python -m unittest \
+  experiments.transactional_broker_journal.tests.test_protocol \
+  experiments.transactional_broker_journal.tests.test_reopen \
+  experiments.transactional_broker_journal.tests.test_authorized_process_integration \
+  experiments.transactional_broker_journal.tests.test_restart_rotation_authority -v
 ```
 
 Unsafe seed (expected failure):
