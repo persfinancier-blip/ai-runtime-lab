@@ -1,3 +1,4 @@
+import os
 import threading
 
 from .core import *
@@ -10,7 +11,9 @@ class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixi
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
             self._namespace_thread_state = threading.local()
             self.store = store
-            self.archive_dir = Path(archive_dir)
+            # Bind a relative configured path to the process namespace at construction.
+            # Later cwd changes must not silently retarget archive publication authority.
+            self.archive_dir = Path(os.path.abspath(os.fspath(archive_dir)))
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             self.key = checkpoint_key
             self.anchor = external_anchor_id
