@@ -119,12 +119,14 @@ class RetirementEngine:
             return "STALE_PERMIT"
         if old.record_id == self.ledger.current_record_id or old.generation == self.ledger.current_generation:
             return "CURRENT_GENERATION_PROTECTED"
-        if permit.predecessor_record_id != old.record_id:
+        if permit.predecessor_record_id != old.record_id or permit.predecessor_generation != old.generation:
             return "STALE_PERMIT"
         successor=self.ledger.records.get(permit.successor_record_id)
         if successor is None or successor.record_id != self.ledger.current_record_id:
             return "STALE_PERMIT"
         verify_record(successor,self.key)
+        if permit.successor_generation != successor.generation:
+            return "STALE_PERMIT"
         if successor.predecessor_id != old.record_id:
             return "STALE_PERMIT"
         if successor.archive_chain_commitment != permit.archive_chain_commitment:
