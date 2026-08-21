@@ -4,23 +4,27 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from experiments.archive_scavenging.protocol import ArchiveScavenger
 from experiments.namespace_reacquisition.protocol import issue_migration
 from experiments.namespace_retirement.integration import (
+    RetirementIntegrationError,
     SimulatedRetirementCrash,
 )
 from experiments.namespace_retirement.protocol import (
+    CurrentGenerationProtected,
     NamespaceReplacementDetected,
     StalePermit,
+    StrongReacquisitionUnavailable,
 )
 from experiments.signed_history_compaction.protocol import SignedPrunableHistory
 from experiments.signed_history_compaction.tests.test_protocol import ChainBuilder
 
 
 class SignedNamespaceRetirementIntegrationTests(unittest.TestCase):
-    def layer(self, builder, archive_dir):
-        return SignedPrunableHistory(
+    def layer(self, builder, archive_dir, cls=SignedPrunableHistory):
+        return cls(
             builder.store,
             archive_dir,
             checkpoint_key=b"cp-key",
@@ -66,6 +70,37 @@ class SignedNamespaceRetirementIntegrationTests(unittest.TestCase):
             receipt2 = restarted.retire_superseded_namespace(permit)
             self.assertEqual(receipt2, receipt1)
             self.assertEqual(restarted.namespace_generation, 2)
+
+    def test_crash_after_continuity_cas_reconciles_predecessor_lineage(self):
+        class CrashDuringLineage(SignedPrunableHistory):
+            crashed = False
+
+            def _finalize_migration_lineage_locked(self, q, old, new):
+                if not self.crashed:
+                    self.crashed = True
+                    raise SimulatedRetirementCrash("crash after continuity CAS")
+                return super()._finalize_migration_lineage_locked(q, old, new)
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            builder = ChainBuilder(td / "db").append(4)
+            old_dir = td / "archives-v1"
+            new_dir = td / "archives-v2"
+            new_dir.mkdir()
+            layer = self.layer(builder, old_dir, cls=CrashDuringLineage)
+            first = layer.compact(layer.create_checkpoint())
+            old = layer.require_namespace_authority()
+            migration = issue_migration(old, new_dir, 2, layer.key)
+            with self.assertRaises(SimulatedRetirementCrash):
+                layer.migrate_archive_namespace(migration)
+            # LAB-066 continuity CAS already committed. A fresh normal object must
+            # reconcile the PREPARED intent and restore exact predecessor lineage.
+            restarted = self.layer(builder, new_dir)
+            permit = restarted.issue_namespace_retirement_permit()
+            self.assertEqual(permit.predecessor_record_id, old.record_id)
+            receipt = restarted.retire_superseded_namespace(permit)
+            self.assertEqual(receipt.status, "RETIRED")
+            self.assertGreater(restarted.audit_archive(first.archive_id)["rows_verified"], 0)
 
     def test_crash_after_authorize_is_retryable(self):
         with tempfile.TemporaryDirectory() as td:
@@ -116,16 +151,55 @@ class SignedNamespaceRetirementIntegrationTests(unittest.TestCase):
             self.assertEqual(list(attacker.iterdir()), [])
             self.assertTrue(any(detached.iterdir()))
 
+    def test_unsupported_strong_reopen_fails_closed_without_cleanup(self):
+        with tempfile.TemporaryDirectory() as td:
+            builder, layer, old_dir, new_dir, old, new, first = self.migrated(td)
+            permit = layer.issue_namespace_retirement_permit()
+            with patch(
+                "experiments.namespace_retirement.integration.reacquire",
+                return_value={"status": "UNSUPPORTED_STRONG_REACQUISITION", "reason": "no capability"},
+            ):
+                with self.assertRaises(StrongReacquisitionUnavailable):
+                    layer.retire_superseded_namespace(permit)
+            self.assertTrue(any(old_dir.iterdir()))
+
+    def test_incomplete_successor_archive_chain_blocks_permit(self):
+        with tempfile.TemporaryDirectory() as td:
+            builder, layer, old_dir, new_dir, old, new, first = self.migrated(td)
+            (new_dir / f"{first.archive_id}.json").unlink()
+            with self.assertRaises(Exception):
+                layer.issue_namespace_retirement_permit()
+            self.assertTrue(any(old_dir.iterdir()))
+
+    def test_policy_generation_change_stales_existing_permit(self):
+        with tempfile.TemporaryDirectory() as td:
+            builder, layer, old_dir, new_dir, old, new, first = self.migrated(td)
+            permit = layer.issue_namespace_retirement_permit()
+            q = builder.store._con()
+            try:
+                q.execute("UPDATE archive_namespace_retirement_state SET policy_generation=policy_generation+1")
+            finally:
+                q.close()
+            with self.assertRaises(StalePermit):
+                layer.retire_superseded_namespace(permit)
+            self.assertTrue(any(old_dir.iterdir()))
+
     def test_stale_pair_and_chain_commitment_fail_closed(self):
         with tempfile.TemporaryDirectory() as td:
             builder, layer, old_dir, new_dir, old, new, first = self.migrated(td)
             permit = layer.issue_namespace_retirement_permit()
             stale = replace(permit, archive_chain_commitment="0" * 64)
-            # Re-signing is deliberately omitted: a structurally plausible mutation
-            # must fail before any cleanup.
             with self.assertRaises(Exception):
                 layer.retire_superseded_namespace(stale)
             self.assertTrue(any(old_dir.iterdir()))
+
+    def test_current_generation_is_not_retirement_eligible(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            builder = ChainBuilder(td / "db").append(2)
+            layer = self.layer(builder, td / "archives")
+            with self.assertRaises(CurrentGenerationProtected):
+                layer.issue_namespace_retirement_permit()
 
     def test_current_generation_scavenger_never_crosses_into_old_namespace(self):
         with tempfile.TemporaryDirectory() as td:
