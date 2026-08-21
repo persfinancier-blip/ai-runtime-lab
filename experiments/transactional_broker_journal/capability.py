@@ -130,7 +130,7 @@ class CapabilityBoundJournal:
             issuer_id,
             policy,
             created,
-            "",
+            "",  # filled by _load_binding
         )
 
     def _load_binding(self, q, request_id: str) -> DurableCapabilityPlan:
@@ -221,6 +221,9 @@ class CapabilityBoundJournal:
         if type(now) is not int or now < 0:
             raise CapabilityBindingError("invalid time")
 
+        # Existing durable identity is authoritative before current capability. This
+        # lets CONFIRMED results survive later capability rotation while performing
+        # no external action. INTENT/UNKNOWN are revalidated by the worker before use.
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
@@ -242,6 +245,7 @@ class CapabilityBoundJournal:
         finally:
             q.close()
 
+        # A genuinely new reservation requires a currently authenticated capability.
         claim = self.observe_capability(capability)
         policy = cap.derive_policy(capability, self.verifier, now=now, key_created_at=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
@@ -251,6 +255,7 @@ class CapabilityBoundJournal:
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
+            # Close the race between the initial lookup and capability verification.
             row = q.execute(
                 "SELECT request_digest,status,effect_key,receipt FROM broker_requests WHERE request_id=?",
                 (request.request_id,),
@@ -413,6 +418,9 @@ class CapabilityBrokerWorker:
             raise cap.StaleCapability("sink changed")
 
         if status == "UNKNOWN" and claim.generation > plan.capability_generation:
+            # Capability rotation can revoke new execution, but not erase proof of an
+            # already-committed effect. This path is reconciliation-only and still
+            # requires the current sink capability to expose reconciliation.
             if not claim.reconcile_by_key:
                 raise CapabilityExecutionBlocked(
                     "current rotated capability does not authorize reconciliation"
