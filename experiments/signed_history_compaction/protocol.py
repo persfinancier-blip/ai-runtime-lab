@@ -1,12 +1,22 @@
+import os
+import threading
+
 from .core import *
 from .verify import VerifyMixin
 from .archive import ArchiveMixin
+from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
 
-class SignedPrunableHistory(ArchiveMixin, VerifyMixin):
+
+class SignedPrunableHistory(NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
     def __init__(self, store: HistoryStore, archive_dir, *, checkpoint_key=b"checkpoint-key", external_anchor_id="anchor-A"):
+            self._namespace_thread_state = threading.local()
             self.store = store
-            self.archive_dir = Path(archive_dir)
-            self.archive_dir.mkdir(parents=True, exist_ok=True)
+            # Bind a relative configured path to the process namespace at construction.
+            # Later cwd changes must not silently retarget archive publication authority.
+            self.archive_dir = Path(os.path.abspath(os.fspath(archive_dir)))
+            # Do not use Path.mkdir(parents=True): it follows path-prefix symlinks and
+            # can create external state before LAB-065's namespace authorization.
+            self._ensure_archive_directory_exists()
             self.key = checkpoint_key
             self.anchor = external_anchor_id
             if not self.key or not self.anchor:
@@ -38,6 +48,19 @@ class SignedPrunableHistory(ArchiveMixin, VerifyMixin):
                     )
             finally:
                 q.close()
+
+    @property
+    def _active_namespace_handle(self):
+        return getattr(self._namespace_thread_state, "handle", None)
+
+    @_active_namespace_handle.setter
+    def _active_namespace_handle(self, handle):
+        if handle is None:
+            if hasattr(self._namespace_thread_state, "handle"):
+                del self._namespace_thread_state.handle
+        else:
+            self._namespace_thread_state.handle = handle
+
 
 class UnsafeDeleteFirst:
     def prune(self, db_path, through):
