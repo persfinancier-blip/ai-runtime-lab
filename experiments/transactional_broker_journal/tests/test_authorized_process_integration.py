@@ -1,0 +1,164 @@
+import json
+import multiprocessing as mp
+import os
+import socket
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+from experiments.brokered_credential_use.protocol import (
+    CredentialBroker,
+    UnauthorizedSender,
+    credential_socketpair,
+    recv_kernel_request,
+)
+from experiments.transactional_broker_journal.authorized import KernelAuthorizedBrokerWorker
+from experiments.transactional_broker_journal.protocol import (
+    IdempotentSink,
+    RequestConflict,
+    TransactionalJournal,
+)
+
+
+def _sender(fd: int, bodies: list[dict], ready_fd: int) -> None:
+    sock = socket.socket(fileno=fd)
+    try:
+        for body in bodies:
+            sock.send(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
+        os.write(ready_fd, b"1")
+        # Stay live so every broker worker can reacquire the exact process instance.
+        time.sleep(10)
+    finally:
+        sock.close()
+        os.close(ready_fd)
+
+
+def _broker_worker(
+    broker_fd: int,
+    sender_pid: int,
+    journal_path: str,
+    sink_path: str,
+    out,
+) -> None:
+    sock = socket.socket(fileno=os.dup(broker_fd))
+    authority = CredentialBroker(b"authority-not-used-for-effect", 1)
+    try:
+        permit = authority.permit("task", "read", sender_pid)
+        received = recv_kernel_request(sock)
+        worker = KernelAuthorizedBrokerWorker(
+            authority=authority,
+            permit=permit,
+            journal=TransactionalJournal(journal_path, 1),
+            sink=IdempotentSink(sink_path),
+            secret=b"effect-secret",
+        )
+        result = worker.process_received(received)
+        out.put(("ok", result.outcome, result.receipt))
+    except Exception as exc:
+        out.put(("error", type(exc).__name__, str(exc)))
+    finally:
+        authority.close()
+        sock.close()
+
+
+@unittest.skipUnless(
+    os.name == "posix" and hasattr(os, "pidfd_open") and hasattr(socket, "SCM_CREDENTIALS"),
+    "requires Linux pidfd + SCM_CREDENTIALS",
+)
+class ProcessIntegrationTests(unittest.TestCase):
+    def _run_two(self, bodies: list[dict]):
+        ctx = mp.get_context("fork")
+        with tempfile.TemporaryDirectory() as td:
+            journal_path = str(Path(td) / "journal.db")
+            sink_path = str(Path(td) / "sink.db")
+            journal = TransactionalJournal(journal_path, 1)
+            sink = IdempotentSink(sink_path)
+            broker, sender = credential_socketpair()
+            ready_r, ready_w = os.pipe()
+            target = ctx.Process(target=_sender, args=(sender.detach(), bodies, ready_w))
+            target.start()
+            os.close(ready_w)
+            self.assertEqual(os.read(ready_r, 1), b"1")
+            os.close(ready_r)
+
+            out = ctx.Queue()
+            workers = [
+                ctx.Process(
+                    target=_broker_worker,
+                    args=(broker.fileno(), target.pid, journal_path, sink_path, out),
+                )
+                for _ in range(2)
+            ]
+            for proc in workers:
+                proc.start()
+            for proc in workers:
+                proc.join(8)
+                self.assertFalse(proc.is_alive(), "broker worker hung")
+            results = [out.get(timeout=2) for _ in workers]
+            target.terminate()
+            target.join(5)
+            broker.close()
+            return results, journal, sink
+
+    @staticmethod
+    def body(payload: str = "payload") -> dict:
+        return {
+            "request_id": "request-1",
+            "task_id": "task",
+            "scope": "read",
+            "credential_generation": 1,
+            "payload": payload,
+        }
+
+    def test_two_real_broker_processes_same_authorized_request_apply_once(self):
+        results, journal, sink = self._run_two([self.body(), self.body()])
+        self.assertTrue(all(item[0] == "ok" for item in results), results)
+        self.assertEqual(sink.apply_count(), 1)
+        self.assertEqual(results[0][2], results[1][2])
+        self.assertEqual(journal.record("request-1")[1], "CONFIRMED")
+        self.assertTrue(journal.verify_durable())
+
+    def test_two_real_broker_processes_substitution_has_one_winner(self):
+        results, journal, sink = self._run_two([self.body("alpha"), self.body("beta")])
+        oks = [item for item in results if item[0] == "ok"]
+        errors = [item for item in results if item[0] == "error"]
+        self.assertEqual(len(oks), 1, results)
+        self.assertEqual(len(errors), 1, results)
+        self.assertEqual(errors[0][1], RequestConflict.__name__)
+        self.assertEqual(sink.apply_count(), 1)
+        self.assertEqual(journal.record("request-1")[1], "CONFIRMED")
+
+    def test_failed_kernel_sender_authority_creates_no_reservation(self):
+        ctx = mp.get_context("fork")
+        with tempfile.TemporaryDirectory() as td:
+            journal = TransactionalJournal(Path(td) / "journal.db", 1)
+            sink = IdempotentSink(Path(td) / "sink.db")
+            sleeper = ctx.Process(target=time.sleep, args=(5,))
+            sleeper.start()
+            authority = CredentialBroker(b"unused", 1)
+            try:
+                permit = authority.permit("task", "read", sleeper.pid)
+                # No durable reservation is allowed before the LAB-071 process-instance check.
+                from experiments.brokered_credential_use.protocol import ReceivedRequest
+
+                forged = ReceivedRequest(self.body(), os.getpid(), os.getuid(), os.getgid())
+                worker = KernelAuthorizedBrokerWorker(
+                    authority=authority,
+                    permit=permit,
+                    journal=journal,
+                    sink=sink,
+                    secret=b"effect-secret",
+                )
+                with self.assertRaises(UnauthorizedSender):
+                    worker.process_received(forged)
+                self.assertIsNone(journal.record("request-1"))
+                self.assertEqual(sink.apply_count(), 0)
+            finally:
+                authority.close()
+                sleeper.terminate()
+                sleeper.join(5)
+
+
+if __name__ == "__main__":
+    unittest.main()
