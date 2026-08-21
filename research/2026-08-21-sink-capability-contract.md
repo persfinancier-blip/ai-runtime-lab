@@ -1,21 +1,22 @@
 # LAB-073 — Sink idempotency/reconciliation capability contract
 
-## Primary-source mechanisms
+## Audit findings
 
-AWS Well-Architected recommends stable idempotency tokens for mutating requests and requires duplicate requests with the same token to avoid repeated effects. AWS APIs such as EC2 additionally reject token reuse with changed request parameters. AWS Durable Execution guidance stresses that a replay must reuse the same idempotency key; generating a different key defeats deduplication. Google Cloud retry guidance distinguishes idempotent from non-idempotent targets instead of applying a universal retry policy.
+The first slice stored `observed=True` and `behavioral_probe_passed=True` inside the same structural object an adapter could construct. That was forgeable. The corrected model separates an adapter/provider **claim** from a trusted probe authority. The authority behaviorally tests the exact claim and authenticates its digest plus probe generation. Planner and broker verify that attestation before deriving retry authority. A changed claim, stale probe generation, or forged attestation fails closed.
 
-## Decision
+The audit also found that `retention_seconds=None` was accidentally treated as an infinite idempotency window. Unknown retention is now conservative `NO_AUTOMATIC_RETRY`. Clock rollback relative to key creation also fails closed.
 
-LAB-072 must not assume every sink inherits its strong `UNKNOWN -> reconcile -> no duplicate` semantics. A sink capability record is versioned by generation and accepted only after an observed behavioral probe. Self-description from an adapter/tool cannot upgrade retry authority.
+Behavioral probing can test same-key deduplication, request binding and reconciliation. It cannot cheaply wait out a provider's documented retention horizon, so a finite retention claim is separately sourced contract material bound into the authenticated claim.
 
-Reference policies:
-- `SAFE_RETRY_RECONCILE`: stable request-bound idempotency plus durable lookup/reconciliation.
-- `SAFE_RETRY_IDEMPOTENT_ONLY`: stable request-bound idempotency inside a known-valid retention window, but no generic resolution of an already-UNKNOWN outcome.
-- `NO_AUTOMATIC_RETRY`: non-idempotent, unbound, expired, unobserved, or failed-probe sink.
+## Policy
+
+- `SAFE_RETRY_RECONCILE`: authenticated, behaviorally verified, stable request-bound idempotency, finite live retention, and reconciliation.
+- `SAFE_RETRY_IDEMPOTENT_ONLY`: the same without reconciliation; an already-UNKNOWN operation is not automatically repeated inside the generic broker.
+- `NO_AUTOMATIC_RETRY`: non-idempotent, unbound, expired, unknown-retention, unauthenticated or failed-probe sink.
 - `READ_ONLY`: no mutating effect.
 
-Plan generation is part of the authority boundary. A later stronger capability observation cannot silently upgrade an already-issued plan; capability generation changes invalidate it.
+Plan generation is part of the authority boundary. Capability or probe generation changes invalidate it, and a later stronger capability cannot silently upgrade an already-issued plan.
 
 ## Boundary
 
-This does not provide universal exactly-once delivery. External systems with no stable idempotency identity or no reconciliation path remain fundamentally ambiguous after timeout-after-commit; the correct generic behavior is fail closed rather than inventing a retry.
+This remains a reference contract, not universal exactly-once delivery. External systems with no stable idempotency identity or no reconciliation path remain ambiguous after timeout-after-commit. The HMAC probe attestation models an authenticity boundary, not a production key-management service.
