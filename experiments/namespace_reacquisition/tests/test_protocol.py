@@ -1,5 +1,6 @@
 import os, shutil, tempfile, unittest
 from pathlib import Path
+from unittest.mock import patch
 from experiments.namespace_reacquisition.protocol import *
 
 class Tests(unittest.TestCase):
@@ -13,7 +14,6 @@ class Tests(unittest.TestCase):
             if r.handle is not None: self.assertEqual(out["status"],"REACQUIRED")
     def test_boot_change_fails_closed_without_reopen_capability(self):
         import experiments.namespace_reacquisition.protocol as mod
-        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as td:
             p=Path(td)/"archive"; p.mkdir(); r=capture(p,self.key)
             with patch.object(mod,"boot_id",return_value="different-boot"):
@@ -35,6 +35,18 @@ class Tests(unittest.TestCase):
             p=Path(td)/"archive"; p.mkdir(); r=capture(p,self.key); p.rmdir()
             out=reacquire(r,self.key)
             self.assertIn(out["status"],{"PATH_MISSING","UNSUPPORTED_STRONG_REACQUISITION"})
+    def test_detached_object_found_when_strong_handle_reopen_succeeds(self):
+        import experiments.namespace_reacquisition.protocol as mod
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td)/"archive"; p.mkdir(); st=p.stat()
+            fake=HandleEvidence(1,1,"01")
+            unsigned={"schema_version":1,"archive_path":os.path.abspath(p),"namespace_generation":1,
+                      "boot_id":boot_id(),"st_dev":st.st_dev,"st_ino":st.st_ino,"handle":asdict(fake)}
+            r=ContinuityRecord(1,os.path.abspath(p),1,unsigned["boot_id"],st.st_dev,st.st_ino,fake,mac(self.key,unsigned))
+            detached=Path(td)/"detached"; p.rename(detached)
+            def reopen(_handle): return os.open(detached,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
+            with patch.object(mod,"_open_saved_handle",side_effect=reopen):
+                self.assertEqual(detached_classification(r,self.key)["status"],"DETACHED_OBJECT_FOUND")
     def test_tampered_record_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             p=Path(td)/"archive"; p.mkdir(); r=capture(p,self.key)
