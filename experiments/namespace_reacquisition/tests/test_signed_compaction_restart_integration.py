@@ -108,6 +108,35 @@ class SignedCompactionRestartContinuityTests(unittest.TestCase):
             manifest = layer.compact(layer.create_checkpoint())
             self.assertTrue(all(path.exists() for path in layer._archive_paths(manifest.archive_id)))
 
+    def test_relocation_after_compaction_preserves_reachable_archive_chain(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            builder = ChainBuilder(td / "db").append(4)
+            archive = td / "archives"
+            new_archive = td / "archives-v2"
+            new_archive.mkdir()
+            layer = self.layer(builder, archive)
+            first = layer.compact(layer.create_checkpoint())
+            self.assertGreater(layer.audit_archive(first.archive_id)["rows_verified"], 0)
+
+            old_record = layer.require_namespace_authority()
+            permit = issue_migration(old_record, new_archive, 2, layer.key)
+            layer.migrate_archive_namespace(permit)
+            self.assertTrue(all(path.exists() for path in layer._archive_paths(first.archive_id)))
+            self.assertGreater(layer.audit_archive(first.archive_id)["rows_verified"], 0)
+
+            builder.append(2)
+            second = layer.compact(layer.create_checkpoint())
+            self.assertEqual(second.previous_archive_id, first.archive_id)
+            self.assertEqual(layer.verify_restart()["sequence"], 6)
+            self.assertGreater(layer.audit_archive(first.archive_id)["rows_verified"], 0)
+            self.assertGreater(layer.audit_archive(second.archive_id)["rows_verified"], 0)
+
+            restarted = self.layer(builder, new_archive)
+            self.assertEqual(restarted.namespace_generation, 2)
+            self.assertEqual(restarted.verify_restart()["sequence"], 6)
+            self.assertGreater(restarted.audit_archive(first.archive_id)["rows_verified"], 0)
+
     def test_generation_change_after_publication_rejects_stale_receipts(self):
         class MigratingLayer(SignedPrunableHistory):
             migrated = False
