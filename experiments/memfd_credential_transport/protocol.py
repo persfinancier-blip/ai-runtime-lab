@@ -57,9 +57,10 @@ def child_read_via_path(transport:MemfdTransport)->bytes:
     return subprocess.check_output([sys.executable,'-c',code,transport.path],pass_fds=(transport.fd,),env={'PATH':os.environ.get('PATH','')})
 
 def child_can_read_without_inheritance(transport:MemfdTransport)->bool:
-    code="import pathlib,sys;\ntry: d=pathlib.Path(sys.argv[1]).read_bytes(); print('secret' if d else 'empty')\nexcept Exception: print('blocked')"
-    out=subprocess.check_output([sys.executable,'-c',code,transport.path],close_fds=True,text=True,env={'PATH':os.environ.get('PATH','')}).strip()
-    return out=='secret'
+    code="import pathlib,sys;sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
+    result=subprocess.run([sys.executable,'-c',code,transport.path],close_fds=True,capture_output=True,env={'PATH':os.environ.get('PATH','')})
+    expected=os.pread(transport.fd,1<<20,0)
+    return result.returncode==0 and result.stdout==expected
 
 def verify_seals(transport:MemfdTransport):
     if not transport.sealed: return False
