@@ -18,7 +18,7 @@ class CredentialPermit:
 class MemfdTransport:
     fd:int
     permit:CredentialPermit
-    sealed:bool
+    sealed:bool=True
 
     @property
     def path(self): return f'/proc/self/fd/{self.fd}'
@@ -34,18 +34,24 @@ class MemfdVault:
     def permit(self):
         if self._secret is None: raise MemfdError('no credential')
         return CredentialPermit(self.current_id,self.generation,self.scope,hmac.new(self.audit_key,self._secret,hashlib.sha256).hexdigest())
-    def open_transport(self,permit:CredentialPermit,*,seal=True)->MemfdTransport:
+    def open_transport(self,permit:CredentialPermit)->MemfdTransport:
         if permit!=self.permit(): raise StaleCredential('stale credential permit')
-        if not hasattr(os,'memfd_create') or not hasattr(os,'MFD_ALLOW_SEALING'): raise UnsupportedMemfd('memfd unavailable')
+        required_os=('memfd_create','MFD_ALLOW_SEALING','MFD_CLOEXEC')
+        required_fcntl=('F_ADD_SEALS','F_GET_SEALS','F_SEAL_WRITE','F_SEAL_GROW','F_SEAL_SHRINK','F_SEAL_SEAL')
+        if any(not hasattr(os,name) for name in required_os) or any(not hasattr(fcntl,name) for name in required_fcntl):
+            raise UnsupportedMemfd('required memfd sealing primitives unavailable')
         fd=os.memfd_create(f'credential-{permit.credential_id}',os.MFD_CLOEXEC|os.MFD_ALLOW_SEALING)
         try:
+            assert self._secret is not None
             offset=0
             while offset<len(self._secret): offset+=os.write(fd,self._secret[offset:])
             os.lseek(fd,0,os.SEEK_SET)
-            if seal:
-                seals=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL
-                fcntl.fcntl(fd,fcntl.F_ADD_SEALS,seals)
-            return MemfdTransport(fd,permit,seal)
+            seals=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL
+            try: fcntl.fcntl(fd,fcntl.F_ADD_SEALS,seals)
+            except OSError as exc: raise UnsupportedMemfd(f'memfd sealing failed: {exc}') from exc
+            transport=MemfdTransport(fd,permit,True)
+            if not verify_seals(transport): raise UnsupportedMemfd('required seals not active')
+            return transport
         except:
             os.close(fd); raise
 
@@ -63,10 +69,9 @@ def child_can_read_without_inheritance(transport:MemfdTransport)->bool:
     return result.returncode==0 and result.stdout==expected
 
 def verify_seals(transport:MemfdTransport):
-    if not transport.sealed: return False
     got=fcntl.fcntl(transport.fd,fcntl.F_GET_SEALS)
     required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL
-    return (got & required)==required
+    return transport.sealed and (got & required)==required
 
 def path_compatibility_probe(transport:MemfdTransport):
     try: return child_read_via_path(transport)==os.pread(transport.fd,1<<20,0)
@@ -74,7 +79,7 @@ def path_compatibility_probe(transport:MemfdTransport):
 
 def route_for_path_only_tool(vault:MemfdVault,permit:CredentialPermit):
     try: t=vault.open_transport(permit)
-    except UnsupportedMemfd: return {'route':'LAB-068_NAMED_FALLBACK','reason':'memfd unavailable'}
+    except UnsupportedMemfd as exc: return {'route':'LAB-068_NAMED_FALLBACK','reason':str(exc)}
     if not path_compatibility_probe(t):
         t.close(); return {'route':'LAB-068_NAMED_FALLBACK','reason':'procfd path incompatible'}
     return {'route':'MEMFD_PROCFD','transport':t}
