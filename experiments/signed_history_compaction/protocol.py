@@ -6,7 +6,7 @@ from .verify import VerifyMixin
 from .archive import ArchiveMixin
 from experiments.filesystem_namespace_binding.integration import NamespaceBoundArchiveMixin
 from experiments.namespace_reacquisition.integration import RestartNamespaceContinuityMixin
-from experiments.namespace_retirement.integration import NamespaceRetirementMixin
+from experiments.namespace_retirement.integration import NamespaceRetirementMixin, RetirementIntegrationError
 
 
 class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuityMixin, NamespaceBoundArchiveMixin, ArchiveMixin, VerifyMixin):
@@ -66,6 +66,57 @@ class SignedPrunableHistory(NamespaceRetirementMixin, RestartNamespaceContinuity
                 q.close()
             self._init_restart_namespace_continuity()
             self._init_namespace_retirement()
+
+    def _finalize_migration_lineage_locked(self, q, old, new):
+            """Upsert the authenticated predecessor link after a crash-gap restart.
+
+            `_init_namespace_retirement()` may have already inserted the current
+            continuity record as a standalone ACTIVE row before reconciling a
+            PREPARED migration intent. Therefore an `INSERT OR IGNORE` alone is not
+            sufficient: the exact authenticated current row must be repaired with
+            its predecessor and migration commitment, while its immutable body is
+            checked for substitution.
+            """
+            old_body = json.dumps(asdict(old), sort_keys=True, separators=(",", ":"))
+            new_body = json.dumps(asdict(new), sort_keys=True, separators=(",", ":"))
+            q.execute(
+                "INSERT OR IGNORE INTO archive_namespace_records VALUES(?,?,?,NULL,'ACTIVE',NULL)",
+                (old.record_id, old.namespace_generation, old_body),
+            )
+            old_row = q.execute(
+                "SELECT generation,body_json FROM archive_namespace_records WHERE record_id=?",
+                (old.record_id,),
+            ).fetchone()
+            if old_row != (old.namespace_generation, old_body):
+                raise RetirementIntegrationError("predecessor record substitution")
+            q.execute(
+                "UPDATE archive_namespace_records SET status='RETIRED_PENDING' WHERE record_id=?",
+                (old.record_id,),
+            )
+            chain_commitment, _ = self._archive_chain_commitment_locked(q)
+            q.execute(
+                "INSERT OR IGNORE INTO archive_namespace_records "
+                "VALUES(?,?,?,?, 'ACTIVE', ?)",
+                (new.record_id, new.namespace_generation, new_body, old.record_id, chain_commitment),
+            )
+            new_row = q.execute(
+                "SELECT generation,body_json FROM archive_namespace_records WHERE record_id=?",
+                (new.record_id,),
+            ).fetchone()
+            if new_row != (new.namespace_generation, new_body):
+                raise RetirementIntegrationError("successor record substitution")
+            q.execute(
+                "UPDATE archive_namespace_records SET predecessor_record_id=?,status='ACTIVE',"
+                "migration_chain_commitment=? WHERE record_id=?",
+                (old.record_id, chain_commitment, new.record_id),
+            )
+            row = q.execute(
+                "SELECT predecessor_record_id,status,migration_chain_commitment "
+                "FROM archive_namespace_records WHERE record_id=?",
+                (new.record_id,),
+            ).fetchone()
+            if row != (old.record_id, "ACTIVE", chain_commitment):
+                raise RetirementIntegrationError("successor lineage reconciliation failed")
 
     @property
     def _active_namespace_handle(self):
