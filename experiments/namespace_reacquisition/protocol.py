@@ -97,6 +97,63 @@ def name_handle(path):
     raw=bytes(fh.f_handle[:fh.handle_bytes])
     return HandleEvidence(fh.handle_type,mount_id.value,raw.hex())
 
+def _mountpoint_for_id(mount_id):
+    if type(mount_id) is not int or mount_id <= 0:
+        raise UnsupportedStrongReacquisition("invalid mount id")
+    try:
+        lines=Path("/proc/self/mountinfo").read_text().splitlines()
+    except OSError as exc:
+        raise UnsupportedStrongReacquisition("mountinfo unavailable") from exc
+    for line in lines:
+        fields=line.split()
+        if len(fields)>=5 and fields[0].isdigit() and int(fields[0])==mount_id:
+            return fields[4].replace("\\040"," ").replace("\\011","\t").replace("\\134","\\")
+    raise UnsupportedStrongReacquisition("saved mount id is not present")
+
+def _open_saved_handle(handle: HandleEvidence):
+    libc=ctypes.CDLL(None,use_errno=True)
+    fn=getattr(libc,"open_by_handle_at",None)
+    if fn is None:
+        raise UnsupportedStrongReacquisition("open_by_handle_at unavailable")
+    raw=bytes.fromhex(handle.handle_hex)
+    if not raw or len(raw)>MAX_HANDLE_SZ:
+        raise AuthenticationError("invalid saved handle bytes")
+    fh=_FileHandle(); fh.handle_bytes=len(raw); fh.handle_type=handle.handle_type
+    for index,value in enumerate(raw): fh.f_handle[index]=value
+    mountpoint=_mountpoint_for_id(handle.mount_id)
+    mountfd=os.open(mountpoint,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC|getattr(os,"O_NOFOLLOW",0))
+    try:
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC
+        fd=fn(mountfd,ctypes.byref(fh),flags)
+        if fd<0:
+            e=ctypes.get_errno()
+            if e==errno.ESTALE: raise HandleStale("saved handle is stale")
+            if e in {errno.EPERM,errno.EACCES,errno.ENOSYS,EOPNOTSUPP if (EOPNOTSUPP:=getattr(errno,"EOPNOTSUPP",errno.ENOTSUP)) else errno.ENOTSUP}:
+                raise UnsupportedStrongReacquisition(os.strerror(e))
+            raise OSError(e,os.strerror(e))
+        return int(fd)
+    finally:
+        os.close(mountfd)
+
+def _classify_detached_handle(record):
+    if record.handle is None:
+        return {"status":"PATH_MISSING"}
+    if record.boot_id != boot_id():
+        return {"status":"UNSUPPORTED_STRONG_REACQUISITION","reason":"boot changed; saved mount/handle context is not treated as stable"}
+    try:
+        fd=_open_saved_handle(record.handle)
+    except HandleStale:
+        return {"status":"HANDLE_STALE"}
+    except UnsupportedStrongReacquisition as exc:
+        return {"status":"UNSUPPORTED_STRONG_REACQUISITION","reason":str(exc),"detached_possible":True}
+    try:
+        st=os.fstat(fd)
+        if not stat.S_ISDIR(st.st_mode): return {"status":"HANDLE_STALE"}
+        if (st.st_dev,st.st_ino)!=(record.st_dev,record.st_ino): return {"status":"HANDLE_STALE"}
+        return {"status":"DETACHED_OBJECT_FOUND","namespace_generation":record.namespace_generation}
+    finally:
+        os.close(fd)
+
 def capture(path,key,generation=1):
     if type(generation) is not int or generation<1: raise ValueError("generation")
     p=_lexical_abs(path)
@@ -139,8 +196,7 @@ def reacquire(record,key,*,require_strong=True):
     try:
         fd=_open_no_symlink_dir(p)
     except PathMissing:
-        if record.handle is not None and require_strong:
-            return {"status":"UNSUPPORTED_STRONG_REACQUISITION","reason":"path missing; opaque reopen capability not demonstrated"}
+        if require_strong: return _classify_detached_handle(record)
         return {"status":"PATH_MISSING"}
     except PathReplaced:
         return {"status":"PATH_REPLACED"}
@@ -172,10 +228,15 @@ def reacquire(record,key,*,require_strong=True):
 
 def detached_classification(record,key):
     verify_record(record,key)
-    result=reacquire(record,key,require_strong=True)
-    if result["status"]=="UNSUPPORTED_STRONG_REACQUISITION" and record.handle is not None:
-        return {"status":"UNSUPPORTED_STRONG_REACQUISITION","detached_possible":True}
-    return result
+    try:
+        fd=_open_no_symlink_dir(record.archive_path)
+    except PathMissing:
+        return _classify_detached_handle(record)
+    except PathReplaced:
+        return {"status":"PATH_REPLACED"}
+    else:
+        os.close(fd)
+        return reacquire(record,key,require_strong=True)
 
 class UnsafePathBytesTrust:
     def trust(self,path,expected_files):
