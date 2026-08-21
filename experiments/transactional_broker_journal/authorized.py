@@ -82,8 +82,6 @@ class KernelAuthorizedBrokerWorker:
             raise AuthorityInvalidRequest("unexpected/missing request fields")
         if body["task_id"] != self.permit.task_id or body["scope"] != self.permit.scope:
             raise AuthorityInvalidRequest("task/scope binding mismatch")
-        if body["credential_generation"] != self.permit.credential_generation:
-            raise AuthorityInvalidRequest("request generation does not match sender permit")
 
         request = Request(
             request_id=body["request_id"],
@@ -93,6 +91,9 @@ class KernelAuthorizedBrokerWorker:
             payload=body["payload"],
         )
         # Canonicalization/type validation happens before any durable reservation.
+        # Request generation is intentionally left to the SQL journal: only the journal
+        # can distinguish a new stale operation from an exact retry of an older committed
+        # request after rotation/restart. The permit proves process/task/scope identity.
         request.canonical()
         return AuthorizedRequest(received, request)
 
