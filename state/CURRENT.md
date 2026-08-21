@@ -13,41 +13,48 @@ LAB-070 — prove the credential-capability boundary after a sealed LAB-069 memf
 - LAB-069 Issue #129 DONE; PR #130 squash-merged as `5ba1fdc9738c32c644a06eb807fb09d001a810ba`.
 - Active Issue #131 / LAB-070 — IN_PROGRESS.
 - Active branch: `lab/070-memfd-descendant-authority`.
-- Active PR: none yet.
+- Draft PR: #132 `[LAB-070] Memfd descendant authority and lifetime conformance`.
 
 ## Last completed step
 
-LAB-068 was repaired, exact-source validated, audited and merged. Its final creation order is `PREPARED lease -> empty 0600 object + fsync -> opaque Linux file-handle identity -> ALLOCATED -> secret write/fsync -> READY`; partial-write crashes are reclaimable by exact object identity, while READY/HANDED_OFF additionally require keyed content identity. Exact/regression matrix was 56/56 plus the expected unsafe failure.
+The current runtime was re-probed rather than relying on old assumptions: x86_64 seccomp filters work, `unshare -Urp --fork` works, and cgroup v2 is mounted read-only/not delegated.
 
-LAB-069 then proved a stronger path-compatible transport for compatible Linux tools: sealed anonymous `memfd`, `MFD_CLOEXEC` by default, explicit descriptor inheritance, no raw secret in argv/environment/evidence, stale-generation rejection and explicit LAB-068 fallback. Audit fixed incomplete sealing-capability detection and required **target-specific** procfd compatibility instead of treating a generic Python probe as authority for another tool. Exact LAB-069/LAB-027/LAB-068 matrix passed 39/39; unsafe ordinary named-path lifetime seed failed as expected.
+A real-process LAB-070 prototype was implemented and published. Unsafe target→grandchild credential-FD propagation remains reproducible after deliberate `pass_fds`, proving `MFD_CLOEXEC` is not a single-target authority guarantee after handoff.
 
-Immediately after LAB-069 merge, a real subprocess probe exposed the next boundary: a target launched with `pass_fds=(fd,)` observed the credential FD as inheritable and deliberately passed it to a grandchild, which successfully read the secret. Parent-side `MFD_CLOEXEC` therefore does not imply single-target authority after intentional inheritance; sealing prevents mutation, not redistribution of read capability.
+Two explicit corrected policy modes now exist:
+- `SINGLE_PROCESS`: pre-exec `no_new_privs` + seccomp denies `fork`/`vfork`, makes `clone3` unavailable, and allows classic `clone` only with `CLONE_THREAD`; same-process pthreads therefore remain usable while descendant process creation is blocked. If observed seccomp support is absent, the mode is unsupported/fail-closed.
+- `SUPERVISED_TREE`: descendants may intentionally inherit the credential inside a fresh user+PID namespace. The target is namespace PID 1; the real harness verifies a grandchild can hold/read the descriptor while the target lives and is terminated when namespace init exits. If PID namespaces are unavailable, the mode is unsupported/fail-closed.
+
+An audit caught and fixed an initial over-broad seccomp design that would have blocked pthreads by rejecting all `clone` calls. Credential generation rotation is explicitly kept separate from live-descriptor revocation semantics.
 
 ## Evidence produced
 
-- LAB-068 final protocol blob: `601d4de1fb0a64fb8d5055b6e956c8dfe476ffd5`; corrected tests `9afa8fda985116cfafccb9b186e3592e5c27e61b`; 13/13 corrected, LAB-027 12/12, relevant process/namespace regressions 31/31, combined 56/56.
-- LAB-069 final protocol blob: `fcb2035f71f5931dcad96ad48f649ba35edb1a81`; corrected tests `54186e46aba329adda3afe87d43ce147d54baa26`; unsafe seed `4a814d768c57345d5160d8b07b532e0f3bfbaa70`.
-- LAB-069 corrected suite 14/14, exact LAB-027 12/12, exact LAB-068 13/13, combined 39/39; compileall passed.
-- LAB-069 unsafe named-file lifetime seed failed as expected because a normal filesystem entry outlived all open transport descriptors.
-- LAB-070 initial real-process evidence: target `os.get_inheritable(fd) == True` after `pass_fds`; target passed the same FD to a grandchild; grandchild read the credential bytes.
-- Issue #131 records the full LAB-070 failure matrix and non-goals.
+- Branch protocol blob: `1c80f73bcbe12d3a3fb1e3b520f8cf8d1077297b`.
+- Branch corrected-test blob: `d965cd0ecd41acde63f00250e97c426574265203`.
+- New experiment: `experiments/memfd_descendant_authority/`.
+- Research note: `research/2026-08-21-memfd-descendant-authority.md`.
+- Corrected local working-copy real-process suite: 8/8 passed after the pthread audit fix.
+- Unsafe CLOEXEC-only seed: failed as expected because target→grandchild propagation succeeded.
+- Compileall passed.
+- Primary sources recorded: Linux `memfd_create(2)`, `seccomp(2)`, and `pid_namespaces(7)`.
+- Draft PR #132 opened; remote patch audit completed with no new content finding in the published slice.
 
 ## Known blockers / constraints
 
-- No external blocker.
+- No owner-level/external blocker.
+- Direct shell GitHub clone still fails DNS resolution in this runtime, so exact-source reconstruction must use the GitHub connector fallback.
+- The published PR-head executable bytes have not yet been fully reconstructed and executed together with the required LAB-069/LAB-030/LAB-031 regressions; PR #132 must remain draft until that gate is satisfied.
 - Once an untrusted process can read plaintext, no memfd/descriptor mechanism can prevent that process from copying bytes through other channels that policy permits. LAB-070 must not claim DRM-like secrecy.
-- `MFD_CLOEXEC` protects default exec inheritance before deliberate handoff; `pass_fds` intentionally creates child authority and may make the descriptor inheritable in that child.
-- Current runtime previously lacked writable cgroup delegation; single-process/process-tree guarantees must be based only on mechanisms actually re-probed and observed in the LAB-070 run.
-- Descriptor sealing provides immutability, not revocation. Credential generation rotation is not authority to revoke a descriptor already held by a live authorized process/tree.
-- LAB-068 remains the fail-closed named-file fallback where target-specific procfd compatibility is absent; neither LAB-068 nor LAB-069 alone solves malicious descendant exfiltration.
-- Direct shell GitHub DNS has been unavailable in recent runs; GitHub connector reconstruction remains the supported exact-source fallback.
+- Sealing prevents mutation, not redistribution or revocation.
+- Credential generation rotation is not authority to revoke a descriptor already held by a live authorized process/tree.
+- cgroup delegation is unavailable here and is not claimed as an enforcement backend.
 
 ## Exact next action
 
-Continue Issue #131 on `lab/070-memfd-descendant-authority`. Re-probe current runtime process-confinement capabilities rather than reusing old assumptions. Build a real target+grandchild harness that first preserves the observed unsafe propagation. Then implement two explicit policy modes: (1) `SINGLE_PROCESS`, which may be selected only if the runtime can actually prevent/contain descendant creation or retention; otherwise return an explicit unsupported/fail-closed result, and (2) `SUPERVISED_TREE`, which binds credential lifetime to an observed process tree and detects an unauthorized surviving descendant after the nominal target exits. Compose liveness with LAB-031/032 and enforcement/capability observations with LAB-028/030. Record raw-secret-free evidence, run exact LAB-070 plus LAB-069/LAB-030/LAB-031 regressions, perform a separate patch audit, fix findings and rerun before integration.
+Resume Issue #131 / PR #132. Reconstruct the exact current PR-head executable files through GitHub connector responses and verify local `git hash-object` against branch blob IDs (`protocol.py` currently `1c80f73bcbe12d3a3fb1e3b520f8cf8d1077297b`, corrected tests `d965cd0ecd41acde63f00250e97c426574265203`). Execute exact LAB-070 corrected and unsafe suites plus relevant exact LAB-069/LAB-030/LAB-031 regressions and compileall. Then perform a fresh remote patch audit; if clean, mark PR ready, merge using the normal endpoint, close Issue #131 DONE, and select the next highest-value unblocked research gap. If exact-source reconstruction finds byte drift or any regression/audit failure, fix on the branch and rerun before integration.
 
 ## Backlog
 
-- #131 / LAB-070 — memfd descriptor propagation, descendant authority and lifetime conformance — IN_PROGRESS.
+- #131 / LAB-070 — memfd descriptor propagation, descendant authority and lifetime conformance — IN_PROGRESS; draft PR #132.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
