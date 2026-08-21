@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 from dataclasses import dataclass
@@ -52,6 +53,45 @@ class NamespaceBoundArchiveMixin:
         if not value or value == ".":
             raise NamespaceMismatch("archive directory cannot be filesystem root")
         return value
+
+    def _ensure_archive_directory_exists(self):
+        """Create missing path components without following a symlink prefix.
+
+        `Path.mkdir(parents=True)` resolves path prefixes lexically and can therefore
+        create a directory through an attacker-controlled symlink before the later
+        openat2 authorization boundary. Walk one basename at a time from `/`, holding
+        each parent directory FD and opening every component with O_NOFOLLOW.
+        """
+        relative = self._absolute_archive_relative_to_root()
+        parts = Path(relative).parts
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            current = os.open("/", flags)
+        except OSError as exc:
+            raise NamespaceMismatch("cannot open filesystem root for archive creation") from exc
+        try:
+            for part in parts:
+                if part in {"", ".", ".."} or "/" in part or "\x00" in part:
+                    raise NamespaceMismatch("invalid archive directory component")
+                try:
+                    child = os.open(part, flags, dir_fd=current)
+                except FileNotFoundError:
+                    try:
+                        os.mkdir(part, 0o777, dir_fd=current)
+                    except FileExistsError:
+                        pass
+                    try:
+                        child = os.open(part, flags, dir_fd=current)
+                    except OSError as exc:
+                        raise NamespaceMismatch("archive directory component changed during creation") from exc
+                except OSError as exc:
+                    if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                        raise NamespaceMismatch("archive directory path contains a symlink/non-directory component") from exc
+                    raise NamespaceMismatch("cannot traverse archive directory component") from exc
+                os.close(current)
+                current = child
+        finally:
+            os.close(current)
 
     def _namespace_handle(self):
         return NamespaceHandle.authorize_beneath("/", self._absolute_archive_relative_to_root())
