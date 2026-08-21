@@ -17,10 +17,13 @@ class ReopenTests(unittest.TestCase):
             self.assertEqual(restarted.generation(), 2)
             self.assertTrue(restarted.verify_durable())
 
-    def test_restart_refuses_missing_journal_instead_of_bootstrapping(self):
+    def test_restart_refuses_missing_journal_without_creating_it(self):
         with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "missing.db"
+            self.assertFalse(path.exists())
             with self.assertRaises(CorruptJournal):
-                reopen_journal(Path(td) / "missing.db")
+                reopen_journal(path)
+            self.assertFalse(path.exists())
 
     def test_restart_refuses_corrupt_meta(self):
         with tempfile.TemporaryDirectory() as td:
