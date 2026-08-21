@@ -89,10 +89,15 @@ class CredentialBroker:
         self._pidfds: dict[tuple[int, int], int] = {}
         self._permits: dict[tuple[str, str], OperationPermit] = {}
         self._effects: dict[str, tuple[str, str]] = {}
+        if type(generation) is not int or generation < 1:
+            raise DurableStateError("invalid supplied credential generation")
         self.generation = generation
         self.apply_count = 0
         if self._state_path is not None and self._state_path.exists():
+            supplied_generation = generation
             self._load_state()
+            if self.generation != supplied_generation:
+                raise StaleCredential("supplied credential generation does not match durable broker state")
         elif self._state_path is not None:
             self._persist_state()
 
@@ -126,20 +131,57 @@ class CredentialBroker:
             raw = json.loads(self._state_path.read_text(encoding="utf-8"))
         except Exception as exc:
             raise DurableStateError("invalid durable broker state") from exc
-        if raw.get("schema_version") != _STATE_SCHEMA or type(raw.get("generation")) is not int:
+        required = {"schema_version", "generation", "permits", "effects", "apply_count"}
+        if not isinstance(raw, dict) or set(raw) != required:
+            raise DurableStateError("invalid durable broker state shape")
+        if type(raw["schema_version"]) is not int or raw["schema_version"] != _STATE_SCHEMA:
             raise DurableStateError("unsupported durable broker state")
+        if type(raw["generation"]) is not int or raw["generation"] < 1:
+            raise DurableStateError("invalid durable credential generation")
+        if type(raw["apply_count"]) is not int or raw["apply_count"] < 0:
+            raise DurableStateError("invalid durable apply_count")
+        if not isinstance(raw["effects"], dict) or not isinstance(raw["permits"], list):
+            raise DurableStateError("invalid durable collections")
         self.generation = raw["generation"]
-        self.apply_count = int(raw.get("apply_count", 0))
+        self.apply_count = raw["apply_count"]
         self._effects = {}
-        for rid, item in raw.get("effects", {}).items():
-            if not isinstance(rid, str) or set(item) != {"request_digest", "receipt"}:
+        for rid, item in raw["effects"].items():
+            if not isinstance(rid, str) or not rid:
+                raise DurableStateError("invalid durable request id")
+            if not isinstance(item, dict) or set(item) != {"request_digest", "receipt"}:
                 raise DurableStateError("invalid durable effect")
-            self._effects[rid] = (item["request_digest"], item["receipt"])
+            request_digest, receipt = item["request_digest"], item["receipt"]
+            if (
+                not isinstance(request_digest, str)
+                or len(request_digest) != 64
+                or any(ch not in "0123456789abcdef" for ch in request_digest)
+                or not isinstance(receipt, str)
+                or not receipt
+            ):
+                raise DurableStateError("invalid durable effect identity")
+            self._effects[rid] = (request_digest, receipt)
+        if self.apply_count != len(self._effects):
+            raise DurableStateError("durable apply_count/effect cardinality mismatch")
         self._permits = {}
-        for item in raw.get("permits", []):
+        permit_fields = {"task_id", "scope", "credential_generation", "target_pid", "target_starttime"}
+        for item in raw["permits"]:
+            if not isinstance(item, dict) or set(item) != permit_fields:
+                raise DurableStateError("invalid durable permit shape")
+            if not isinstance(item["task_id"], str) or not item["task_id"]:
+                raise DurableStateError("invalid durable permit task")
+            if not isinstance(item["scope"], str) or not item["scope"]:
+                raise DurableStateError("invalid durable permit scope")
+            if (
+                type(item["credential_generation"]) is not int
+                or item["credential_generation"] < 1
+                or item["credential_generation"] > self.generation
+                or type(item["target_pid"]) is not int
+                or item["target_pid"] < 1
+                or type(item["target_starttime"]) is not int
+                or item["target_starttime"] < 1
+            ):
+                raise DurableStateError("invalid durable permit identity")
             p = OperationPermit(**item)
-            if type(p.credential_generation) is not int or type(p.target_pid) is not int or type(p.target_starttime) is not int:
-                raise DurableStateError("invalid durable permit")
             key = (p.task_id, p.scope)
             if key in self._permits:
                 raise DurableStateError("duplicate durable permit")
