@@ -93,15 +93,17 @@ def derive_policy(capability,verifier,*,now,key_created_at=None):
     return 'SAFE_RETRY_RECONCILE' if claim.reconcile_by_key else 'SAFE_RETRY_IDEMPOTENT_ONLY'
 @dataclass(frozen=True)
 class PlannedRequest:
-    sink_id:str; capability_generation:int; probe_generation:int; request_id:str; request_digest:str; effect_key:str; key_created_at:int; policy:Policy
+    sink_id:str; capability_generation:int; capability_claim_digest:str; probe_generation:int; request_id:str; request_digest:str; effect_key:str; key_created_at:int; policy:Policy
 class Planner:
     def __init__(self,verifier): self.verifier=verifier
     def plan(self,capability,request,*,request_id,now):
         claim=self.verifier.verify(capability); policy=derive_policy(capability,self.verifier,now=now,key_created_at=now)
-        return PlannedRequest(claim.sink_id,claim.generation,capability.attestation.probe_generation,request_id,sha(request),f'{claim.sink_id}:{request_id}',now,policy)
+        if not request_id: raise ContractError('request_id')
+        return PlannedRequest(claim.sink_id,claim.generation,capability.attestation.claim_digest,capability.attestation.probe_generation,request_id,sha(request),f'{claim.sink_id}:{request_id}',now,policy)
     def revalidate(self,plan,capability,request,*,now):
         claim=self.verifier.verify(capability)
         if claim.sink_id!=plan.sink_id or claim.generation!=plan.capability_generation or capability.attestation.probe_generation!=plan.probe_generation: raise StaleCapability()
+        if capability.attestation.claim_digest!=plan.capability_claim_digest: raise StaleCapability('same-generation capability mutation')
         if sha(request)!=plan.request_digest: raise RequestMismatch()
         current=derive_policy(capability,self.verifier,now=now,key_created_at=plan.key_created_at)
         order={'READ_ONLY':0,'NO_AUTOMATIC_RETRY':1,'SAFE_RETRY_IDEMPOTENT_ONLY':2,'SAFE_RETRY_RECONCILE':3}
