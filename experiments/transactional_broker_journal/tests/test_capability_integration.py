@@ -59,6 +59,10 @@ class Tests(unittest.TestCase):
         sink = IdempotentSink(root / "sink.db")
         return journal, authority, bound, sink
 
+    @staticmethod
+    def worker(bound, sink):
+        return CapabilityBrokerWorker(bound, sink, b"secret", sink_id="sink-A")
+
     def test_same_generation_claim_mutation_blocks_existing_intent(self):
         with tempfile.TemporaryDirectory() as td:
             journal, authority, bound, sink = self.setup(td)
@@ -67,9 +71,7 @@ class Tests(unittest.TestCase):
             bound.reserve(request, original, now=0)
             changed = self.capability(authority, retention=1000)
             with self.assertRaises(cap.StaleCapability):
-                CapabilityBrokerWorker(bound, sink, b"secret").process(
-                    request, changed, now=1
-                )
+                self.worker(bound, sink).process(request, changed, now=1)
             self.assertEqual(sink.apply_count(), 0)
 
     def test_capability_generation_rotation_blocks_new_execution(self):
@@ -78,7 +80,7 @@ class Tests(unittest.TestCase):
             request = Request("r", "task", "scope", 1, "payload")
             bound.reserve(request, self.capability(authority, generation=1), now=0)
             with self.assertRaises(cap.StaleCapability):
-                CapabilityBrokerWorker(bound, sink, b"secret").process(
+                self.worker(bound, sink).process(
                     request, self.capability(authority, generation=2), now=1
                 )
             self.assertEqual(sink.apply_count(), 0)
@@ -87,7 +89,7 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             journal, authority, bound, sink = self.setup(td)
             request = Request("r", "task", "scope", 1, "payload")
-            worker = CapabilityBrokerWorker(bound, sink, b"secret")
+            worker = self.worker(bound, sink)
             with self.assertRaises(UnknownOutcome):
                 worker.process(
                     request,
@@ -107,7 +109,7 @@ class Tests(unittest.TestCase):
             journal, authority, bound, sink = self.setup(td)
             request = Request("r", "task", "scope", 1, "payload")
             capability = self.capability(authority, reconcile=False)
-            worker = CapabilityBrokerWorker(bound, sink, b"secret")
+            worker = self.worker(bound, sink)
             with self.assertRaises(UnknownOutcome):
                 worker.process(request, capability, now=0, timeout_after_commit=True)
             with self.assertRaises(CapabilityExecutionBlocked):
@@ -121,9 +123,7 @@ class Tests(unittest.TestCase):
             capability = self.capability(authority, retention=2)
             bound.reserve(request, capability, now=0)
             with self.assertRaises(CapabilityExecutionBlocked):
-                CapabilityBrokerWorker(bound, sink, b"secret").process(
-                    request, capability, now=2
-                )
+                self.worker(bound, sink).process(request, capability, now=2)
             self.assertEqual(sink.apply_count(), 0)
 
     def test_forged_attestation_creates_no_journal_row(self):
@@ -163,11 +163,7 @@ class Tests(unittest.TestCase):
             def run(wrapper):
                 gate.wait()
                 try:
-                    out.append(
-                        CapabilityBrokerWorker(wrapper, sink, b"secret").process(
-                            request, capability, now=0
-                        )
-                    )
+                    out.append(self.worker(wrapper, sink).process(request, capability, now=0))
                 except Exception as exc:
                     errors.append(exc)
 
@@ -200,15 +196,27 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             journal, authority, bound, sink = self.setup(td)
             request = Request("r", "task", "scope", 1, "payload")
-            first = CapabilityBrokerWorker(bound, sink, b"secret").process(
+            first = self.worker(bound, sink).process(
                 request, self.capability(authority, generation=1), now=0
             )
-            replay = CapabilityBrokerWorker(bound, sink, b"secret").process(
+            replay = self.worker(bound, sink).process(
                 request, self.capability(authority, generation=2), now=1
             )
             self.assertEqual(replay.outcome, "ALREADY_COMMITTED")
             self.assertEqual(replay.receipt, first.receipt)
             self.assertEqual(sink.apply_count(), 1)
+
+    def test_configured_sink_identity_mismatch_blocks_external_action(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            request = Request("r", "task", "scope", 1, "payload")
+            capability = self.capability(authority, sink_id="sink-A")
+            wrong_worker = CapabilityBrokerWorker(
+                bound, sink, b"secret", sink_id="sink-B"
+            )
+            with self.assertRaises(CapabilityBindingError):
+                wrong_worker.process(request, capability, now=0)
+            self.assertEqual(sink.apply_count(), 0)
 
     def test_request_id_substitution_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
