@@ -21,13 +21,16 @@ class Tests(unittest.TestCase):
         c=self.verified(self.claim(retention_seconds=None)); self.assertEqual(derive_policy(c,self.a,now=0,key_created_at=0),'NO_AUTOMATIC_RETRY')
     def test_expired_retention_blocks(self):
         c=self.verified(self.claim(retention_seconds=10)); req={'op':'x'}; p=Planner(self.a).plan(c,req,request_id='r',now=0); self.assertEqual(Planner(self.a).revalidate(p,c,req,now=10),'NO_AUTOMATIC_RETRY')
+    def test_same_generation_retention_extension_rejected(self):
+        short=self.verified(self.claim(retention_seconds=10)); req={'op':'x'}; p=Planner(self.a).plan(short,req,request_id='r',now=0); extended=self.verified(self.claim(retention_seconds=3600)); self.assertRaises(StaleCapability,Planner(self.a).revalidate,p,extended,req,now=20)
+    def test_same_generation_capability_mutation_rejected_even_if_weaker(self):
+        strong=self.verified(); req={'op':'x'}; p=Planner(self.a).plan(strong,req,request_id='r',now=0); changed=self.verified(self.claim(reconcile_by_key=False),SimulatedSink(idempotent=True,request_bound=True,reconcile=False)); self.assertRaises(StaleCapability,Planner(self.a).revalidate,p,changed,req,now=1)
     def test_clock_rollback_fails_closed(self): self.assertRaises(ClockRollback,derive_policy,self.verified(),self.a,now=9,key_created_at=10)
     def test_generation_change_invalidates_plan(self):
         c=self.verified(); req={'op':'x'}; p=Planner(self.a).plan(c,req,request_id='r',now=0); self.assertRaises(StaleCapability,Planner(self.a).revalidate,p,self.verified(self.claim(generation=2)),req,now=1)
     def test_probe_generation_change_rejected(self):
         c=self.verified(); req={'op':'x'}; p=Planner(self.a).plan(c,req,request_id='r',now=0); b=ProbeAuthority(issuer_id='lab-prober',key=b'new',generation=8); newer=VerifiedCapability(c.claim,b.attest(c.claim,SimulatedSink(idempotent=True,request_bound=True,reconcile=True))); self.assertRaises(UntrustedCapability,Planner(self.a).revalidate,p,newer,req,now=1)
-    def test_no_silent_policy_upgrade(self):
-        weak=self.verified(self.claim(reconcile_by_key=False),SimulatedSink(idempotent=True,request_bound=True,reconcile=False)); req={'op':'x'}; p=Planner(self.a).plan(weak,req,request_id='r',now=0); strong=self.verified(self.claim(reconcile_by_key=True)); self.assertEqual(Planner(self.a).revalidate(p,strong,req,now=1),'SAFE_RETRY_IDEMPOTENT_ONLY')
+    def test_request_id_required(self): self.assertRaises(ContractError,Planner(self.a).plan,self.verified(),{'op':'x'},request_id='',now=0)
     def test_read_only(self):
         cl=self.claim(mutating=False,stable_idempotency_key=False,request_bound_key=False,reconcile_by_key=False,retention_seconds=None); c=self.verified(cl,SimulatedSink(idempotent=False,request_bound=False,reconcile=False)); self.assertEqual(derive_policy(c,self.a,now=0,key_created_at=0),'READ_ONLY')
     def test_non_request_bound_not_safe(self):
