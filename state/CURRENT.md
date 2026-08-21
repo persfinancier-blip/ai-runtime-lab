@@ -4,57 +4,60 @@ Last updated: 2026-08-21
 
 ## Active objective
 
-LAB-071 — test whether credential authority can become revocable at operation time by keeping raw secret bytes inside a trusted broker and authenticating every mediated request using kernel-observed per-message sender identity instead of transferring plaintext credential capability to the target process.
+LAB-071 — make credential authority revocable at operation time by retaining raw secret bytes inside a trusted broker and authenticating every mediated request using kernel-observed per-message sender identity rather than transferring plaintext credential capability to the target process.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-070.
-- LAB-070 Issue #131 DONE.
-- LAB-070 PR #132 squash-merged as `6a242b96761d0df6c74ed325658a0fa52139d2c5`.
+- LAB-070 Issue #131 DONE; PR #132 squash-merged as `6a242b96761d0df6c74ed325658a0fa52139d2c5`.
 - Active Issue #133 / LAB-071 — IN_PROGRESS.
 - Active branch: `lab/071-brokered-credential-use`.
-- Active PR: none yet.
+- Draft PR: #134 `[LAB-071] Brokered credential use and revocable operation authority`.
+- Current PR-head commit: `ebd9ac6b9b288ff2847fca6b666f5275049c2b35`.
 
 ## Last completed step
 
-LAB-070's exact-source merge gate was closed. The exact PR-head executable files were reconstructed through GitHub connector content, their local `git hash-object` values matched the published branch blobs, and the real-process corrected/unsafe suites were executed directly. Exact regressions for LAB-069, LAB-030, and LAB-031 were also reconstructed from current `main` and executed. A fresh remote patch audit found no blocking defect; PR #132 was marked ready and squash-merged normally.
+LAB-070's exact-source merge gate was closed. Exact PR-head files were reconstructed through GitHub connector content and matched published Git blob IDs; LAB-070 passed 8/8, its unsafe propagation seed failed as expected, and exact LAB-069/LAB-030/LAB-031 regressions passed 14/14, 11/11, and 8/8. A fresh remote audit found no blocker and PR #132 merged normally.
 
-The next gap was then selected from LAB-070's proven boundary: generation rotation cannot revoke a readable credential FD already held by a live process, and once plaintext is read no kernel descriptor mechanism can stop copying through another allowed channel. Issue #133 / LAB-071 was created and branch `lab/071-brokered-credential-use` was started.
+LAB-071 was then selected from LAB-070's proven boundary. Current Linux `unix(7)` evidence shows the useful distinction: `SO_PEERCRED` is connection-time peer identity, while broker-side `SO_PASSCRED` supplies `SCM_CREDENTIALS` for the sending process on each received message; `SCM_RIGHTS`/descriptor transfer remains transferable capability.
 
-Current primary-source evidence for the new direction: Linux `unix(7)` specifies that `SO_PASSCRED` attaches `SCM_CREDENTIALS` containing the credentials of the sending process to each received message, while `SO_PEERCRED` is connection-time peer identity and `SCM_RIGHTS` transfers file descriptors like `dup(2)`. This gives a falsifiable hypothesis: a trusted broker can keep the secret and reject a grandchild using a transferred request socket because per-message kernel sender identity changes.
+A real-process prototype was built and published in draft PR #134. The target receives only a request socket, not raw credential bytes. The broker holds the secret, enables `SO_PASSCRED`, and binds requests to kernel sender PID plus a live pidfd/starttime process instance, task, scope, credential generation, and exact request identity/content.
+
+The key hypothesis was observed directly: a target sent one datagram, passed the same socket FD to a grandchild, and the broker observed different kernel sender PIDs for the two messages. The unsafe socket-possession policy accepted both. The corrected broker accepted the authorized target and rejected the grandchild.
+
+An audit improvement was applied before publication: idempotency is now bound to a canonical request digest so one request ID cannot be replayed with changed content; process authority also keeps a live pidfd rather than relying on numeric PID/starttime alone.
 
 ## Evidence produced
 
-- LAB-070 exact PR-head protocol blob: `1c80f73bcbe12d3a3fb1e3b520f8cf8d1077297b`.
-- LAB-070 exact corrected-test blob: `d965cd0ecd41acde63f00250e97c426574265203`.
-- LAB-070 corrected exact suite: 8/8 passed.
-- LAB-070 unsafe CLOEXEC-only seed: failed as expected because target→grandchild propagation succeeded.
+- LAB-070 exact corrected suite: 8/8 passed; unsafe seed failed as expected.
 - LAB-069 exact regression: 14/14 passed.
 - LAB-030 exact regression: 11/11 passed.
 - LAB-031 exact regression: 8/8 passed.
-- Compileall passed for the exact reconstructed sources/regressions.
-- Fresh PR #132 remote patch audit: no blocking finding at head `7f7ab2f056c52c0fd47083ca3221079438b37f76`.
-- PR #132 normal squash merge: `6a242b96761d0df6c74ed325658a0fa52139d2c5`.
-- Issue #131 updated with final validation evidence and closed DONE.
-- Issue #133 / LAB-071 created and moved IN_PROGRESS.
-- Branch `lab/071-brokered-credential-use` created from current `main`.
+- LAB-070 PR #132 normal squash merge: `6a242b96761d0df6c74ed325658a0fa52139d2c5`.
+- LAB-071 live SCM_CREDENTIALS probe: same transferred AF_UNIX datagram FD produced target PID `733` for the target send and PID `745` for the grandchild send in this runtime.
+- LAB-071 corrected local working-copy suite after pidfd/request-digest audit fix: 10/10 passed.
+- LAB-071 unsafe socket-possession seed: failed as expected because the grandchild became a second accepted operation.
+- LAB-071 compileall: passed.
+- New experiment: `experiments/brokered_credential_use/`.
+- Research note: `research/2026-08-21-brokered-credential-use.md`.
+- Draft PR #134 opened at head `ebd9ac6b9b288ff2847fca6b666f5275049c2b35`.
 
 ## Known blockers / constraints
 
 - No owner-level/external blocker.
-- Direct shell GitHub clone has been unreliable due DNS in this runtime; connector-based exact-source reconstruction remains the supported fallback.
-- `SCM_CREDENTIALS` / `SO_PASSCRED` behavior is Linux-specific and must not be presented as portable IPC authentication.
-- The corrected broker design must not trust caller-supplied PID/UID/GID fields; only kernel-provided ancillary credentials are admissible.
-- Numeric PID alone is not process-instance authority; LAB-031 pidfd/starttime rules must be reused for the consequential authorization decision.
-- Privileged processes can have broader ability to specify credentials; the experiment must record the privilege/capability boundary and run the untrusted target without authority that could forge another process identity.
-- A broker can withhold raw credential and revoke future operations, but it cannot prevent an authorized target from leaking results/data that policy legitimately returns to it.
+- PR #134 is intentionally draft; the published PR-head bytes have not yet undergone exact-source reconstruction/regression validation and final remote audit.
+- Broker restart/durable permit recovery is not yet implemented. Current pidfds/effect map are in-memory; restart must not silently turn numeric PID or caller-supplied permit fields into authority.
+- `SCM_CREDENTIALS` / `SO_PASSCRED` are Linux-specific. Privileged senders with relevant capabilities have different credential-spoofing rules; an untrusted target must not receive those capabilities.
+- Numeric PID alone remains non-authoritative; pidfd/starttime validation is required for consequential operations.
+- Broker mediation can revoke future credentialed operations but cannot retract data/results already returned to an authorized target.
+- The current receipt HMAC models a credentialed external action; this is not a claim that all real external APIs expose or support identical idempotency semantics.
 
 ## Exact next action
 
-Resume Issue #133 / branch `lab/071-brokered-credential-use`. Build the smallest real-process prototype around an AF_UNIX datagram/socketpair with broker-side `SO_PASSCRED`. First reproduce an unsafe connection/socket-only policy where a target passes the request FD to a grandchild and the broker accepts it. Then implement per-message `SCM_CREDENTIALS` verification bound to task, operation/scope, credential generation, request identity, and target process instance using LAB-031-style PID/starttime/pidfd validation. Prove a legitimate target request succeeds, a transferred FD used by the grandchild is rejected, rotation rejects subsequent old-generation requests while the original target remains alive, duplicate/UNKNOWN retry is idempotent, and raw secret never leaves broker evidence. Run exact relevant LAB-069/LAB-070/LAB-031 regressions, perform a remote patch audit, and only then integrate.
+Resume Issue #133 / PR #134. First reconstruct the exact published PR-head protocol/tests via GitHub connector responses, verify local `git hash-object`, and execute the exact corrected + unsafe LAB-071 suites. Perform a fresh remote patch audit of the published slice. Then close the remaining restart gap narrowly: persist only non-secret permit/effect identity, reacquire target process authority after broker restart using LAB-032-style PID/starttime + fresh pidfd rules, and prove restart never accepts caller-provided numeric PID authority, never duplicates an UNKNOWN/committed mediated effect, and still rejects a transferred socket used by a descendant. Rerun exact LAB-069/LAB-070/LAB-031 regressions and compileall. Only after all acceptance criteria and a second remote audit are clean should PR #134 be marked ready and merged.
 
 ## Backlog
 
-- #133 / LAB-071 — brokered credential use, per-message sender identity, and revocable operation authority — IN_PROGRESS.
+- #133 / LAB-071 — brokered credential use, per-message sender identity, and revocable operation authority — IN_PROGRESS; draft PR #134.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
