@@ -58,6 +58,23 @@ class ReopenTests(unittest.TestCase):
             with self.assertRaises(CorruptJournal):
                 reopen_journal(path)
 
+    def test_restart_refuses_effect_key_not_bound_to_request_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "journal.db"
+            journal = TransactionalJournal(path, 1)
+            journal.reserve(Request("req-1", "task-1", "scope-1", 1, "payload"))
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE broker_requests SET effect_key=? WHERE request_id='req-1'",
+                ("broker-effect:" + "0" * 64,),
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(CorruptJournal):
+                journal.verify_durable()
+            with self.assertRaises(CorruptJournal):
+                reopen_journal(path)
+
 
 if __name__ == "__main__":
     unittest.main()
