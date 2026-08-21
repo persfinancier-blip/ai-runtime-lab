@@ -76,7 +76,7 @@ class SignedCompactionRestartContinuityTests(unittest.TestCase):
             with self.assertRaises(NamespaceAuthorityUnavailable):
                 layer.compact(layer.create_checkpoint())
 
-    def test_symlink_replacement_cannot_be_reopened_as_authority(self):
+    def test_symlink_replacement_is_classified_and_cannot_be_reused(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             builder = ChainBuilder(td / "db").append(4)
@@ -87,8 +87,10 @@ class SignedCompactionRestartContinuityTests(unittest.TestCase):
             attacker.mkdir()
             archive.rename(old)
             os.symlink(attacker, archive, target_is_directory=True)
-            with self.assertRaises(Exception):
-                self.layer(builder, archive)
+            restarted = self.layer(builder, archive)
+            self.assertNotEqual(restarted.namespace_reacquisition_status["status"], "REACQUIRED")
+            with self.assertRaises(NamespaceAuthorityUnavailable):
+                restarted.compact(restarted.create_checkpoint())
             self.assertEqual(list(attacker.iterdir()), [])
 
     def test_authenticated_relocation_advances_generation_and_compacts(self):
