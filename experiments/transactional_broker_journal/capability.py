@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from experiments.sink_capability_contract import protocol as cap
@@ -43,7 +44,7 @@ class DurableCapabilityPlan:
 
 
 class CapabilityBoundJournal:
-    """Persist LAB-073 authority in LAB-072's existing broker request rows."""
+    """LAB-073 authority persisted in LAB-072's existing broker_requests rows."""
 
     _COLUMNS = (
         ("capability_sink_id", "TEXT"),
@@ -88,6 +89,14 @@ class CapabilityBoundJournal:
             q.close()
 
     @staticmethod
+    def _sink_request(request: Request) -> dict[str, str]:
+        return {
+            "task_id": request.task_id,
+            "scope": request.scope,
+            "payload": request.payload,
+        }
+
+    @staticmethod
     def _is_hex_digest(value: object) -> bool:
         return (
             isinstance(value, str)
@@ -121,7 +130,7 @@ class CapabilityBoundJournal:
             issuer_id,
             policy,
             created,
-            "",
+            "",  # filled by _load_binding
         )
 
     def _load_binding(self, q, request_id: str) -> DurableCapabilityPlan:
@@ -169,12 +178,7 @@ class CapabilityBoundJournal:
                 "FROM sink_capability_heads WHERE sink_id=?",
                 (claim.sink_id,),
             ).fetchone()
-            identity = (
-                claim.generation,
-                att.claim_digest,
-                att.probe_generation,
-                att.issuer_id,
-            )
+            identity = (claim.generation, att.claim_digest, att.probe_generation, att.issuer_id)
             if row is None:
                 q.execute(
                     "INSERT INTO sink_capability_heads VALUES(?,?,?,?,?)",
@@ -184,9 +188,7 @@ class CapabilityBoundJournal:
                 if claim.generation < row[0]:
                     raise cap.StaleCapability("sink capability generation rolled back")
                 if claim.generation == row[0] and tuple(row) != identity:
-                    raise cap.StaleCapability(
-                        "same-generation sink capability substitution"
-                    )
+                    raise cap.StaleCapability("same-generation sink capability substitution")
                 if claim.generation > row[0]:
                     q.execute(
                         "UPDATE sink_capability_heads SET capability_generation=?,claim_digest=?,"
@@ -230,11 +232,9 @@ class CapabilityBoundJournal:
         finally:
             q.close()
 
-        # A genuinely new reservation records the latest authenticated sink head.
+        # A genuinely new reservation requires a currently authenticated capability.
         claim = self.observe_capability(capability)
-        policy = cap.derive_policy(
-            capability, self.verifier, now=now, key_created_at=now
-        )
+        policy = cap.derive_policy(capability, self.verifier, now=now, key_created_at=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
             raise CapabilityExecutionBlocked("new execution lacks safe retry authority")
         claim_digest = capability.attestation.claim_digest
@@ -242,7 +242,7 @@ class CapabilityBoundJournal:
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
-            # Close the race between initial lookup and capability verification.
+            # Close the race between the initial lookup and capability verification.
             row = q.execute(
                 "SELECT request_digest,status,effect_key,receipt FROM broker_requests WHERE request_id=?",
                 (request.request_id,),
@@ -345,9 +345,7 @@ class CapabilityBoundJournal:
                 if not self._is_hex_digest(claim_digest):
                     raise CapabilityBindingError("invalid capability head digest")
                 if type(probe_generation) is not int or probe_generation < 1:
-                    raise CapabilityBindingError(
-                        "invalid capability head probe generation"
-                    )
+                    raise CapabilityBindingError("invalid capability head probe generation")
                 if not isinstance(issuer_id, str) or not issuer_id:
                     raise CapabilityBindingError("invalid capability head issuer")
             return True
@@ -356,16 +354,9 @@ class CapabilityBoundJournal:
 
 
 class CapabilityBrokerWorker:
-    """Execute only through the configured sink matching the durable capability."""
+    """External execution is gated by the capability identity durable in broker_requests."""
 
-    def __init__(
-        self,
-        bound: CapabilityBoundJournal,
-        sink,
-        secret: bytes,
-        *,
-        sink_id: str,
-    ):
+    def __init__(self, bound: CapabilityBoundJournal, sink, secret: bytes, *, sink_id: str):
         if not isinstance(sink_id, str) or not sink_id:
             raise CapabilityBindingError("invalid configured sink identity")
         self.bound = bound
@@ -376,9 +367,7 @@ class CapabilityBrokerWorker:
 
     def _assert_sink_binding(self, plan: DurableCapabilityPlan) -> None:
         if self.sink_id != plan.sink_id:
-            raise CapabilityBindingError(
-                "configured sink does not match durable capability"
-            )
+            raise CapabilityBindingError("configured sink does not match durable capability")
 
     def _reconcile(self, plan: DurableCapabilityPlan):
         self._assert_sink_binding(plan)
@@ -406,8 +395,8 @@ class CapabilityBrokerWorker:
             raise cap.StaleCapability("sink changed")
 
         if status == "UNKNOWN" and claim.generation > plan.capability_generation:
-            # Rotation revokes new execution, but not proof lookup for the exact
-            # historical effect identity. This path can only reconcile.
+            # Capability rotation can revoke new execution, but not erase proof of an
+            # already-committed effect. This path is reconciliation-only.
             observed = self._reconcile(plan)
             if observed is None:
                 raise CapabilityExecutionBlocked(
@@ -418,9 +407,7 @@ class CapabilityBrokerWorker:
 
         policy = self.bound._revalidate_exact(plan, capability, now=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
-            raise CapabilityExecutionBlocked(
-                "current capability no longer permits automatic execution"
-            )
+            raise CapabilityExecutionBlocked("current capability no longer permits automatic execution")
 
         if status == "UNKNOWN":
             if policy == "SAFE_RETRY_IDEMPOTENT_ONLY":
