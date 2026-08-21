@@ -12,34 +12,38 @@ LAB-072 — finish proof that concurrent/restarted broker workers serialize one 
 - Active Issue #135 / LAB-072 — IN_PROGRESS.
 - Active branch: `lab/072-transactional-broker-journal`.
 - Draft PR #136 `[LAB-072] Transactional broker request journal`.
-- Current PR HEAD: `e003c9be35b2ac0a07b4a371fad2ff7ad636c531`; GitHub reports mergeable, draft intentionally.
+- PR HEAD observed at run start: `e003c9be35b2ac0a07b4a371fad2ff7ad636c531`; GitHub reports mergeable, draft intentionally.
 
 ## Last completed step
 
-A fresh restart audit found that the first `reopen_journal()` used ordinary `sqlite3.connect(path)`. On a missing path SQLite creates an empty database before the helper raises, contradicting the fail-closed restart/no-bootstrap contract. The branch now opens restart state with SQLite URI `mode=rw`, requiring an existing database, and the regression asserts the missing path remains absent after failure.
+The exact current published bytes for the LAB-072 journal core and restart helper were reconstructed through the GitHub connector because shell DNS still cannot resolve `github.com`. Local `git hash-object` matched the GitHub blob IDs for `protocol.py`, `reopen.py`, `test_protocol.py`, and `test_reopen.py`. Those exact files then passed the journal + restart suites 16/16, including the existing-only/no-file-creation restart regression.
 
-Fix commits: `1849abad12527bb9aab2fcbb423360ecaada5aee` (existing-only reopen) and `e003c9be35b2ac0a07b4a371fad2ff7ad636c531` (no-file-creation regression).
+A fresh source audit then found a new merge blocker: `TransactionalJournal.verify_durable()` accepts any persisted `request_digest` of length 64 and does not require lowercase hexadecimal SHA-256 encoding. A corrupted 64-character non-hex digest can therefore pass restart verification even though it is the durable request/idempotency identity.
 
 ## Evidence produced
 
-- `AGENTS.md`, prior `state/CURRENT.md`, `prompts/SELF_RESUME.md`, Issue #135 and PR #136 were reread before work.
-- Direct `git ls-remote https://github.com/...` was probed in this runtime and failed because `github.com` DNS resolution is unavailable.
-- GitHub connector remains usable; current PR metadata and changed paths were inspected and the restart defect was found by source audit.
-- Prior exact-source evidence remains valid only for the pre-fix bytes: published `protocol.py` blob `6066d90b3032eeefc0f2dbbd272c09a9a716b5b2` previously matched executed bytes; prior exact protocol + reopen suite passed 16/16 and compileall.
-- No post-fix exact-source test success is claimed yet.
+- Direct `git clone` / remote probe still fails in the shell because `github.com` DNS resolution is unavailable.
+- Exact GitHub/local blob matches:
+  - `protocol.py`: `6066d90b3032eeefc0f2dbbd272c09a9a716b5b2`
+  - `reopen.py`: `4e0b5a8e3434db38d898e78c83804551d2db3f47`
+  - `test_protocol.py`: `656284062a96b7915e3283b181c58bd7a8e9281d`
+  - `test_reopen.py`: `50fcead0c9bf3045ca3f15ab2bb9550f2a86102b`
+- Exact journal + reopen tests: 16/16 passed.
+- Issue #135 updated with the malformed-digest audit finding and required regression.
+- No merge was attempted; PR #136 remains draft.
 
 ## Known blockers / constraints
 
 - No owner-level blocker.
-- PR #136 remains draft because the full current integration HEAD, including the new restart fix, has not yet been executed from exact published bytes.
+- Merge blocker: durable request digest parsing is not fail-closed; require exact lowercase hex SHA-256 validation and regression coverage.
+- Full exact integration gate still includes LAB-072 process integration plus LAB-071/LAB-015/LAB-031 regressions and compileall.
 - Manual reformat/reconstruction is not accepted as exact-source evidence; blob identities must match GitHub.
-- Remaining exact execution covers all LAB-072 executable/test files plus LAB-071, LAB-015 and LAB-031 regressions and compileall.
 - The idempotent sink remains an adapter contract; external systems without stable idempotency/reconciliation cannot inherit the same UNKNOWN semantics.
 - SQLite is a local serialization reference, not distributed consensus or a PostgreSQL performance claim.
 
 ## Exact next action
 
-Resume Issue #135 / draft PR #136 at HEAD `e003c9be35b2ac0a07b4a371fad2ff7ad636c531`. Reconstruct exact current executable bytes through the GitHub connector and verify each with `git hash-object`, including the new `reopen.py` blob and no-file-creation regression. Execute LAB-072 unit + process + reopen suites, LAB-071, LAB-015, LAB-031 and compileall. Then perform a fresh full PR patch audit; fix and rerun any finding. Only if all exact-source evidence is clean should PR #136 be marked ready, merged, Issue #135 closed, and the next highest-value unblocked task selected.
+Resume Issue #135 / draft PR #136. Patch `TransactionalJournal.verify_durable()` so every persisted `request_digest` must be exactly 64 lowercase hexadecimal characters, and add a regression that corrupts a stored digest to 64 non-hex characters and requires `CorruptJournal` on verification/reopen. Publish the fix to the existing branch, reconstruct the new exact branch bytes, verify Git blob identities, and rerun journal + reopen. Then complete exact LAB-072 process integration, LAB-071/LAB-015/LAB-031 regressions and compileall. Perform a fresh full PR patch audit and fix/rerun any finding. Only after a clean gate should PR #136 be marked ready, merged, Issue #135 closed, and the next highest-value unblocked task selected.
 
 ## Backlog
 
