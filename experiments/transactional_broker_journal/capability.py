@@ -175,7 +175,6 @@ class CapabilityBoundJournal:
         finally:
             q.close()
 
-        # A genuinely new reservation requires a currently authenticated capability.
         claim = self.verifier.verify(capability)
         policy = cap.derive_policy(capability, self.verifier, now=now, key_created_at=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
@@ -185,7 +184,7 @@ class CapabilityBoundJournal:
         q = self.journal._con()
         try:
             q.execute("BEGIN IMMEDIATE")
-            # Close the race between the initial lookup and capability verification.
+            # Close the race between initial lookup and capability verification.
             row = q.execute(
                 "SELECT request_digest,status,effect_key,receipt FROM broker_requests WHERE request_id=?",
                 (request.request_id,),
@@ -282,15 +281,32 @@ class CapabilityBoundJournal:
 
 
 class CapabilityBrokerWorker:
-    """External execution is gated by capability identity durable in broker_requests."""
+    """Execute only through the configured sink matching the durable capability."""
 
-    def __init__(self, bound: CapabilityBoundJournal, sink, secret: bytes):
+    def __init__(
+        self,
+        bound: CapabilityBoundJournal,
+        sink,
+        secret: bytes,
+        *,
+        sink_id: str,
+    ):
+        if not isinstance(sink_id, str) or not sink_id:
+            raise CapabilityBindingError("invalid configured sink identity")
         self.bound = bound
         self.journal = bound.journal
         self.sink = sink
         self.secret = bytes(secret)
+        self.sink_id = sink_id
+
+    def _assert_sink_binding(self, plan: DurableCapabilityPlan) -> None:
+        if self.sink_id != plan.sink_id:
+            raise CapabilityBindingError(
+                "configured sink does not match durable capability"
+            )
 
     def _reconcile(self, plan: DurableCapabilityPlan):
+        self._assert_sink_binding(plan)
         if hasattr(self.sink, "lookup"):
             return self.sink.lookup(plan.effect_key)
         if hasattr(self.sink, "reconcile"):
@@ -315,8 +331,6 @@ class CapabilityBrokerWorker:
             raise cap.StaleCapability("sink changed")
 
         if status == "UNKNOWN" and claim.generation > plan.capability_generation:
-            # Capability rotation can revoke new execution, but not erase proof of an
-            # already-committed effect. This path is reconciliation-only.
             observed = self._reconcile(plan)
             if observed is None:
                 raise CapabilityExecutionBlocked(
@@ -327,7 +341,9 @@ class CapabilityBrokerWorker:
 
         policy = self.bound._revalidate_exact(plan, capability, now=now)
         if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
-            raise CapabilityExecutionBlocked("current capability no longer permits automatic execution")
+            raise CapabilityExecutionBlocked(
+                "current capability no longer permits automatic execution"
+            )
 
         if status == "UNKNOWN":
             if policy == "SAFE_RETRY_IDEMPOTENT_ONLY":
@@ -339,6 +355,7 @@ class CapabilityBrokerWorker:
                 self.journal.confirm(request, observed)
                 return Result(request.request_id, "RECONCILED", observed, plan.effect_key)
 
+        self._assert_sink_binding(plan)
         try:
             receipt = self.sink.apply(
                 plan.effect_key,
