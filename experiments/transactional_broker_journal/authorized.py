@@ -7,6 +7,7 @@ from experiments.brokered_credential_use.protocol import (
     InvalidRequest as AuthorityInvalidRequest,
     OperationPermit,
     ReceivedRequest,
+    proc_starttime,
 )
 
 from .protocol import BrokerWorker, IdempotentSink, Request, Result, TransactionalJournal
@@ -20,12 +21,42 @@ class AuthorizedRequest:
     journal_request: Request
 
 
+def bind_sender_to_journal_generation(
+    *,
+    authority: CredentialBroker,
+    journal: TransactionalJournal,
+    task_id: str,
+    scope: str,
+    target_pid: int,
+) -> OperationPermit:
+    """Bind LAB-071 process identity to LAB-072's single durable generation authority.
+
+    CredentialBroker is deliberately used only for pidfd/starttime process-instance
+    authority here. The journal is the only durable credential-generation authority,
+    avoiding a split-commit between LAB-071 JSON state and LAB-072 SQL state.
+    """
+
+    starttime = proc_starttime(target_pid)
+    permit = OperationPermit(
+        task_id=task_id,
+        scope=scope,
+        credential_generation=journal.generation(),
+        target_pid=target_pid,
+        target_starttime=starttime,
+    )
+    # Reuse the exact LAB-071 pidfd/starttime reacquisition logic. A promoted runtime
+    # should expose this as a public side-effect-free sender-authority API.
+    authority._install_pidfd(permit)
+    return permit
+
+
 class KernelAuthorizedBrokerWorker:
     """Put LAB-072 durable reservation behind LAB-071's process-instance authority boundary.
 
     LAB-071 remains authoritative for SCM_CREDENTIALS + pidfd/starttime sender identity.
-    LAB-072 remains authoritative for concurrent reservation/idempotency/UNKNOWN state.
-    The raw credential is held only by the worker and is never persisted by the journal.
+    LAB-072 remains authoritative for credential generation, concurrent reservation,
+    idempotency, and UNKNOWN state. The raw credential is held only by the worker and
+    is never persisted by the journal.
     """
 
     def __init__(
@@ -42,9 +73,7 @@ class KernelAuthorizedBrokerWorker:
         self.worker = BrokerWorker(journal, sink, secret)
 
     def authorize(self, received: ReceivedRequest) -> AuthorizedRequest:
-        # This is intentionally the exact LAB-071 process-instance check rather than
-        # a duplicated PID comparison. Promotion into a shared runtime should expose
-        # this as a public side-effect-free LAB-071 API rather than keep the private call.
+        # No call to reserve()/sink is reachable before the kernel process-instance check.
         self.authority._validate_sender(received, self.permit)
 
         body = received.body
