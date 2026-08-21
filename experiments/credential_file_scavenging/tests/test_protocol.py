@@ -15,6 +15,10 @@ class Tests(unittest.TestCase):
         with self.assertRaises(SimulatedCreationCrash) as ctx:self.create(simulate_crash_after_secret_write=True)
         lease_id=str(ctx.exception); l=self.store.load(lease_id); self.assertEqual(l.status,'ALLOCATED'); self.assertEqual((self.creds/l.name).read_bytes(),SECRET)
         ev=self.store.cleanup(lease_id,expected_cleanup_generation=self.store.cleanup_generation()); self.assertEqual(ev['outcome'],'UNLINKED')
+    def test_partial_secret_write_crash_is_reclaimable_by_strong_identity(self):
+        with self.assertRaises(SimulatedCreationCrash) as ctx:self.create(simulate_crash_after_partial_write=True)
+        lease_id=str(ctx.exception); l=self.store.load(lease_id); self.assertEqual(l.status,'ALLOCATED'); self.assertNotEqual((self.creds/l.name).read_bytes(),SECRET)
+        ev=self.store.cleanup(lease_id,expected_cleanup_generation=self.store.cleanup_generation()); self.assertEqual(ev['outcome'],'UNLINKED')
     def test_crash_before_handoff_reclaimed(self):
         l=self.create(); p=self.creds/l.name; ev=self.store.cleanup(l.lease_id,expected_cleanup_generation=self.store.cleanup_generation()); self.assertFalse(p.exists()); self.assertEqual(ev['outcome'],'UNLINKED')
     def test_live_child_protected_until_exit(self):
