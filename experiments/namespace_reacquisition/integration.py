@@ -82,12 +82,22 @@ class RestartNamespaceContinuityMixin:
         return self._namespace_continuity_record.namespace_generation
 
     def require_namespace_authority(self):
-        status = self._namespace_reacquisition
+        """Re-prove current namespace identity at each consequential boundary.
+
+        A successful restart-time observation is not a lease. The pathname can be
+        replaced after construction, so compaction, publication and GC must refresh
+        strong reacquisition immediately before use rather than trusting cached status.
+        """
+        record = self._namespace_continuity_record
+        status = reacquire(record, self.key, require_strong=True)
+        self._namespace_reacquisition = status
         if status.get("status") != "REACQUIRED":
             raise NamespaceAuthorityUnavailable(
                 "archive namespace authority unavailable: " + status.get("status", "UNKNOWN")
             )
-        return self._namespace_continuity_record
+        if status.get("namespace_generation") != record.namespace_generation:
+            raise NamespaceAuthorityUnavailable("archive namespace generation mismatch")
+        return record
 
     def migrate_archive_namespace(self, permit: MigrationPermit):
         old = self._namespace_continuity_record
