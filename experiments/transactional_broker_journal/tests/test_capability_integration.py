@@ -25,15 +25,7 @@ class Tests(unittest.TestCase):
     def authority(self):
         return cap.ProbeAuthority(issuer_id="probe", key=b"probe-key", generation=1)
 
-    def capability(
-        self,
-        authority,
-        *,
-        generation=1,
-        reconcile=True,
-        retention=100,
-        sink_id="sink-A",
-    ):
+    def capability(self, authority, *, generation=1, reconcile=True, retention=100, sink_id="sink-A"):
         claim = cap.CapabilityClaim(
             sink_id=sink_id,
             generation=generation,
@@ -45,9 +37,7 @@ class Tests(unittest.TestCase):
             source="behavioral-test-probe",
         )
         probe_sink = cap.SimulatedSink(
-            idempotent=True,
-            request_bound=True,
-            reconcile=reconcile,
+            idempotent=True, request_bound=True, reconcile=reconcile
         )
         return cap.VerifiedCapability(claim, authority.attest(claim, probe_sink))
 
@@ -60,8 +50,10 @@ class Tests(unittest.TestCase):
         return journal, authority, bound, sink
 
     @staticmethod
-    def worker(bound, sink):
-        return CapabilityBrokerWorker(bound, sink, b"secret", sink_id="sink-A")
+    def worker(bound, sink, sink_id="sink-A"):
+        return CapabilityBrokerWorker(
+            bound, sink, b"secret", sink_id=sink_id
+        )
 
     def test_same_generation_claim_mutation_blocks_existing_intent(self):
         with tempfile.TemporaryDirectory() as td:
@@ -132,8 +124,7 @@ class Tests(unittest.TestCase):
             request = Request("r", "task", "scope", 1, "payload")
             good = self.capability(authority)
             forged = cap.VerifiedCapability(
-                good.claim,
-                replace(good.attestation, signature="0" * 64),
+                good.claim, replace(good.attestation, signature="0" * 64)
             )
             with self.assertRaises(cap.UntrustedCapability):
                 bound.reserve(request, forged, now=0)
@@ -157,13 +148,16 @@ class Tests(unittest.TestCase):
                 for _ in range(2)
             ]
             gate = threading.Barrier(3)
-            out = []
-            errors = []
+            out, errors = [], []
 
             def run(wrapper):
                 gate.wait()
                 try:
-                    out.append(self.worker(wrapper, sink).process(request, capability, now=0))
+                    out.append(
+                        self.worker(wrapper, sink).process(
+                            request, capability, now=0
+                        )
+                    )
                 except Exception as exc:
                     errors.append(exc)
 
@@ -211,18 +205,19 @@ class Tests(unittest.TestCase):
             journal, authority, bound, sink = self.setup(td)
             request = Request("r", "task", "scope", 1, "payload")
             capability = self.capability(authority, sink_id="sink-A")
-            wrong_worker = CapabilityBrokerWorker(
-                bound, sink, b"secret", sink_id="sink-B"
-            )
             with self.assertRaises(CapabilityBindingError):
-                wrong_worker.process(request, capability, now=0)
+                self.worker(bound, sink, sink_id="sink-B").process(
+                    request, capability, now=0
+                )
             self.assertEqual(sink.apply_count(), 0)
 
     def test_request_id_substitution_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             journal, authority, bound, sink = self.setup(td)
             capability = self.capability(authority)
-            bound.reserve(Request("r", "task", "scope", 1, "one"), capability, now=0)
+            bound.reserve(
+                Request("r", "task", "scope", 1, "one"), capability, now=0
+            )
             with self.assertRaises(RequestConflict):
                 bound.reserve(
                     Request("r", "task", "scope", 1, "two"), capability, now=0
@@ -242,6 +237,41 @@ class Tests(unittest.TestCase):
             q.close()
             with self.assertRaises(CapabilityBindingError):
                 bound.verify_durable()
+
+    def test_newer_capability_head_makes_older_generation_stale(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            bound.observe_capability(self.capability(authority, generation=2))
+            with self.assertRaises(cap.StaleCapability):
+                bound.reserve(
+                    Request("old", "task", "scope", 1, "payload"),
+                    self.capability(authority, generation=1),
+                    now=1,
+                )
+
+    def test_capability_head_survives_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            bound.observe_capability(self.capability(authority, generation=2))
+            reopened = CapabilityBoundJournal(
+                TransactionalJournal(Path(td) / "journal.db", 1), authority
+            )
+            with self.assertRaises(cap.StaleCapability):
+                reopened.observe_capability(
+                    self.capability(authority, generation=1)
+                )
+            self.assertTrue(reopened.verify_durable())
+
+    def test_same_generation_capability_head_substitution_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal, authority, bound, sink = self.setup(td)
+            bound.observe_capability(
+                self.capability(authority, generation=1, retention=10)
+            )
+            with self.assertRaises(cap.StaleCapability):
+                bound.observe_capability(
+                    self.capability(authority, generation=1, retention=1000)
+                )
 
 
 if __name__ == "__main__":
