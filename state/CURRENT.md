@@ -1,61 +1,56 @@
 # Current Lab State
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-074 — finish exact-source validation and integration of LAB-073 authenticated sink capability/retry authority into LAB-072's transactional broker journal.
+LAB-075 — authenticate and persist the mapping from logical `sink_id` to the concrete adapter/code profile and endpoint/origin used by LAB-074, so a caller cannot satisfy capability binding while substituting a different implementation or destination.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-073.
-- Active: Issue #139 / LAB-074 — IN_PROGRESS.
-- Active branch: `lab/074-broker-sink-capability`.
-- Active PR: #140 `[LAB-074] Bind transactional broker to authenticated sink capability` — DRAFT, mergeable.
-- Current audited PR HEAD: `5584e214d8548c20d171778777da0de346860c5a`.
+- Completed: LAB-001 through LAB-074.
+- Completed Issue #139 / LAB-074.
+- Merged PR #140 / LAB-074 as `05ce952fa98f64d78ee6fc7765d1be6457630609`.
+- Active: Issue #141 / LAB-075 — IN_PROGRESS.
+- Active branch: `lab/075-sink-registry-binding`.
+- Active PR: none yet.
 
 ## Last completed step
 
-LAB-074 now extends the existing LAB-072 `broker_requests` rows in place with exact LAB-073 capability identity and adds a durable monotonic `sink_capability_heads` watermark per sink. New external work requires current authenticated sink capability; CONFIRMED durable receipts remain readable after later rotation without any external action; UNKNOWN after rotation is reconciliation-only and cannot execute a second effect under the new capability.
+LAB-074's last exact-source gate was closed in this run. The exact published PR `capability.py` blob `0cfe0e2e555a234df96393abdf3e14b75ccff2f6`, exact PR integration tests, exact LAB-072/LAB-073 regressions and unsafe seed were reconstructed through the GitHub connector and executed locally. The combined corrected suite passed 49/49; compileall passed; the unsafe split-authority seed failed as intended because a journal without capability binding executed one external effect when zero was expected.
 
-A separate audit found and fixed six material cross-layer defects before merge:
+A fresh four-file remote patch audit found no unresolved blocker. The research note and PR evidence were updated, PR #140 was marked ready and squash-merged, and Issue #139 was closed DONE.
 
-1. current capability was checked before returning an already CONFIRMED durable receipt;
-2. capability `sink_id` was not bound to the configured external sink adapter;
-3. old but still correctly signed capability generations could be replayed because there was no durable latest-generation watermark;
-4. capability head could change between observation and request INSERT;
-5. durable verification checked request/head tables independently instead of their relationship;
-6. rotated UNKNOWN could still probe a sink whose current capability no longer authorized reconciliation.
-
-The final implementation rechecks the capability head in the same SQL write transaction that inserts INTENT, persists restart-stable capability heads, binds worker execution to configured sink identity, and validates request-plan ↔ capability-head relations during durable verification.
+With no remaining open issue, the next correctness boundary was promoted to LAB-075: LAB-074 authenticates the capability of logical sink `sink-A`, but the runtime still supplies a configured `sink_id` plus an arbitrary adapter object. LAB-075 will make the logical-to-concrete adapter/endpoint mapping itself authenticated, versioned and restart-persistent.
 
 ## Evidence produced
 
-- Draft PR #140; current HEAD `5584e214d8548c20d171778777da0de346860c5a`.
-- Exact main LAB-072 protocol/test Git blobs reconstructed and matched GitHub: `6817459fca8ac37c11cce71865937b8f65567d83`, `656284062a96b7915e3283b181c58bd7a8e9281d`.
-- Exact main LAB-073 protocol/test Git blobs reconstructed and matched GitHub: `fc05d27d5512ece585d7d6313e079ae6a234f737`, `55e42d5027fbbe1c7b66b11f08162765eba90a25`.
-- Local post-audit combined suite on the tested implementation: 49/49 passed; compileall passed.
-- Exact unsafe PR seed Git blob `4c5aef361082cfe8c6feaea97df5bc3cf31a3ee3` failed as intended because a journal with no capability binding executed 1 external effect when 0 was expected.
-- Published PR integration-test file now matches the locally executed Git blob `d6f003b07484775e62e8da93b3574f8eb484ea7e`.
-- Remote PR audit established configured sink identity binding, durable capability-head monotonicity, insert-race fencing, and reconciliation-only behavior after rotation.
+- LAB-074 exact `capability.py` blob: `0cfe0e2e555a234df96393abdf3e14b75ccff2f6`.
+- LAB-074 exact integration-test blob: `d6f003b07484775e62e8da93b3574f8eb484ea7e`.
+- LAB-074 unsafe-seed blob: `4c5aef361082cfe8c6feaea97df5bc3cf31a3ee3`.
+- Exact LAB-072 protocol/tests: `6817459fca8ac37c11cce71865937b8f65567d83` / `656284062a96b7915e3283b181c58bd7a8e9281d`.
+- Exact LAB-073 protocol/tests: `fc05d27d5512ece585d7d6313e079ae6a234f737` / `55e42d5027fbbe1c7b66b11f08162765eba90a25`.
+- Exact-source corrected suite: 49/49 passed.
+- Unsafe seed: failed as expected with one unauthorized external effect.
+- Compileall: passed.
+- PR #140 merge SHA: `05ce952fa98f64d78ee6fc7765d1be6457630609`.
+- Issue #141 / LAB-075 created and moved to IN_PROGRESS on branch `lab/075-sink-registry-binding`.
 
 ## Known blockers / constraints
 
-- No product/owner blocker.
-- PR #140 remains draft because exact-source evidence has not yet been established for the final published `capability.py` byte identity. The published file contains the audited semantics, but its current Git blob differs from the locally executed post-audit copy due to editorial/formatting differences during connector publication. Do not claim the local 49/49 as exact execution of that final published blob.
-- Direct shell checkout of GitHub remains unavailable in this runtime. Connector-based exact reconstruction is therefore required.
-- Provider retry-retention duration remains authenticated provider/contract material; unknown retention is fail-closed.
-- Mapping a configured `sink_id` to production adapter/code/endpoint identity is a trusted boundary not cryptographically solved by LAB-074.
-- Time freshness beyond LAB-073's trusted `now` assumption and whole-store rollback/tamper remain delegated to earlier clock/anchor layers.
-- Universal exactly-once external effects remain a non-goal.
+- No active owner/product blocker.
+- Direct shell checkout of GitHub was unavailable in this run; connector-based exact reconstruction remains a proven safe fallback.
+- `sink_id -> adapter/code/endpoint` is the active unresolved trusted boundary.
+- LAB-075 must reuse rather than duplicate LAB-022–025 destination/transport enforcement; the registry establishes authenticated mapping identity, while those layers remain responsible for DNS/TLS/proxy/credential transport correctness.
+- Python object identity is not a production code identity; the reference experiment should use stable declared implementation/profile digests and explicitly state that production needs a signed artifact/package/build identity.
+- Universal exactly-once external effects and distributed registry consensus remain non-goals.
 
 ## Exact next action
 
-Resume PR #140 first. Reconstruct the exact current PR-head `experiments/transactional_broker_journal/capability.py` bytes through the GitHub connector without normalization and record its Git blob identity. Execute those exact bytes together with the already exact PR integration test, exact LAB-072 regression suite, exact LAB-073 regression suite, unsafe split-authority seed, and compileall. If all pass, perform one fresh full patch audit across all four PR files and update the research note/PR evidence with the observed exact hashes/results. Only then mark PR #140 ready, squash-merge with expected HEAD, close Issue #139 DONE, and select the highest-value next correctness gap.
+Resume Issue #141 / LAB-075. Inspect the existing LAB-074 `CapabilityBoundJournal` plus the LAB-022–025 transport/destination contracts and define the smallest registry entry that binds `sink_id`, registry generation, exact entry digest, adapter implementation/profile identity, canonical endpoint/origin, operation profile and reconciliation lineage. Build the unsafe baseline where an attacker adapter reuses a trusted `sink_id`, then add an authenticated/versioned durable registry and persist the exact registry entry identity with new LAB-074 reservations. Close the registry-update ↔ reservation race at the same SQL authority boundary, add restart/rollback/substitution/UNKNOWN/CONFIRMED tests, run LAB-074/LAB-073/LAB-072 regressions, audit independently, and only then open/integrate a PR.
 
 ## Backlog
 
-- #139 / LAB-074 — transactional broker + authenticated sink-capability integration — IN_PROGRESS / exact published-source gate only.
-- Candidate next gap after LAB-074: authenticated sink-adapter/endpoint registry binding so `sink_id -> concrete adapter/endpoint` is itself versioned, restart-persistent and substitution-resistant.
+- #141 / LAB-075 — authenticated sink-adapter and endpoint registry binding — IN_PROGRESS.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
