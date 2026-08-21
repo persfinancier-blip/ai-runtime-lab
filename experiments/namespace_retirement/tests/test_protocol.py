@@ -40,6 +40,14 @@ class Tests(unittest.TestCase):
         self.ledger.records[other.record_id]=other; self.ledger.current_record_id=other.record_id
         self.assertEqual(self.engine.classify(self.old,self.permit,reacquire=self.reacquire,audit_successor=self.audit),"STALE_PERMIT")
 
+    def test_signed_permit_generation_fields_are_rechecked(self):
+        u=self.permit.unsigned(); u["predecessor_generation"]=99
+        bad=RetirementPermit(**u,mac=mac(self.key,u))
+        self.assertEqual(self.engine.classify(self.old,bad,reacquire=self.reacquire,audit_successor=self.audit),"STALE_PERMIT")
+        u=self.permit.unsigned(); u["successor_generation"]=99
+        bad=RetirementPermit(**u,mac=mac(self.key,u))
+        self.assertEqual(self.engine.classify(self.old,bad,reacquire=self.reacquire,audit_successor=self.audit),"STALE_PERMIT")
+
     def test_successor_chain_must_audit(self):
         self.assertEqual(self.engine.classify(self.old,self.permit,reacquire=self.reacquire,audit_successor=lambda r:False),"SUCCESSOR_AUDIT_FAILED")
 
