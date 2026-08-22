@@ -23,6 +23,17 @@ class FinalThresholdLifecycleRegistryBoundJournal(
     broker INTENT creation.
     """
 
+    @staticmethod
+    def _same_capability(plan, capability):
+        claim = capability.claim
+        att = capability.attestation
+        return (
+            claim.generation == plan.capability_generation
+            and att.claim_digest == plan.claim_digest
+            and att.probe_generation == plan.probe_generation
+            and att.issuer_id == plan.issuer_id
+        )
+
     def reserve(self, request, capability, envelope, *, now):
         if type(now) is not int or now < 0:
             raise registry_base.RegistryBindingError("invalid time")
@@ -38,23 +49,63 @@ class FinalThresholdLifecycleRegistryBoundJournal(
                     return existing
 
                 # Nonterminal work still depends on current authenticated sink
-                # capability. It may advance capability observation, but the caller's
-                # envelope is ignored: registry identity is already durable in rplan.
+                # capability. The caller's envelope is ignored: registry identity is
+                # already durable in rplan and cannot be republished on retry.
                 claim = self.bound.verifier.verify(capability)
-                policy = cap.derive_policy(
-                    capability,
-                    self.bound.verifier,
-                    now=now,
-                    key_created_at=capplan.key_created_at,
-                )
                 if claim.sink_id != rplan.sink_id:
                     raise cap.StaleCapability(
                         "current capability sink differs from durable request"
                     )
-                if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
-                    raise registry_base.HistoricalExecutionBlocked(
-                        "current capability no longer permits nonterminal work"
+
+                if status == "INTENT":
+                    # An effect that has not reached UNKNOWN/commit ambiguity may
+                    # execute only under the exact capability that authorized it.
+                    if not self._same_capability(capplan, capability):
+                        raise cap.StaleCapability(
+                            "pending INTENT cannot inherit rotated capability authority"
+                        )
+                    policy = cap.derive_policy(
+                        capability,
+                        self.bound.verifier,
+                        now=now,
+                        key_created_at=capplan.key_created_at,
                     )
+                    if policy in {"READ_ONLY", "NO_AUTOMATIC_RETRY"}:
+                        raise registry_base.HistoricalExecutionBlocked(
+                            "current capability no longer permits pending execution"
+                        )
+                elif status == "UNKNOWN":
+                    if claim.generation < capplan.capability_generation:
+                        raise cap.StaleCapability(
+                            "UNKNOWN reconciliation cannot use older capability"
+                        )
+                    if claim.generation == capplan.capability_generation:
+                        if not self._same_capability(capplan, capability):
+                            raise cap.StaleCapability(
+                                "same-generation capability changed after UNKNOWN"
+                            )
+                        policy = cap.derive_policy(
+                            capability,
+                            self.bound.verifier,
+                            now=now,
+                            key_created_at=capplan.key_created_at,
+                        )
+                        if policy != "SAFE_RETRY_RECONCILE":
+                            raise registry_base.HistoricalExecutionBlocked(
+                                "UNKNOWN requires reconciliation authority"
+                            )
+                    else:
+                        # A later capability may reconcile evidence of a possibly
+                        # committed effect, but cannot grant re-execution authority.
+                        if claim.reconcile_by_key is not True:
+                            raise registry_base.HistoricalExecutionBlocked(
+                                "rotated capability does not authorize reconciliation"
+                            )
+                else:
+                    raise registry_base.CorruptRegistry(
+                        "unexpected nonterminal broker status"
+                    )
+
                 self._observe_capability_locked(q, capability)
                 q.commit()
                 return existing
