@@ -272,7 +272,7 @@ class SupportedAnchoredMigration(MigrationAnchorCoordinator):
         binding = self.state.load()
         if binding is None:
             raise MigrationAnchorPending("migration anchor binding is missing")
-        self.state._validate_state_shape(binding)
+        StrictRegistryAnchorState._validate_state_shape(binding)
         try:
             exact_receipt = self._exact_external_receipt(binding)
         except MigrationAnchorPending:
