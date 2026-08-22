@@ -4,7 +4,7 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-076 — remove LAB-075's remaining static single-key sink-registry `RegistryAuthority` assumption by making registry signing authority versioned, restart-persistent, rotation/revocation-aware, and bound to historical registry entries without reviving old signing authority.
+LAB-076 — remove LAB-075's remaining static single-key sink-registry authority assumption by making registry signing authority versioned, restart-persistent, rotation/revocation-aware, threshold-authorized, and bound to historical registry entries without reviving old signing authority.
 
 ## Active issue / branch / PR
 
@@ -12,42 +12,56 @@ LAB-076 — remove LAB-075's remaining static single-key sink-registry `Registry
 - LAB-075 Issue #141 — DONE.
 - LAB-075 PR #142 squash-merged as `d16b7a14f33090cb57b4b1b241a5e279a1b979df`.
 - Active: Issue #143 / LAB-076 — IN_PROGRESS.
-- Active branch: `lab/076-registry-authority-lifecycle`.
-- Active PR: none yet.
+- Active branch: `lab/076-registry-authority-lifecycle-v2`.
+- Active draft PR: #144 `[LAB-076] Durable sink-registry authority lifecycle`.
+- Current observed PR HEAD during this run before the final documentation commit sequence: `41a5a81e2e703c9c23a7c95bbb2a3ec56c6c865c`; re-fetch HEAD before validation because additional supported/research commits were added afterward.
 
 ## Last completed step
 
-LAB-075 exact published source was reconstructed through the GitHub connector and matched locally by Git blob identity. The final combined LAB-075/LAB-074/LAB-073/LAB-072 regression contour passed 89/89; compileall passed; the unsafe string-only adapter baseline failed as expected because the unsafe design executed one attacker side effect.
+A first coherent LAB-076 authority lifecycle was implemented by reusing the existing threshold-root/recovery primitives rather than inventing another trust system. Normal rotation requires old-root + new-root threshold proof; break-glass recovery uses a separate recovery quorum and advances the authority epoch. Authority history, current head, transition proofs, recovery-authority descriptor, and accepted-entry historical bindings are persisted in SQLite.
 
-The final audit found two additional blockers before merge and both were fixed and retested. First, the supported worker used `isinstance`, so a subclass of the audited journal could override `_capability_fields` and restore the legacy unauthenticated capability path; exact-type gating now rejects that composition before request processing. Second, terminal CONFIRMED receipt lookup did not authenticate the stored historical registry reference; the receipt-only path now reloads and verifies the exact signed historical entry and its sink/generation binding before returning the durable receipt. New regressions cover both cases.
+The first isolated lifecycle suite passed 11/11. A security audit then found that `RecoveryAuthority` is a frozen dataclass whose `keys` mapping is still mutable: the first implementation persisted only its digest while `recover()` continued using the caller-owned object. The implementation was corrected to persist the exact recovery descriptor by content ID and always load it from SQL for recovery/restart verification. A mutation regression was added; the corrected isolated lifecycle suite passed 12/12 and compileall passed.
 
-After those fixes, exact published blobs `audit_fixes.py=2afdca0619a0bc6c6de2581c598c8d7f50f58b52` and `test_audit_fixes.py=8b7b8cd8feac81fa82d751b3106f776eb278c261` were executed in the same 89/89 regression contour. PR #142 was marked ready and squash-merged normally.
+The lifecycle was then wired directly into the audited LAB-075 journal/worker surface using the same SQLite database. New registry publication now performs current-authority verification, exact historical-authority binding, registry generation/predecessor validation, registry-row validation and registry-head activation under one `BEGIN IMMEDIATE` transaction, serializing it against authority rotation. Already-published current registry heads remain historically verifiable after signer rotation, while a never-before-published successor requires current authority.
+
+A second integration audit found that a standalone lifecycle `accept_entry()` could pre-authorize an entry before rotation and later try to publish it as if it were historical. The integration now distinguishes lifecycle binding from actual registry publication: historical authority is sufficient only when the LAB-075 registry row already exists. A pre-authorized-but-unpublished entry must still pass current authority, and a published row missing its historical binding fails closed. A regression was added.
+
+An explicit `experiments/sink_registry_authority_lifecycle/supported.py` surface was added so callers do not assemble unaudited verifier/worker compositions.
 
 ## Evidence produced
 
-- PR #142 validated HEAD: `989e414f2fb7a6d6c2f175ca509767a7c4ea9a26`.
-- Final merge: `d16b7a14f33090cb57b4b1b241a5e279a1b979df`.
-- Exact-source combined regression suite: 89/89 passed.
-- Unsafe LAB-075 seed: expected failure `1 != 0` because attacker adapter executed in the unsafe string-only design.
-- Compileall: passed.
-- Issue #141 updated with final acceptance/evidence and closed DONE.
-- No other open issue existed after LAB-075; Issue #143 / LAB-076 was created as the next correctness gap.
+- Draft PR #144 is open and mergeable; it remains draft intentionally.
+- Published LAB-076 paths include:
+  - `experiments/sink_registry_authority_lifecycle/protocol.py`
+  - `experiments/sink_registry_authority_lifecycle/integration.py`
+  - `experiments/sink_registry_authority_lifecycle/supported.py`
+  - protocol, real-integration and audit regression tests
+  - unsafe self-swap expected-failure seed
+  - `research/2026-08-22-sink-registry-authority-lifecycle.md`
+- Isolated lifecycle corrected suite after durable-recovery fix: 12/12 passed.
+- Unsafe ambient-authority self-swap seed: failed as expected in the unsafe design.
+- Isolated lifecycle compileall: passed before the later integration files were published.
+- Remote patch audit found and fixed two substantive defects in this run: mutable ambient recovery authority and stale pre-authorized orphan publication.
+- TUF root-update continuity is the normal-rotation donor; existing LAB threshold/recovery primitives are reused.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Direct GitHub clone/raw download was unavailable in the LAB-075 validation runtime due DNS; connector reconstruction is a proven supported fallback.
-- LAB-075's registry entries are authenticated, but `RegistryAuthority` is still supplied as one ambient static HMAC key/generation. That key lifecycle is the active correctness gap.
-- Reuse the repository's existing threshold/root/recovery work where possible; do not create an unrelated self-signed replacement mechanism.
-- Historical authority must remain available for verification of already-bound entries without granting it authority to sign new entries.
-- Distributed PKI/consensus, service discovery, and transport security remain out of scope for LAB-076.
+- Direct GitHub clone/raw download is unavailable in the current runtime due DNS; connector reconstruction remains the supported fallback.
+- The current integrated PR #144 head has **not yet** been executed as exact published source. Do not merge based on the earlier isolated 12/12 result.
+- Exact-source regressions still required: LAB-076 protocol/integration plus LAB-075/074/073/072 and compileall.
+- Historical authority is verification-only. It must never become current publication authority again.
+- A lifecycle binding that was never actually published into the LAB-075 registry is not historical publication authority.
+- Whole-store rollback/freshness remains delegated to LAB-034–037 external monotonic anchors.
+- Recovery-authority rotation is already owned by LAB-057; LAB-076 keeps the recovery quorum pinned rather than duplicating that subsystem.
+- Distributed PKI/consensus, service discovery, and transport security remain out of scope.
 
 ## Exact next action
 
-On branch `lab/076-registry-authority-lifecycle`, inspect the reusable threshold/root/recovery mechanisms from LAB-037/LAB-038/LAB-057 and the merged LAB-075 supported registry surface. Define the smallest durable authority state and transition contract that binds each registry entry to an exact historical authority generation. Build a deterministic prototype/failure matrix covering static-key substitution, restart rollback, same-generation key replacement, old-signer use after revocation, historical CONFIRMED verification, missing/corrupt historical authority, authority-rotation vs registry-publication races, and unsafe self-asserted recovery. Reuse existing threshold/recovery primitives rather than duplicating them. Run tests, audit, and publish the first coherent slice to the active branch before opening a draft PR.
+Re-fetch PR #144 and record its exact current HEAD and changed-file blob identities. Restore the exact published executable files through the GitHub connector if direct clone still fails. Execute the current PR-head LAB-076 protocol, real-integration, and integration-audit suites; run the unsafe self-swap seed and confirm expected failure; run the merged LAB-075/074/073/072 regression suites and compileall over the affected modules. Then perform a fresh full remote patch audit, paying special attention to mixed-snapshot durable verification and any path that could reinterpret a historical authority as publication authority. If exact-source tests and audit are clean, update Issue #143 acceptance evidence, mark PR #144 ready, squash-merge it normally, close LAB-076 DONE, and choose the next highest-value unblocked correctness gap.
 
 ## Backlog
 
-- #143 / LAB-076 — sink-registry authority lifecycle, rotation, and restart conformance — IN_PROGRESS.
+- #143 / LAB-076 — sink-registry authority lifecycle, rotation, and restart conformance — IN_PROGRESS; draft PR #144.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
