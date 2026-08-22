@@ -4,7 +4,7 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-079 — compose the authenticated LAB-078 migration checkpoint with the existing LAB-034–037 external monotonic-anchor boundary so a whole-store rollback cannot erase or rewind a completed migration while remaining internally consistent.
+LAB-079 — compose the authenticated LAB-078 migration checkpoint with the existing LAB-034–037 external monotonic-anchor boundary so whole-store rollback cannot erase/rewind a completed migration, and prove that the exact checkpoint—not merely the same numeric counter position—was externally anchored.
 
 ## Active issue / branch / PR
 
@@ -12,42 +12,41 @@ LAB-079 — compose the authenticated LAB-078 migration checkpoint with the exis
 - Active: Issue #149 / LAB-079 — IN_PROGRESS.
 - Active branch: `lab/079-migration-anchor-binding`.
 - Active draft PR: #150 `[LAB-079] Bind migration checkpoint to authenticated monotonic anchor`.
-- Current audited PR HEAD after first slice: `0db2709534cf29c7df629950e4bf1549684df542`.
+- Current PR HEAD: `ef853897f94aa644de02913258b21d6b8d5212f1`.
 
 ## Last completed step
 
-Located and inspected the existing anchor mechanisms instead of creating a new trust root: LAB-035 `anchor_catchup` provides monotonic catch-up/UNKNOWN semantics and LAB-036 `anchor_attestation` provides authenticated provider/generation/challenge observations. LAB-078 exposes the exact supported migration checkpoint/mixed-history verifier.
+Resumed PR #150 and audited the actual LAB-036 `AttestedCatchup` semantics. Found a cross-layer authority defect in the first LAB-079 supported surface: LAB-036 may return an authenticated READ when the external counter is already at the requested sequence. Therefore an unrelated operation could pre-advance the counter to N and LAB-079 would incorrectly mark migration N `CONFIRMED` without evidence that `migration-anchor:<sequence>:<checkpoint_id>` caused/owned that position.
 
-Built the first LAB-079 composition slice. It stores a migration binding sequence in the same SQLite database as LAB-078, binds that sequence to the exact checkpoint ID/cutoff/terminal authority digest, and requires LAB-036 authenticated external position confirmation before migration authority becomes consequential. Whole-store rollback rewinds the SQLite sequence while the external anchor remains ahead, which is detected on restart. SQL-committed-but-unanchored migration remains `PENDING`; timeout-after-anchor-commit uses stable request identity for reconciliation. Provider/generation mismatch, same-position checkpoint substitution, unavailable anchor, anchor rollback, and unexplained anchor-ahead states fail closed.
+Published a supported-surface fix requiring fresh authenticated provider reconciliation for the exact migration request ID before confirmation and again on restart. Focused execution immediately found a second defect in that first fix: LAB-036 `receipt_ref()` includes the fresh challenge, so the hash necessarily changes on every reauthentication and legitimate restart failed. Corrected this by persisting a stable digest of `(provider_id, generation, position, request_id)` only after verifying a fresh signed reconciliation observation. The digest is never treated as authentication by itself; restart must reauthenticate the external request result and then recompute/compare the stable binding.
 
-Draft PR #150 was opened. A first remote patch inspection found no immediate file-scope blocker, but the PR is intentionally not ready because the current execution evidence uses deterministic reference fixtures rather than the exact merged LAB-078/LAB-036 dependency stack.
+A new regression file covers unrelated pre-existing anchor position, restart reauthentication, tampered local receipt, and timeout-after-commit exact-request recovery.
 
 ## Evidence produced
 
-- `experiments/migration_anchor_binding/protocol.py`
-- `experiments/migration_anchor_binding/supported.py`
-- `experiments/migration_anchor_binding/tests/test_protocol.py`
-- `experiments/migration_anchor_binding/tests/unsafe_local_only_expected_failure.py`
-- `experiments/migration_anchor_binding/README.md`
-- `research/2026-08-22-migration-anchor-binding.md`
-- Corrected reference matrix: 11/11 passed.
-- Unsafe local-only rollback seed: failed as expected.
-- `python -m compileall -q experiments/migration_anchor_binding`: passed.
-- Direct shell clone probe failed with `Could not resolve host: github.com`; connector reconstruction remains the exact-source fallback.
-- Draft PR #150 at HEAD `0db2709534cf29c7df629950e4bf1549684df542`.
+- Fix commit `e7a105810e04f2a1a3b69a59ace5abea67c69db8`: require exact request-specific reconciliation.
+- Audit-fix commit / current PR HEAD `ef853897f94aa644de02913258b21d6b8d5212f1`: replace challenge-dependent receipt hash with stable authenticated request binding.
+- New regression: `experiments/migration_anchor_binding/tests/test_supported_binding.py`.
+- Current published `supported.py` Git blob: `8896a8b5d3dcf0a91e11f4063bcb27f6c38e3503`.
+- Exact published `supported.py` was reconstructed locally and matched `git hash-object`.
+- Focused request-binding execution: PASS after the stable-binding fix.
+- The immediately prior focused execution failed on restart with `MigrationAnchorSubstitution`, reproducing the challenge-dependent receipt bug before it was corrected.
+- Initial LAB-079 reference matrix remains 11/11; unsafe local-only rollback seed previously failed as expected; compileall previously passed for the initial package.
+- PR #150 is open, mergeable, and intentionally draft.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- PR #150 is not merge-ready yet: exact real integration with merged LAB-078 and LAB-036 has not been executed in this slice.
-- Direct shell GitHub DNS is unavailable in this runtime; GitHub connector reconstruction is the supported exact-source fallback.
+- PR #150 is not merge-ready yet: the new current HEAD has not yet completed the full exact-source real integration/regression gate against the actual merged LAB-077/LAB-078 SQL stack.
+- Direct shell GitHub DNS has historically been unavailable; GitHub connector reconstruction is the supported exact-source fallback.
+- A numeric monotonic position alone is not checkpoint identity. Consequential migration requires request-specific authenticated provider evidence.
 - A migration checkpoint that exists locally but lacks confirmed external binding is intentionally non-consequential.
-- This slice fails closed when the external anchor is ahead by an unexplained later position; a future shared-ledger composition may relax that only by proving all intervening intents.
+- This model assumes the external provider preserves/reconciles stable request IDs durably; if a production anchor cannot do that, it cannot provide the stronger checkpoint-binding contract and must fail closed or use a content-aware anchor protocol.
 - Do not conflate rollback detection with distributed consensus, backup durability, or a new anchor trust root.
 
 ## Exact next action
 
-Reconstruct exact PR #150 executable/test bytes plus the merged LAB-078 `SupportedMigrationCoordinator` and LAB-036 `AttestedCatchup` dependency files through the GitHub connector, verify each local reconstruction with `git hash-object`, and run a real integration test against the actual LAB-078 SQLite schema. Specifically: create a real LAB-078 migration, bind it through an authenticated LAB-036 provider, snapshot/restore the SQLite DB to a pre-migration state while leaving the external anchor ahead, and require rollback detection; then cover SQL-commit-before-anchor catch-up, timeout-after-anchor-commit reconciliation, provider/key-generation rejection, same-position checkpoint substitution, current-anchor unavailable, restart, and a post-migration LAB-077 threshold successor. Run LAB-079 + LAB-078 + LAB-036 regressions and compileall, perform a fresh full PR patch audit, fix anything found, and only then mark PR #150 ready/merge.
+Close the remaining real-integration gate on current PR HEAD `ef853897f94aa644de02913258b21d6b8d5212f1`: reconstruct the exact merged LAB-077/LAB-078 dependency stack and LAB-036 AttestedCatchup through the GitHub connector, verify executable blobs with `git hash-object`, and run the supported composition against the actual SQLite journal. Required scenarios: real LAB-078 migration → exact-request anchor confirmation → restart; external counter already at the target position from an unrelated request must remain PENDING; restore a pre-migration SQLite snapshot while leaving the external provider ahead and require rollback detection; timeout-after-commit exact request reconciliation; tampered stored stable binding; provider/key-generation mismatch; anchor unavailable; first post-migration LAB-077 threshold successor followed by mixed-history + anchored restart verification. Then run LAB-079 + LAB-078 + LAB-077 + LAB-036 regressions and compileall, perform a fresh full PR patch audit, fix anything found, and only then mark PR #150 ready/merge.
 
 ## Backlog
 
