@@ -11,35 +11,37 @@ LAB-075 — remove the remaining trusted `sink_id -> runtime adapter/endpoint` m
 - Completed: LAB-001 through LAB-074.
 - Active: Issue #141 / LAB-075 — IN_PROGRESS.
 - Active branch: `lab/075-sink-registry-binding-v2`.
-- Active draft PR: #142; latest branch commit observed after this run's fix/regression is `4e56aad9ade8f8bbf1e9757a92e3d1b675d01c9e`.
+- Active draft PR: #142; current audited HEAD after this run's security fix/regression is `81e2bdbe67b97b4d1ca8bd996816aceff10f3628`.
+- PR #142 is currently mergeable but intentionally remains draft until exact-source execution is clean.
 
 ## Last completed step
 
-The historical-UNKNOWN fail-open found in the prior audit was fixed. `CorrectedRegistryBrokerWorker.process()` now authorizes reconciliation only when `reconcile_by_key is True`; dict/legacy claims with the field omitted no longer receive authority by default. A dedicated regression, `test_unknown_missing_reconcile_capability_fails_closed`, was added. The fix and regression were committed to the active branch as `63aba8d27a7c712accbfcc7e8eff281c4c93bf20` and `4e56aad9ade8f8bbf1e9757a92e3d1b675d01c9e`.
+A fresh supported-surface authority audit found a new fail-open beyond the previously fixed missing-`reconcile_by_key` case. `CorrectedRegistryBoundJournal` still inherited the historical prototype's dict-capability compatibility path. That path fabricates safe retry/capability fields for structural test input, so on the audited `supported.py` surface an unauthenticated caller could otherwise reach a new reservation/execution path without a verified LAB-073 attestation.
 
-Direct `git clone` was re-probed in this run and still fails DNS resolution for github.com. The GitHub connector remains functional. PR #142 remains draft; no exact-source full-suite execution is claimed for the new HEAD.
+The audited class now overrides `_capability_fields` and requires a capability object with claim+attestation for every non-terminal path; the inherited implementation then performs the actual LAB-073 verifier check. Terminal `CONFIRMED` remains receipt-only and returns before this gate, preserving the rule that already-committed evidence is readable after later authority changes. Historical prototype compatibility is retained only in a test-only subclass.
 
 ## Evidence produced
 
-- Re-read `AGENTS.md`, this state, `prompts/SELF_RESUME.md`, PR #142, and the exact supported audit-fix/test paths before editing.
-- Confirmed the fail-open expression was `claim.get("reconcile_by_key", True)` and changed it to a missing-value-denies lookup.
-- Added a regression that creates a real historical UNKNOWN, rotates to a direct successor, supplies a dict capability with no `reconcile_by_key`, requires `HistoricalExecutionBlocked`, and proves the sink effect count remains one.
-- Branch commits: fix `63aba8d27a7c712accbfcc7e8eff281c4c93bf20`; regression `4e56aad9ade8f8bbf1e9757a92e3d1b675d01c9e`.
-- Issue #141 comment records the fix, regression, and remaining validation gate.
-- Direct shell clone probe failed with `Could not resolve host: github.com`; no test execution is claimed in this run.
-- Prior evidence remains: interface-compatible matrix 14/14, audit-fix + inherited matrix 30/30, unsafe string-only baseline failed as expected. These are not exact-source evidence for the corrected HEAD.
+- Re-read `AGENTS.md`, this state, `prompts/SELF_RESUME.md`, Issue #141, PR #142, current supported/audit/prototype paths and real-integration tests.
+- Reconfirmed direct `git`/raw GitHub access is unavailable in this runtime: DNS resolution for `raw.githubusercontent.com` failed; GitHub connector remains functional.
+- Fresh audit finding: unauthenticated legacy dict capability could inherit fabricated `SAFE_RETRY_RECONCILE` authority on the supported surface.
+- Fix commit: `5aa1e7b03105067425e304927cd0816cdb7e6f9a`; `CorrectedRegistryBoundJournal._capability_fields` now fails closed before any non-terminal execution/reconciliation authority is created.
+- Regression/test-fixture commit: `81e2bdbe67b97b4d1ca8bd996816aceff10f3628`; adds strict supported-surface rejection with zero broker rows created while isolating legacy dict compatibility to test-only registry fixtures.
+- Issue #141 comment records the finding, fix, and remaining gate.
+- PR #142 re-fetched after the edits and is mergeable at HEAD `81e2bdbe67b97b4d1ca8bd996816aceff10f3628`.
+- No exact-source test success is claimed for the new HEAD in this run. Prior 14/14 and 30/30 results predate this security fix and are supporting history only.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- The known reconciliation-authority code blocker is fixed, but validation is incomplete for the new published HEAD.
-- Direct GitHub clone is unavailable in this runtime due DNS; connector reconstruction is the supported fallback.
+- No known unresolved code defect after the latest static/remote audit, but validation is incomplete for the new published HEAD.
+- Direct GitHub clone/raw download is unavailable in this runtime due DNS; connector reconstruction is the supported fallback.
 - Do not mark LAB-075 DONE until exact published-source execution and final remote patch audit are clean.
 - LAB-075 must reuse LAB-022–025 transport/destination enforcement; adapter digest is a reference profile identity, not a claim that Python object identity is production code identity.
 
 ## Exact next action
 
-Reconstruct the exact executable bytes of PR #142 HEAD through the GitHub connector, verify Git blob identities locally, and execute LAB-075 supported/audit-fix + real integration tests, LAB-074/LAB-073/LAB-072 regressions, unsafe baseline, and compileall. Perform a fresh remote patch audit of all changed executable paths. If all gates are clean and PR HEAD is unchanged after validation, mark #142 ready, squash-merge it, close Issue #141 DONE, and select the next highest-value unblocked correctness gap.
+Reconstruct the exact executable bytes of PR #142 HEAD `81e2bdbe67b97b4d1ca8bd996816aceff10f3628` through the GitHub connector and verify Git blob identities locally. Execute the LAB-075 supported/audit-fix + real integration tests, LAB-074/LAB-073/LAB-072 regressions, unsafe baseline, and compileall. The strict new regression must show an unauthenticated dict capability cannot create any broker row. Then perform a fresh remote patch audit of all changed executable paths. If all gates are clean and PR HEAD is unchanged after validation, mark #142 ready, squash-merge it, close Issue #141 DONE, and select the next highest-value unblocked correctness gap.
 
 ## Backlog
 
