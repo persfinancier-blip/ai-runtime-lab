@@ -11,8 +11,9 @@ LAB-082 — replace LAB-081 durable historical HMAC verification material with E
 - Completed: LAB-001 through LAB-081.
 - Active: Issue #155 / LAB-082 — IN_PROGRESS.
 - Branch: `lab/082-asymmetric-provider-history`.
-- Draft PR #156: open, mergeable, intentionally draft.
-- Current audited/working PR HEAD: `1ac3447260ce8e9b8f61f7c53039dd19cc97f37d` at last metadata fetch; subsequent README/research/PR-metadata edits do not change executable design but re-fetch HEAD before validation.
+- Draft PR #156: open and intentionally draft.
+- Current branch/PR HEAD: `1ac3447260ce8e9b8f61f7c53039dd19cc97f37d`.
+- Latest compare against `main`: branch `ahead 12 / behind 3`; all 9 branch changes are new LAB-082 paths. PR metadata currently reports `mergeable=false`, so final integration must re-evaluate after the exact-source gate rather than assuming mergeability.
 
 ## Last completed step
 
@@ -29,7 +30,7 @@ A separate concurrency audit found that two workers can reconcile the same commi
 - New cross-layer tests: `tests/test_integration.py` and `tests/test_supported.py`.
 - README and research note updated with the real integration boundary and non-goals.
 - Issue #155 and PR #156 descriptions updated to match actual state.
-- PR #156 remains open/mergeable/draft with 9 changed LAB-082 files.
+- PR #156 remains open/draft with 9 changed LAB-082 files; branch comparison is ahead 12 / behind 3.
 - Previously observed isolated pre-integration evidence remains only: corrected protocol suite 16/16, unsafe symmetric baseline failed as expected, compileall passed.
 - Direct GitHub shell access was re-probed in this run and still fails before checkout: `Could not resolve host: github.com`.
 - No exact-source execution is claimed for the new integrated PR-head bytes.
@@ -37,8 +38,9 @@ A separate concurrency audit found that two workers can reconcile the same commi
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Exact-source regression execution of the integrated/current PR head remains the only merge gate.
+- Exact-source regression execution of the integrated/current PR head remains the primary merge gate.
 - Direct shell checkout is unavailable in this runtime; reconstruct exact bytes via GitHub connector and verify Git blob identities before execution.
+- The branch is behind current `main` by 3 commits. Its changed paths are currently all new LAB-082 paths, but re-check compare/mergeability after validation before integration.
 - The base integration class is experimental; the audited consumption surface is `SupportedAsymmetricHistoricalSharedAnchorLedger`.
 - Ed25519 removes signing capability from durable historical storage itself, but does not claim that an independently retained old private key cannot sign.
 - Whole-store rollback/bootstrap freshness remains delegated to LAB-034–037 and later external/shared-anchor layers; an internally consistent old DB plus matching old trust can still pass local LAB-082 verification.
@@ -54,7 +56,7 @@ Re-fetch PR #156 and its exact current HEAD. Reconstruct exact executable bytes 
 5. merged LAB-036 anchor-attestation regressions;
 6. `python -m compileall -q experiments` (or the bounded relevant experiment paths if full-tree runtime is excessive).
 
-Then perform a fresh full remote patch audit. If all exact-source tests are clean and HEAD is unchanged, mark PR #156 ready, squash-merge, close Issue #155 DONE, and select the next highest-value unblocked research gap. If execution exposes a defect, fix it on the branch, add a regression, and repeat the exact-source gate before merge.
+Then perform a fresh full remote patch audit and re-run `main...branch` comparison. If all exact-source tests are clean and HEAD is unchanged, resolve any non-content base divergence through a normal supported path, mark PR #156 ready, squash-merge, close Issue #155 DONE, and select the next highest-value unblocked research gap. If execution exposes a defect, fix it on the branch, add a regression, and repeat the exact-source gate before merge.
 
 ## Backlog
 
