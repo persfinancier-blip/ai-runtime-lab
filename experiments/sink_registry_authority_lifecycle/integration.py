@@ -8,6 +8,7 @@ from experiments.sink_registry_authority_lifecycle.protocol import (
     AuthoritySubstitution,
     DurableRegistryAuthority,
     EntryAuthError,
+    HistoricalAuthorityMissing,
 )
 
 
@@ -26,12 +27,7 @@ class _LifecycleAuthorityAdapter:
     def verify(self, entry):
         try:
             historical = self.lifecycle.verify_historical_entry(entry.entry_digest)
-        except Exception as exc:
-            # Only a genuinely unknown accepted-entry binding may fall through to
-            # current publication verification. Corruption/authentication errors
-            # must not be converted into a chance to re-authorize the bytes.
-            if exc.__class__.__name__ != "HistoricalAuthorityMissing":
-                raise
+        except HistoricalAuthorityMissing:
             return self.lifecycle.verify_for_publication(entry)
         if historical != entry:
             raise AuthoritySubstitution("historical entry bytes differ")
@@ -105,42 +101,57 @@ class LifecycleRegistryBoundJournal(audited.CorrectedRegistryBoundJournal):
         try:
             q.execute("BEGIN IMMEDIATE")
 
+            registry_row = q.execute(
+                "SELECT entry_digest,sink_id,generation,adapter_digest,endpoint_origin,"
+                "operation_profile,predecessor_entry_digest,issuer_id,issuer_generation,signature "
+                "FROM sink_registry_entries WHERE entry_digest=?",
+                (entry_digest,),
+            ).fetchone()
             accepted = self._historical_locked(q, entry_digest)
-            if accepted is not None:
-                if accepted != entry:
+
+            if registry_row is not None:
+                # A published row may only be interpreted through the historical
+                # authority binding created atomically with its original publish.
+                if accepted is None:
+                    raise AuthoritySubstitution(
+                        "published registry row lacks historical authority binding"
+                    )
+                stored = self._row_entry(registry_row)
+                if accepted != stored or stored != entry:
                     raise base.RegistrySubstitution(
-                        "accepted historical entry differs from candidate"
+                        "stored registry row differs from authenticated historical entry"
                     )
             else:
+                # A standalone lifecycle binding is not publication. If the entry
+                # has never existed in the registry table it must still satisfy the
+                # *current* authority at the moment of publication. This prevents a
+                # pre-authorized orphan from being activated after signer rotation.
                 authority_id, current = self._current_locked(q)
                 if entry.issuer_generation != current.version:
                     raise EntryAuthError(
                         "new registry publication requires current authority generation"
                     )
                 self.lifecycle._verify_against(entry, current)
-                raw = json.dumps(
-                    {**entry.unsigned, "signature": entry.signature},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                q.execute(
-                    "INSERT INTO registry_authorized_entries VALUES(?,?,?,?)",
-                    (entry_digest, raw, authority_id, current.version),
-                )
-
-            row = q.execute(
-                "SELECT entry_digest,sink_id,generation,adapter_digest,endpoint_origin,"
-                "operation_profile,predecessor_entry_digest,issuer_id,issuer_generation,signature "
-                "FROM sink_registry_entries WHERE entry_digest=?",
-                (entry_digest,),
-            ).fetchone()
-            if row is not None:
-                stored = self._row_entry(row)
-                historical = self._historical_locked(q, entry_digest)
-                if historical != stored or stored != entry:
-                    raise base.RegistrySubstitution(
-                        "stored registry row differs from authenticated historical entry"
+                if accepted is None:
+                    raw = json.dumps(
+                        {**entry.unsigned, "signature": entry.signature},
+                        sort_keys=True,
+                        separators=(",", ":"),
                     )
+                    q.execute(
+                        "INSERT INTO registry_authorized_entries VALUES(?,?,?,?)",
+                        (entry_digest, raw, authority_id, current.version),
+                    )
+                else:
+                    bound = q.execute(
+                        "SELECT authority_id,authority_version FROM registry_authorized_entries "
+                        "WHERE entry_digest=?",
+                        (entry_digest,),
+                    ).fetchone()
+                    if bound != (authority_id, current.version):
+                        raise EntryAuthError(
+                            "pre-authorized orphan is bound to stale authority"
+                        )
 
             head = q.execute(
                 "SELECT entry_digest,generation FROM sink_registry_heads WHERE sink_id=?",
@@ -167,7 +178,7 @@ class LifecycleRegistryBoundJournal(audited.CorrectedRegistryBoundJournal):
                         "successor must name exact current predecessor"
                     )
 
-            if row is None:
+            if registry_row is None:
                 q.execute(
                     "INSERT INTO sink_registry_entries VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (
