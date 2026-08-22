@@ -21,6 +21,20 @@ class SupportedAsymmetricHistoricalSharedAnchorLedger(
     of treating a different challenge/signature as content substitution.
     """
 
+    @staticmethod
+    def _same_request(left, right):
+        return (
+            left.intent_id == right.intent_id
+            and left.component_id == right.component_id
+            and left.intent_type == right.intent_type
+            and left.payload_digest == right.payload_digest
+            and left.provider_id == right.provider_id
+            and left.provider_generation == right.provider_generation
+            and left.predecessor_position == right.predecessor_position
+            and left.position == right.position
+            and left.request_id == right.request_id
+        )
+
     def _reauthenticate(self, entry):
         q = self._con()
         try:
@@ -75,9 +89,9 @@ class SupportedAsymmetricHistoricalSharedAnchorLedger(
                     (entry.intent_id,),
                 ).fetchone()
             )
-            if current != entry:
+            if not self._same_request(current, entry):
                 raise IntentSubstitution(
-                    "ledger entry changed before asymmetric receipt persistence"
+                    "ledger request changed before asymmetric receipt persistence"
                 )
 
             # Another worker may have reconciled the same request with a different
@@ -89,7 +103,23 @@ class SupportedAsymmetricHistoricalSharedAnchorLedger(
             if winner is not None:
                 binding = self._receipt_binds_entry(winner, entry)
             else:
+                if current.status == "CONFIRMED":
+                    raise HistoricalVerificationError(
+                        "confirmed ledger row is missing asymmetric receipt"
+                    )
                 binding = self.provider_history._store_receipt_locked(q, candidate)
+
+            if current.status == "CONFIRMED":
+                if current.receipt_binding != binding:
+                    raise IntentSubstitution(
+                        "concurrent confirmation receipt binding mismatch"
+                    )
+                q.commit()
+                return binding
+            if current != entry:
+                raise IntentSubstitution(
+                    "unexpected PREPARED ledger mutation during reconciliation"
+                )
             q.commit()
             return binding
         except:
