@@ -3,13 +3,15 @@ from __future__ import annotations
 import hmac
 from dataclasses import dataclass
 
-from .protocol import (
-    RotationAuthority,
-    Signature,
-    ThresholdNotMet,
-    mac,
-    sha,
-)
+from .protocol import RotationAuthority, Signature, ThresholdNotMet, mac, sha
+
+
+def _hex64(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value)
+    )
 
 
 @dataclass(frozen=True)
@@ -21,8 +23,24 @@ class ThresholdEnablement:
     authority_generation: int
     signatures: tuple[Signature, ...]
 
+    def validate(self):
+        if not _hex64(self.start_provider_generation_id):
+            raise ThresholdNotMet("invalid provider generation identity")
+        if type(self.start_provider_generation) is not int or self.start_provider_generation < 1:
+            raise ThresholdNotMet("invalid provider generation")
+        if not _hex64(self.authority_id):
+            raise ThresholdNotMet("invalid authority identity")
+        if type(self.authority_version) is not int or self.authority_version < 1:
+            raise ThresholdNotMet("invalid authority version")
+        if type(self.authority_generation) is not int or self.authority_generation < 1:
+            raise ThresholdNotMet("invalid authority generation")
+        if type(self.signatures) is not tuple:
+            raise ThresholdNotMet("signatures must be a tuple")
+        return self
+
     @property
     def payload(self):
+        self.validate()
         return {
             "kind": "threshold-provider-rotation-enablement",
             "start_provider_generation_id": self.start_provider_generation_id,
@@ -44,7 +62,7 @@ def make_enablement(
     authority: RotationAuthority,
     signatures: tuple[Signature, ...],
 ):
-    return ThresholdEnablement(
+    enablement = ThresholdEnablement(
         start_provider_generation_id,
         start_provider_generation,
         authority.authority_id,
@@ -52,10 +70,12 @@ def make_enablement(
         authority.generation,
         tuple(signatures),
     )
+    return enablement.validate()
 
 
 def verify_enablement(authority: RotationAuthority, enablement: ThresholdEnablement):
     authority.validate()
+    enablement.validate()
     if (
         enablement.authority_id != authority.authority_id
         or enablement.authority_version != authority.version
@@ -74,9 +94,7 @@ def verify_enablement(authority: RotationAuthority, enablement: ThresholdEnablem
         hx = authority.keys.get(sig.signer_id)
         if hx is None:
             continue
-        if hmac.compare_digest(
-            mac(bytes.fromhex(hx), enablement.payload), sig.signature
-        ):
+        if hmac.compare_digest(mac(bytes.fromhex(hx), enablement.payload), sig.signature):
             valid.append(sig.signer_id)
     if len(valid) < authority.threshold:
         raise ThresholdNotMet(
