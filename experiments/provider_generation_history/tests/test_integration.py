@@ -10,13 +10,13 @@ from experiments.anchor_attestation.protocol import (
     ProviderIdentity,
     SignedAnchorProvider,
 )
-from experiments.provider_generation_history.integration import HistoricalSharedAnchorLedger
 from experiments.provider_generation_history.protocol import (
     CurrentGenerationRequired,
     GenerationDescriptor,
     HistoricalVerificationError,
     PendingRotationBlocked,
 )
+from experiments.provider_generation_history.supported import SupportedHistoricalSharedAnchorLedger
 from experiments.shared_anchor_intent_ledger.protocol import Intent
 
 
@@ -38,12 +38,15 @@ class IntegrationTests(unittest.TestCase):
         self.g1 = descriptor(1, self.k1)
         self.g2 = descriptor(2, self.k2)
 
+    def ledger(self, path, attested_value):
+        return SupportedHistoricalSharedAnchorLedger(path, attested_value, self.g1)
+
     def test_mixed_old_new_confirmed_history_survives_rotation_and_restart(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
             a1 = attested(p1, 1, self.k1)
-            ledger = HistoricalSharedAnchorLedger(path, a1, self.g1)
+            ledger = self.ledger(path, a1)
 
             i1 = Intent("old", "component-A", "migration", {"v": 1})
             e1 = ledger.execute(i1)
@@ -60,17 +63,18 @@ class IntegrationTests(unittest.TestCase):
             e2 = ledger.execute(i2)
             self.assertEqual((e2.status, e2.provider_generation, p2.value), ("CONFIRMED", 2, 2))
 
-            restarted = HistoricalSharedAnchorLedger(path, a2, self.g1)
+            restarted = self.ledger(path, a2)
             self.assertTrue(restarted.verify_durable())
             self.assertEqual(restarted.provider_history.load_receipt(e1.request_id).generation, 1)
             self.assertEqual(restarted.provider_history.load_receipt(e2.request_id).generation, 2)
+            self.assertEqual(restarted.verify_component("component-A"), 2)
             self.assertEqual(restarted.verify_component("component-A"), 2)
 
     def test_old_generation_is_verification_only_after_rotation(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = HistoricalSharedAnchorLedger(path, attested(p1, 1, self.k1), self.g1)
+            ledger = self.ledger(path, attested(p1, 1, self.k1))
             p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=0)
             ledger.rotate_provider(
                 self.g2,
@@ -84,7 +88,7 @@ class IntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = HistoricalSharedAnchorLedger(path, attested(p1, 1, self.k1), self.g1)
+            ledger = self.ledger(path, attested(p1, 1, self.k1))
             entry = ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
             self.assertEqual(entry.status, "PREPARED")
 
@@ -102,7 +106,7 @@ class IntegrationTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as td:
                 path = Path(td) / "shared.db"
                 p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-                ledger = HistoricalSharedAnchorLedger(path, attested(p1, 1, self.k1), self.g1)
+                ledger = self.ledger(path, attested(p1, 1, self.k1))
                 p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=0)
                 a2 = attested(p2, 2, self.k2)
                 gate = threading.Barrier(3)
@@ -153,13 +157,13 @@ class IntegrationTests(unittest.TestCase):
             path = Path(td) / "shared.db"
             p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
             a1 = attested(p1, 1, self.k1)
-            ledger = HistoricalSharedAnchorLedger(path, a1, self.g1)
+            ledger = self.ledger(path, a1)
             ledger.execute(Intent("old", "component-A", "migration", {"v": 1}))
             q = sqlite3.connect(path)
             q.execute("UPDATE historical_provider_receipts SET signature=?", ("0" * 64,))
             q.commit(); q.close()
             with self.assertRaises(HistoricalVerificationError):
-                HistoricalSharedAnchorLedger(path, a1, self.g1)
+                self.ledger(path, a1)
 
 
 if __name__ == "__main__":
