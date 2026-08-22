@@ -237,6 +237,19 @@ class DurableProviderHistory:
             raise HistoricalVerificationError("generation content substitution")
         return desc
 
+    def _verify_receipt_locked(self, q, receipt: HistoricalReceipt):
+        row = q.execute(
+            "SELECT generation_id FROM provider_generations WHERE provider_id=? AND generation=?",
+            (receipt.provider_id, receipt.generation),
+        ).fetchone()
+        if row is None:
+            raise HistoricalVerificationError("unknown historical generation")
+        desc = self._descriptor_locked(q, row[0])
+        expected = mac(desc.key, receipt.unsigned)
+        if not hmac.compare_digest(expected, receipt.signature):
+            raise HistoricalVerificationError("historical receipt signature mismatch")
+        return receipt
+
     def current(self):
         q = self._con()
         try:
@@ -322,6 +335,13 @@ class DurableProviderHistory:
             ).fetchone()
             if descriptors[-1].generation_id != head_id or descriptors[-1].generation != head_generation:
                 raise HistoryRollback("provider head rollback/substitution")
+            for row in q.execute(
+                "SELECT provider_id,generation,position,request_id,kind,challenge,signature,stable_binding "
+                "FROM historical_provider_receipts"
+            ).fetchall():
+                receipt = self._verify_receipt_locked(q, HistoricalReceipt(*row[:7]))
+                if row[7] != receipt.stable_binding:
+                    raise HistoricalVerificationError("historical receipt stable binding mismatch")
             q.commit()
             return True
         except:
@@ -374,14 +394,15 @@ class DurableProviderHistory:
         q = self._con()
         try:
             row = q.execute(
-                "SELECT provider_id,generation,position,request_id,kind,challenge,signature "
+                "SELECT provider_id,generation,position,request_id,kind,challenge,signature,stable_binding "
                 "FROM historical_provider_receipts WHERE request_id=?",
                 (request_id,),
             ).fetchone()
             if row is None:
                 raise HistoricalVerificationError("missing historical receipt")
-            receipt = HistoricalReceipt(*row)
-            self.verify_receipt(receipt)
+            receipt = self._verify_receipt_locked(q, HistoricalReceipt(*row[:7]))
+            if row[7] != receipt.stable_binding:
+                raise HistoricalVerificationError("historical receipt stable binding mismatch")
             return receipt
         finally:
             q.close()
@@ -389,17 +410,7 @@ class DurableProviderHistory:
     def verify_receipt(self, receipt: HistoricalReceipt):
         q = self._con()
         try:
-            row = q.execute(
-                "SELECT generation_id FROM provider_generations WHERE provider_id=? AND generation=?",
-                (receipt.provider_id, receipt.generation),
-            ).fetchone()
-            if row is None:
-                raise HistoricalVerificationError("unknown historical generation")
-            desc = self._descriptor_locked(q, row[0])
-            expected = mac(desc.key, receipt.unsigned)
-            if not hmac.compare_digest(expected, receipt.signature):
-                raise HistoricalVerificationError("historical receipt signature mismatch")
-            return receipt
+            return self._verify_receipt_locked(q, receipt)
         finally:
             q.close()
 
