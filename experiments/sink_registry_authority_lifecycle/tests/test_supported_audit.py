@@ -21,7 +21,7 @@ from experiments.sink_registry_authority_lifecycle.supported import (
     RegistryEntry,
 )
 from experiments.transactional_broker_journal.capability import CapabilityBoundJournal
-from experiments.transactional_broker_journal.protocol import TransactionalJournal
+from experiments.transactional_broker_journal.protocol import Request, TransactionalJournal
 
 
 def keys(prefix, n=3):
@@ -45,7 +45,7 @@ class SupportedAuditTests(unittest.TestCase):
         recovery = RecoveryAuthority(1, 3, recmap)
         lifecycle = DurableRegistryAuthority(path, root, recovery)
         registry = LifecycleRegistryBoundJournal(bound, lifecycle)
-        return path, lifecycle, registry, root, r1keys, recovery
+        return path, probe, lifecycle, registry, root, r1keys, recovery
 
     def signed_entry(self, lifecycle, root, signer):
         raw = RegistryEntry(
@@ -60,9 +60,35 @@ class SupportedAuditTests(unittest.TestCase):
         )
         return lifecycle.issue(raw, signer)
 
+    def capability(self, probe):
+        claim = cap.CapabilityClaim(
+            sink_id="sink-A",
+            generation=1,
+            mutating=True,
+            stable_idempotency_key=True,
+            request_bound_key=True,
+            reconcile_by_key=True,
+            retention_seconds=100,
+            source="lab076-supported-audit",
+        )
+        sink = cap.SimulatedSink(idempotent=True, request_bound=True, reconcile=True)
+        return cap.VerifiedCapability(claim, probe.attest(claim, sink))
+
+    def test_supported_reserve_can_atomically_publish_first_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            _, probe, lifecycle, registry, root, r1keys, _ = self.stack(td)
+            entry = self.signed_entry(lifecycle, root, r1keys[0])
+            request = Request("r", "task", "scope", 1, "payload")
+            status, _, plan, _ = registry.reserve(
+                request, self.capability(probe), entry, now=0
+            )
+            self.assertEqual(status, "INTENT")
+            self.assertEqual(plan.entry_digest, entry.entry_digest)
+            self.assertEqual(registry.head("sink-A"), entry)
+
     def test_published_row_missing_historical_binding_fails_closed_even_before_rotation(self):
         with tempfile.TemporaryDirectory() as td:
-            path, lifecycle, registry, root, r1keys, _ = self.stack(td)
+            path, _, lifecycle, registry, root, r1keys, _ = self.stack(td)
             entry = self.signed_entry(lifecycle, root, r1keys[0])
             registry.observe(entry)
             q = sqlite3.connect(path)
@@ -77,7 +103,7 @@ class SupportedAuditTests(unittest.TestCase):
 
     def test_standalone_durable_verification_excludes_concurrent_rotation_commit(self):
         with tempfile.TemporaryDirectory() as td:
-            _, lifecycle, _, root, r1keys, _ = self.stack(td)
+            _, _, lifecycle, _, root, r1keys, _ = self.stack(td)
             r2keys, r2map = keys("r2")
             r2 = RootState("sink-registry", 2, 1, 2, r2map)
             payload = rotation_payload(root, r2)
