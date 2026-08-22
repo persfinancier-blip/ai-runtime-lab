@@ -53,6 +53,15 @@ class AuditFixTests(Tests):
             finally:
                 q.close()
 
+    def test_supported_worker_rejects_unaudited_registry_journal(self):
+        with tempfile.TemporaryDirectory() as td:
+            j = Journal(f"{td}/prototype.db")
+            prototype = base.RegistryBoundJournal(Bound(j), self.auth)
+            with self.assertRaises(RegistryBindingError):
+                CorrectedRegistryBrokerWorker(
+                    prototype, self.runtime(Sink()), b"x"
+                )
+
     def test_preexisting_content_address_row_is_verified_before_activation(self):
         with tempfile.TemporaryDirectory() as td:
             j, r = self.setup(td)
