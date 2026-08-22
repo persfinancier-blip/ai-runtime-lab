@@ -12,34 +12,31 @@ LAB-078 — prove an authenticated migration checkpoint that moves pre-LAB-077 s
 - Active: Issue #147 / LAB-078 — IN_PROGRESS.
 - Active branch: `lab/078-authenticated-registry-migration`.
 - Draft PR: #148 `[LAB-078] Authenticated legacy registry migration checkpoint`.
-- Current PR HEAD: `04ab5f0f3bea989036d0fc46da425560aecf7d28`.
-- PR is currently mergeable but remains intentionally draft.
+- Current PR HEAD: `64f9e0937a21a57961be248d036382b86c941f7e`.
+- PR is mergeable and intentionally remains draft.
 
 ## Last completed step
 
-Closed the supported-surface gap identified by the previous audit. `experiments/sink_registry_migration_checkpoint/supported.py` now exposes `SupportedMigrationCoordinator`, which accepts only the exact final audited LAB-077 `ThresholdLifecycleRegistryBoundJournal` type. Subclasses, duck-typed registries and prototype journals are rejected before migration setup; the lower-level `RealMigrationCoordinator` remains available only for regression/audit work.
+A fresh full audit found that the lower-level idempotent `migrate()` path could return success for an already-present checkpoint by comparing stored SQL rows without reauthenticating the threshold proof and historical root. That made the retry path weaker than restart verification.
 
-Published additional failure-injection regressions in `tests/test_supported_and_crash.py`: exact final LAB-077 journal acceptance, subclass/duck rejection, an SQLite abort on migration-checkpoint INSERT that must leave zero partial migration rows and permit later clean retry, and restart verification after the first threshold-authenticated successor.
+The supported authority-bearing surface was hardened in commit `64f9e0937a21a57961be248d036382b86c941f7e`: `SupportedMigrationCoordinator.migrate()` now runs the existing mixed-history verifier after both a fresh migration and an exact idempotent retry. Therefore supported success is reported only after stored checkpoint signatures, historical authority material, legacy-prefix binding, and post-migration threshold history are reverified.
 
-A fresh remote patch review of the new supported/crash files found no supported-surface or transaction-boundary defect. Direct `git ls-remote`/clone was re-probed and still fails because `github.com` DNS does not resolve in the runtime, so the new PR HEAD has not yet been claimed as exact-source executed.
+No merge was attempted because the new supported-surface bytes have not yet passed the required exact-source regression stack.
 
 ## Evidence produced
 
-- Existing reference LAB-078 slice: corrected 10/10; unsafe auto-promotion failed as expected; compileall passed in an earlier invocation.
-- Existing real-schema integration suite: 8/8 passed in an earlier invocation.
-- `integration.py` published blob remains `69c74a8f24ac6de002b546023527bd13626ab8c1`.
-- Added exact-type supported surface in commit `11d21fbcf0d5811f71c64d1ba0409c589ffc3c1c`.
-- Added supported/crash/restart regression file in commit `04ab5f0f3bea989036d0fc46da425560aecf7d28`.
-- Current PR #148 HEAD: `04ab5f0f3bea989036d0fc46da425560aecf7d28`; 9 changed files; mergeable; draft.
-- Remote per-file audit of the two newly added files completed without a blocking finding.
-- Direct GitHub checkout probe: failed before execution evidence because DNS cannot resolve `github.com`; connector reconstruction remains the supported exact-source fallback.
+- Prior reference LAB-078 slice: 10/10 passed; unsafe auto-promotion failed as expected; compileall passed in an earlier invocation.
+- Prior real-schema integration suite: 8/8 passed in an earlier invocation.
+- `integration.py` published blob: `69c74a8f24ac6de002b546023527bd13626ab8c1`.
+- Hardened `supported.py` blob: `d770d1487e91b2bb3b4d78308b89e2dbf0626d8c`.
+- Current PR #148 HEAD: `64f9e0937a21a57961be248d036382b86c941f7e`; 9 changed files; mergeable; draft.
+- Direct GitHub checkout remains unavailable in the shell runtime due DNS; connector reconstruction is the supported exact-source fallback.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
 - PR #148 intentionally remains draft.
-- The prior duck-typed coordinator is no longer the supported authority-bearing surface; exact-type supported composition is now present.
-- The new supported/crash/restart tests are published but have not yet been executed as the exact current PR HEAD; do not count older 10/10 or 8/8 results as proof for these new bytes.
+- New audit fix is not yet exact-source executed; older 10/10 and 8/8 results do not prove current HEAD.
 - Direct GitHub clone/raw checkout is unavailable in this runtime due DNS; connector reconstruction is the allowed exact-source fallback.
 - Pending `INTENT`/`UNKNOWN` must be resolved before migration; `CONFIRMED` is receipt-only history.
 - Legacy LAB-076 rows remain verification-only and must never receive synthetic LAB-077 threshold proofs.
@@ -47,7 +44,7 @@ A fresh remote patch review of the new supported/crash files found no supported-
 
 ## Exact next action
 
-Reconstruct the exact executable bytes of PR #148 HEAD `04ab5f0f3bea989036d0fc46da425560aecf7d28` plus the merged LAB-077/076/075 dependency and regression files through the GitHub connector. Verify each reconstructed file with `git hash-object` against its GitHub blob identity. Run LAB-078 reference, real-integration and supported/crash suites; run LAB-077, LAB-076 and LAB-075 regressions plus compileall; also run the unsafe auto-promotion seed and require its expected failure. If all exact-source tests pass, perform one fresh full PR patch audit. Only if that audit is clean should PR #148 be moved from draft to ready, squash-merged, Issue #147 closed DONE, and the next highest-value gap selected.
+Reconstruct the exact executable bytes of PR #148 HEAD `64f9e0937a21a57961be248d036382b86c941f7e` plus merged LAB-077/076/075 dependencies/regressions through the GitHub connector. Verify every reconstructed executable file with `git hash-object` against its GitHub blob identity. Add/execute a regression proving that the supported idempotent retry path re-verifies stored migration proof/history rather than trusting row equality. Run LAB-078 reference, real-integration and supported/crash suites; run LAB-077, LAB-076 and LAB-075 regressions plus compileall; require the unsafe auto-promotion seed to fail as expected. Then perform a fresh full PR patch audit. Only if clean should PR #148 be moved ready, squash-merged, Issue #147 closed DONE, and the next highest-value gap selected.
 
 ## Backlog
 
