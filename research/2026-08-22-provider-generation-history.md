@@ -8,34 +8,42 @@ The missing abstraction is a split between **effect authority** and **historical
 
 ## Donor mechanism
 
-The Update Framework root-update workflow provides the relevant continuity pattern: clients retain an authenticated chain of versioned trust roots; root `N+1` must be authorized by the trusted old root and the new root, and rollback to an older root is rejected. The transferable mechanism here is not software-update metadata itself, but explicit, persisted trust-generation continuity instead of accepting caller-supplied historical keys.
+The Update Framework root-update workflow provides the relevant continuity pattern: clients retain an authenticated chain of versioned trust roots; root `N+1` must be authorized by the trusted old root and the new root, and rollback to an older root is rejected. The transferable mechanism here is explicit, persisted trust-generation continuity rather than accepting caller-supplied historical keys.
 
 Primary source: https://theupdateframework.github.io/specification/latest/
 
-## Reference protocol
+## Integrated reference protocol
 
 For one logical provider:
 
 1. bootstrap one pinned generation descriptor;
 2. each successor is exactly generation `N+1` for the same provider ID;
-3. transition identity commits exact old/new generation IDs;
-4. both old and new key material authenticate the transition in the reference model;
-5. the durable head identifies the sole generation allowed to authorize new effects;
-6. old descriptors remain available only to verify signed receipts already bound to their exact generation;
-7. every persisted historical receipt binds provider ID, generation, position and request ID.
+3. transition identity commits exact old/new generation IDs and is authenticated by both generations in the reference model;
+4. the durable head identifies the sole generation allowed to authorize new effects;
+5. old descriptors remain historical-verification material only through the supported execution surface;
+6. every confirmed LAB-080 ledger row stores immutable signed receipt evidence bound to provider ID, generation, position and request ID;
+7. the stable receipt identity excludes the fresh reconciliation challenge, so later authenticated checks do not rewrite historical evidence;
+8. reservation and provider rotation serialize in the same LAB-080 SQLite database; provider rotation is blocked while any intent is `PREPARED`;
+9. restart verification checks provider history, receipts, ledger rows and component watermarks in one consistent SQL read transaction;
+10. direct standalone rotation on the integrated history object is blocked so callers cannot bypass the coordinator.
 
-Rotation is blocked while shared-anchor work is PREPARED so an effect cannot cross the authority boundary half-executed.
+## Audit findings fixed before integration
 
-## First experiment result
+- **PREPARED/rotation TOCTOU:** checking pending work outside the rotation transaction allowed a reservation to race the head update. Fixed by one `BEGIN IMMEDIATE` boundary shared with LAB-080.
+- **Mixed SQL snapshots:** the first restart verifier read ledger rows and provider/receipt state through different connections. Fixed by transaction-internal provider/receipt verification helpers used from one read snapshot.
+- **Challenge-dependent receipt overwrite:** LAB-036 reconciliation signs a fresh challenge. Treating each fresh observation as replacement evidence made a valid repeated verification look like substitution. Fixed by keeping the first exact signed observation immutable and separating stable receipt identity from freshness checks.
+- **Direct rotation bypass:** exposing inherited standalone `provider_history.rotate()` let a caller supply `pending_prepared=0` and skip the shared transaction. The supported integrated history now permits authority mutation only through `rotate_provider()`.
 
-The isolated corrected suite passed 12/12 tests and compileall passed. Covered cases include historical verification after rotation, old-generation effect rejection, same-generation substitution, provider substitution, PREPARED rotation blocking, restart rollback, missing/corrupt transition proofs, forged historical key material and receipt request/position rebinding.
+## Security boundary
 
-An unsafe caller-supplied historical-key baseline demonstrates the core failure: a receipt and attacker-selected key can self-consistently verify without proving that the key was ever part of the authenticated provider lifecycle.
+The reference implementation currently uses HMAC material to model authenticated generations because LAB-036 uses HMAC observations. Therefore “verification-only historical generation” is an execution-policy property of the supported surface, **not** a production key-custody claim: stored symmetric material is not cryptographically incapable of signing. A production design should keep historical verification material public-only (for example asymmetric signatures) and keep signing keys outside the durable verification store.
 
-## Remaining integration gate
+The local SQL commit is also not atomic with an external provider's own key-rotation ceremony. The integration fail-closes on provider-position mismatch and stale runtime generations, but distributed provider/DB rotation atomicity is a separate problem.
 
-This first slice is not yet sufficient to close LAB-081. It must be wired into the exact merged LAB-080 ledger so the signed provider receipt is durably captured at confirmation and mixed old/new CONFIRMED history can be reverified after rotation without rewriting old receipt bindings. Exact-source LAB-081 + LAB-080 + LAB-036 regressions remain mandatory.
+## Validation state
+
+The original isolated slice passed 12/12 tests and compileall before publication. The later integrated files add mixed old/new history, restart, repeated verification, direct-bypass, receipt-corruption and reserve-vs-rotation race tests. Those newer published bytes require a fresh exact-source execution gate before LAB-081 can be declared DONE.
 
 ## Non-goals
 
-No provider consensus, cross-provider failover, HSM key custody, certificate PKI, or compromise-recovery ceremony is claimed here.
+No provider consensus, cross-provider failover, HSM custody, certificate PKI, or compromise-recovery ceremony is claimed here.
