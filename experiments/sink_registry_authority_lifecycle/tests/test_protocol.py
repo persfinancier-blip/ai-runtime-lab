@@ -53,6 +53,10 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p=Path(td)/'db'; self.store(p); other,okr=keys('other-recovery',4); bad=RecoveryAuthority(1,3,okr)
             with self.assertRaises(UnsafeRecovery): DurableRegistryAuthority(p,self.r1,bad)
+    def test_mutating_ambient_recovery_keys_cannot_change_durable_recovery(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=self.store(Path(td)/'db'); self.rec.keys.clear(); r2,k2=root(2,2,'recovered'); durable_rec,_=recovery(); p=recovery_payload(self.r1,r2,durable_rec.generation)
+            s.recover(r2,sigs(self.kr,p,3)); self.assertEqual(s.current().authority_epoch,2)
     def test_rotation_vs_publication_serializes(self):
         with tempfile.TemporaryDirectory() as td:
             s=self.store(Path(td)/'db'); old=s.issue(entry(self.r1,self.k1[0]),self.k1[0]); r2,k2=root(2,1,'r2'); p=rotation_payload(self.r1,r2); out=[]; gate=threading.Barrier(3)
