@@ -4,17 +4,25 @@ from experiments.sink_registry_binding import protocol as base
 
 
 class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
-    """Audit fixes layered over the first LAB-075 prototype."""
+    """Audited LAB-075 journal surface.
+
+    Registry row validation and head activation intentionally occur in one
+    ``BEGIN IMMEDIATE`` transaction. A content-addressed row must never be
+    checked in one snapshot and activated in a later snapshot.
+    """
 
     def observe(self, entry):
         entry = self.authority.verify(entry)
+        entry_digest = entry.entry_digest
         q = self.journal._con()
         try:
+            q.execute("BEGIN IMMEDIATE")
+
             row = q.execute(
                 "SELECT entry_digest,sink_id,generation,adapter_digest,endpoint_origin,"
                 "operation_profile,predecessor_entry_digest,issuer_id,issuer_generation,signature "
                 "FROM sink_registry_entries WHERE entry_digest=?",
-                (entry.entry_digest,),
+                (entry_digest,),
             ).fetchone()
             if row is not None:
                 stored = self._row_entry(row)
@@ -23,9 +31,88 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
                     raise base.RegistrySubstitution(
                         "stored entry differs from authenticated candidate"
                     )
+
+            head = q.execute(
+                "SELECT entry_digest,generation FROM sink_registry_heads WHERE sink_id=?",
+                (entry.sink_id,),
+            ).fetchone()
+            if head is None:
+                if entry.generation != 1 or entry.predecessor_entry_digest is not None:
+                    raise base.RegistryRollback("invalid bootstrap")
+            else:
+                if entry.generation < head[1]:
+                    raise base.RegistryRollback("registry generation rollback")
+                if entry.generation == head[1]:
+                    if entry_digest != head[0]:
+                        raise base.RegistrySubstitution(
+                            "same-generation registry substitution"
+                        )
+                    q.commit()
+                    return entry
+                if (
+                    entry.generation != head[1] + 1
+                    or entry.predecessor_entry_digest != head[0]
+                ):
+                    raise base.RegistryRollback(
+                        "successor must name exact current predecessor"
+                    )
+
+            if row is None:
+                q.execute(
+                    "INSERT INTO sink_registry_entries VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        entry_digest,
+                        entry.sink_id,
+                        entry.generation,
+                        entry.adapter_digest,
+                        entry.endpoint_origin,
+                        entry.operation_profile,
+                        entry.predecessor_entry_digest,
+                        entry.issuer_id,
+                        entry.issuer_generation,
+                        entry.signature,
+                    ),
+                )
+
+            # Re-read the authoritative SQL row in the same write transaction.
+            # This is deliberately redundant with INSERT semantics: it makes the
+            # content-address/signature invariant explicit at activation time.
+            stored = self._load_entry(q, entry_digest)
+            self.authority.verify(stored)
+            if stored != entry:
+                raise base.RegistrySubstitution(
+                    "authoritative registry row differs before head activation"
+                )
+
+            if head is None:
+                q.execute(
+                    "INSERT INTO sink_registry_heads VALUES(?,?,?)",
+                    (entry.sink_id, entry_digest, entry.generation),
+                )
+            else:
+                changed = q.execute(
+                    "UPDATE sink_registry_heads SET entry_digest=?,generation=? "
+                    "WHERE sink_id=? AND entry_digest=? AND generation=?",
+                    (
+                        entry_digest,
+                        entry.generation,
+                        entry.sink_id,
+                        head[0],
+                        head[1],
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise base.RegistryRollback(
+                        "registry head changed before activation"
+                    )
+            q.commit()
+            return entry
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
         finally:
             q.close()
-        return super().observe(entry)
 
     def reserve(self, request, capability, entry, *, now):
         q = self.journal._con()
