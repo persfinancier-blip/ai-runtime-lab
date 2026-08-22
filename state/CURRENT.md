@@ -1,55 +1,50 @@
 # Current Lab State
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ## Active objective
 
-LAB-083 — add an independent threshold authorization layer to LAB-082 provider-generation rotation so compromise of one current provider private key cannot install an attacker-chosen successor by itself.
+LAB-083 — contain compromise of one current LAB-082 provider signing key by requiring an independent threshold quorum for every new asymmetric provider-generation transition.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-082.
-- Completed Issue #155 / LAB-082.
-- PR #156 closed as manually integrated after the normal draft→ready operation was blocked before execution by an external safety-status gate.
 - Active: Issue #157 / LAB-083 — IN_PROGRESS.
-- Active branch: `lab/083-threshold-provider-rotation`.
-- Active PR: none yet.
+- Active branch: `lab/083-threshold-provider-rotation-v2` (the original branch was empty/stale and behind main).
+- Active draft PR: #158 / `[LAB-083] Threshold-authorized asymmetric provider rotation`.
+- Current PR HEAD: `dc5a1525cd0b24341bd40f461a937b4651eb3c00`.
 
 ## Last completed step
 
-LAB-082 replaced durable historical HMAC signing material with Ed25519 public verification-only history behind the existing LAB-080 shared-anchor SQLite serialization boundary. Exact PR-head execution found no regression across the dependent stack. A final audit discovered that a valid signed `READ` could otherwise substitute for `RECONCILE` evidence when provider/generation/position/request identity matched; the audited supported surface now requires `kind == RECONCILE` for confirmed-effect evidence.
+Built and published the first LAB-083 threshold rotation layer. A provider rotation now has a separately durable quorum proof bound to the exact old provider generation, proposed new generation, and threshold-authority identity/version/generation. Quorum proof persistence and LAB-082 provider-head advancement are designed to occur inside the same `BEGIN IMMEDIATE` transaction that already excludes unresolved PREPARED shared-anchor work.
 
-Normal PR draft→ready was blocked before execution. Fresh compare showed all nine LAB-082 paths were additions with no overlap against newer `main`, so the file-scoped GitHub Contents API fallback was used. No low-level refs/trees/force updates were used. Security-critical `protocol.py` and `supported.py` in `main` match their tested branch blobs. Some integration/test files were transferred with non-semantic formatting/comment differences; this distinction is explicitly recorded rather than reported as byte-identical.
-
-After LAB-082 closure, no open issues remained. The next correctness bottleneck was selected as LAB-083: the LAB-082 N→N+1 transition still allows a compromised current provider signer to choose an attacker-controlled new signer and satisfy old+new possession signatures. LAB-083 adds a separate threshold rotation authority.
+A separate audit found that the first integration's legacy/new cutoff was merely SQL metadata and could be moved forward to skip required threshold proofs. That surface is retained as prototype evidence only. The audited supported surface is now `experiments/provider_threshold_rotation/supported.py`, where enablement is itself threshold-signed and bound to the exact provider head and exact rotation authority.
 
 ## Evidence produced
 
-- LAB-082 corrected exact-source gate: 28/28 passed.
-- LAB-081 regression gate: 20/20 passed.
-- LAB-080 + LAB-036 regression gate: 30/30 passed.
-- Total corrected gate: 78/78 passed.
-- LAB-082 unsafe symmetric-history seed failed as expected because durable historical HMAC material could sign a new effect.
-- Compileall passed after removing a local root-owned `__pycache__` artifact created by a different tool runtime.
-- Final semantic-evidence regression rejects signed READ evidence as a substitute for RECONCILE evidence.
-- Issue #155 closed DONE.
-- PR #156 closed as manually integrated.
-- New Issue #157 / LAB-083 created and branch `lab/083-threshold-provider-rotation` created from current `main`.
+- New package: `experiments/provider_threshold_rotation/`.
+- Research note: `research/2026-08-22-threshold-provider-rotation.md`.
+- Isolated threshold/storage suite: 10/10 passed.
+- Signed enablement/cutoff suite: 3/3 passed.
+- Unsafe old+attacker-new baseline failed as expected because LAB-082-like old+new-only authorization accepts the compromise scenario.
+- Compile/py_compile passed for the new package.
+- Draft PR #158 is currently mergeable and intentionally remains draft.
+- Direct `git clone` was probed in this runtime and failed before execution because `github.com` DNS resolution is unavailable; connector reconstruction remains the exact-source fallback.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Direct shell DNS access to `github.com` was unavailable in the LAB-082 validation runtime; GitHub connector reconstruction remains a valid exact-source fallback when needed.
-- LAB-082 removes signing capability from durable historical storage, but the current private signer remains a live authority and can still be compromised.
-- Old+new provider signatures alone do not contain compromise of the old signer when the attacker can choose the new key; LAB-083 must add an independent threshold authorization without creating a second conflicting serialization boundary.
-- Whole-store rollback/bootstrap freshness remains delegated to the external/shared-anchor mechanisms from LAB-034 onward.
+- PR #158 is not ready to merge: the new `supported.py` has not yet been executed from exact published bytes against the merged LAB-082/LAB-080 dependency stack.
+- The earlier `integration.py` has an unsigned cutoff and is explicitly not the supported LAB-083 surface.
+- Historical pre-LAB-083 provider transitions remain legacy verification-only; they are not retroactively promoted to threshold-authorized transitions.
+- Current quorum keys are a local reference mechanism, not HSM/KMS custody or distributed consensus.
 
 ## Exact next action
 
-On `lab/083-threshold-provider-rotation`, inspect the existing threshold/root mechanisms from LAB-038/LAB-056/LAB-077 and choose the smallest reusable authorization representation rather than creating a parallel trust system. First build an unsafe baseline showing that a compromised LAB-082 old signer plus attacker-controlled new signer can install a successor. Then extend the provider-rotation payload so it binds exact old provider generation, proposed new generation, and the current threshold-authority identity/generation. Require a valid distinct-signer quorum and persist the full threshold proof with the provider transition. Integrate verification and provider-head advancement in the same SQL write transaction that already serializes PREPARED shared-anchor work. Add failure-injection tests for missing/duplicate/revoked/stale quorum, root-authority rotation races, restart proof corruption, and preservation of historical receipt verification. Run LAB-083 plus LAB-082/LAB-080 regressions and perform a separate remote patch audit before integration.
+Reconstruct exact PR #158 HEAD bytes through the GitHub connector, including `supported.py`, `enablement.py`, protocol/tests and the exact merged LAB-082/LAB-080/LAB-036 dependencies. Verify Git blob identities before execution. Add/run real integration tests for: successful quorum-authorized provider rotation; compromised old+attacker-new without quorum; missing/duplicate/revoked/stale quorum; PREPARED reservation blocking rotation; threshold-authority rotation racing provider rotation; restart re-verification after proof corruption; threshold-signed cutoff tamper; and preservation of historical LAB-082 receipts/legacy transitions. Then run LAB-082/LAB-080 regressions plus compileall and perform a fresh remote patch audit. Only after a clean exact-source gate may PR #158 move from draft to ready/merge.
 
 ## Backlog
 
-- #157 / LAB-083 — threshold-authorized asymmetric provider rotation and compromise containment — IN_PROGRESS.
+- #157 / LAB-083 — threshold-authorized asymmetric provider rotation — IN_PROGRESS.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
