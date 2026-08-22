@@ -74,9 +74,6 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
                     ),
                 )
 
-            # Re-read the authoritative SQL row in the same write transaction.
-            # This is deliberately redundant with INSERT semantics: it makes the
-            # content-address/signature invariant explicit at activation time.
             stored = self._load_entry(q, entry_digest)
             self.authority.verify(stored)
             if stored != entry:
@@ -187,7 +184,7 @@ class CorrectedRegistryBrokerWorker(base.RegistryBrokerWorker):
             claim = capability.claim if hasattr(capability, "claim") else capability
             allowed = getattr(claim, "reconcile_by_key", None)
             if allowed is None and isinstance(claim, dict):
-                allowed = claim.get("reconcile_by_key", True)
+                allowed = claim.get("reconcile_by_key")
             if allowed is not True:
                 raise base.HistoricalExecutionBlocked(
                     "current capability does not authorize reconciliation"
