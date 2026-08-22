@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+
 from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.provider_generation_history.protocol import (
     CurrentGenerationRequired,
@@ -11,6 +13,7 @@ from experiments.provider_generation_history.protocol import (
     InvalidTransition,
     PendingRotationBlocked,
     TransitionProof,
+    mac,
 )
 from experiments.shared_anchor_intent_ledger.protocol import (
     Intent,
@@ -25,18 +28,81 @@ from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnc
 
 
 class IntegratedProviderHistory(DurableProviderHistory):
-    """LAB-081 provider history that can rotate inside an existing SQL write transaction."""
+    """LAB-081 provider history with transaction-internal verification/rotation helpers."""
+
+    def _current_locked(self, q):
+        row = q.execute(
+            "SELECT generation_id,generation FROM provider_generation_head WHERE singleton=1"
+        ).fetchone()
+        if row is None:
+            raise HistoricalVerificationError("missing provider generation head")
+        generation_id, generation = row
+        desc = self._descriptor_locked(q, generation_id)
+        if desc.generation != generation:
+            raise HistoryRollback("head generation mismatch")
+        return desc
+
+    def _verify_durable_locked(self, q):
+        rows = q.execute(
+            "SELECT generation_id,provider_id,generation,verification_key_hex "
+            "FROM provider_generations ORDER BY generation"
+        ).fetchall()
+        if not rows:
+            raise HistoricalVerificationError("missing provider history")
+        descriptors = []
+        for generation_id, provider_id, generation, key_hex in rows:
+            desc = GenerationDescriptor(provider_id, generation, key_hex)
+            if desc.generation_id != generation_id:
+                raise HistoricalVerificationError("generation identity mismatch")
+            descriptors.append(desc)
+        if descriptors[0].generation_id != self.bootstrap.generation_id:
+            raise HistoryRollback("bootstrap generation changed")
+        for old, new in zip(descriptors, descriptors[1:]):
+            row = q.execute(
+                "SELECT old_generation_id,provider_id,old_mac,new_mac "
+                "FROM provider_generation_transitions WHERE new_generation_id=?",
+                (new.generation_id,),
+            ).fetchone()
+            if row is None:
+                raise HistoricalVerificationError("missing transition proof")
+            proof = TransitionProof(row[1], row[0], new.generation_id, row[2], row[3])
+            if proof != self.make_transition(old, new):
+                raise HistoricalVerificationError("corrupt transition proof")
+        current = self._current_locked(q)
+        if current.generation_id != descriptors[-1].generation_id:
+            raise HistoryRollback("provider head rollback/substitution")
+        return current
+
+    def _verify_receipt_locked(self, q, receipt: HistoricalReceipt):
+        row = q.execute(
+            "SELECT generation_id FROM provider_generations WHERE provider_id=? AND generation=?",
+            (receipt.provider_id, receipt.generation),
+        ).fetchone()
+        if row is None:
+            raise HistoricalVerificationError("unknown historical generation")
+        desc = self._descriptor_locked(q, row[0])
+        expected = mac(desc.key, receipt.unsigned)
+        if not hmac.compare_digest(expected, receipt.signature):
+            raise HistoricalVerificationError("historical receipt signature mismatch")
+        return receipt
+
+    def _load_receipt_locked(self, q, request_id):
+        row = q.execute(
+            "SELECT provider_id,generation,position,request_id,kind,challenge,signature "
+            "FROM historical_provider_receipts WHERE request_id=?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise HistoricalVerificationError("missing historical receipt")
+        return self._verify_receipt_locked(q, HistoricalReceipt(*row))
 
     def _rotate_locked(self, q, new: GenerationDescriptor, proof: TransitionProof):
         new.validate()
-        head_id, head_generation = q.execute(
-            "SELECT generation_id,generation FROM provider_generation_head WHERE singleton=1"
-        ).fetchone()
-        old = self._descriptor_locked(q, head_id)
+        old = self._current_locked(q)
         expected = self.make_transition(old, new)
         if proof != expected:
             raise InvalidTransition("transition proof mismatch")
-        if new.provider_id != old.provider_id or new.generation != head_generation + 1:
+        if new.provider_id != old.provider_id or new.generation != old.generation + 1:
             raise InvalidTransition("invalid successor")
         q.execute(
             "INSERT INTO provider_generations VALUES(?,?,?,?)",
@@ -60,7 +126,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
     """Supported LAB-081 integration over the exact LAB-080 SQLite ledger.
 
     The shared-anchor DB is the single serialization boundary for reservation and
-    provider-generation rotation.  Historical provider keys are verification-only;
+    provider-generation rotation. Historical provider keys are verification-only;
     all new external effects require the runtime AttestedCatchup identity to equal
     the durable provider-generation head.
     """
@@ -116,13 +182,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             if pending:
                 raise PendingIntent("another anchor intent is unresolved")
 
-            head_id, head_generation = q.execute(
-                "SELECT generation_id,generation FROM provider_generation_head WHERE singleton=1"
-            ).fetchone()
-            durable = self.provider_history._descriptor_locked(q, head_id)
-            if durable.generation != head_generation:
-                raise HistoryRollback("provider generation head mismatch")
-
+            durable = self.provider_history._current_locked(q)
             predecessor = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
             ).fetchone()[0]
@@ -170,9 +230,6 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         if runtime_new.generation_id != new.generation_id:
             raise InvalidTransition("new runtime verifier does not match generation descriptor")
 
-        # Verify that the new provider view preserves the same external monotonic
-        # position before changing local authority. This is not distributed atomicity;
-        # it is a fail-closed continuity precondition for this reference integration.
         challenge = new_attested.challenge()
         observed = new_attested.authenticated_read(
             challenge=challenge, request_id=f"provider-rotation-read:{new.generation}"
@@ -269,10 +326,10 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         return super().execute(intent, timeout_after_commit=timeout_after_commit)
 
     def verify_durable(self):
-        self.provider_history.verify_durable()
         q = self._con()
         try:
             q.execute("BEGIN")
+            head = self.provider_history._verify_durable_locked(q)
             meta = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
             ).fetchall()
@@ -287,7 +344,6 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             if len(rows) != reserved:
                 raise IntentSubstitution("reserved_position does not match ledger tail")
 
-            head = self.provider_history.current()
             prepared = 0
             for expected, row in enumerate(rows, 1):
                 entry = self._row_entry(row)
@@ -303,7 +359,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                     ):
                         raise ProviderMismatch("PREPARED intent belongs to historical provider generation")
                 else:
-                    receipt = self.provider_history.load_receipt(entry.request_id)
+                    receipt = self.provider_history._load_receipt_locked(q, entry.request_id)
                     if receipt.stable_binding != entry.receipt_binding:
                         raise IntentSubstitution("confirmed ledger receipt/history mismatch")
                     if (
