@@ -22,6 +22,20 @@ class SupportedAsymmetricHistoricalSharedAnchorLedger(
     """
 
     @staticmethod
+    def _receipt_binds_entry(receipt, entry):
+        # Historical ledger confirmation must preserve evidence semantics, not
+        # merely request identity. A signed READ at the same position/request
+        # proves an observation of the counter, not that this request's effect
+        # was reconciled/committed.
+        if receipt.kind != "RECONCILE":
+            raise HistoricalVerificationError(
+                "asymmetric ledger receipt must be RECONCILE evidence"
+            )
+        return AsymmetricHistoricalSharedAnchorLedger._receipt_binds_entry(
+            receipt, entry
+        )
+
+    @staticmethod
     def _same_request(left, right):
         return (
             left.intent_id == right.intent_id
