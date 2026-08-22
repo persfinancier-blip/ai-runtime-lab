@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
-
 from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.asymmetric_provider_history.integration import PendingRotationBlocked
 from experiments.asymmetric_provider_history.protocol import (
@@ -62,6 +59,12 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
             if q.execute(
                 "SELECT COUNT(*) FROM provider_rotation_threshold_enablement"
             ).fetchone()[0] == 0:
+                if q.execute(
+                    "SELECT COUNT(*) FROM provider_rotation_threshold_proofs"
+                ).fetchone()[0]:
+                    raise InvalidTransition(
+                        "threshold enablement missing after threshold-governed history"
+                    )
                 q.execute("BEGIN IMMEDIATE")
                 head = self.provider_history._current_locked(q)
                 authority = self.rotation_authority.current_locked(q)
