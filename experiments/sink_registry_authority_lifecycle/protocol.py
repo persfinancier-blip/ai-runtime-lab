@@ -22,6 +22,8 @@ def _root_from_json(raw):
 
 def _sig_json(items): return json.dumps([asdict(x) for x in items],sort_keys=True,separators=(',',':'))
 def _sig_parse(raw): return tuple(Signature(x['signer_id'],x['signature']) for x in json.loads(raw))
+def _recovery_from_json(raw):
+    x=json.loads(raw); r=RecoveryAuthority(x['generation'],x['threshold'],dict(x['keys']),tuple(x.get('revoked',[]))); r.validate(); return r
 
 class DurableRegistryAuthority:
     """Threshold-authorized, restart-persistent signing authority for LAB-075 entries.
@@ -35,7 +37,9 @@ class DurableRegistryAuthority:
         if q.execute('SELECT COUNT(*) FROM registry_authority_head').fetchone()[0]==0:
             self._put_root(q,bootstrap,kind='bootstrap',predecessor=None,proof_old='[]',proof_new='[]',proof_recovery='[]')
             q.execute('INSERT INTO registry_authority_head VALUES(1,?,?,?)',(root_id(bootstrap),bootstrap.version,bootstrap.authority_epoch))
-            q.execute('INSERT INTO registry_authority_meta VALUES(1,?,?)',(root_id(bootstrap),recovery_id(recovery)))
+            rid=recovery_id(recovery)
+            q.execute('INSERT INTO registry_recovery_authority VALUES(?,?)',(rid,json.dumps(recovery_descriptor(recovery),sort_keys=True,separators=(',',':'))))
+            q.execute('INSERT INTO registry_authority_meta VALUES(1,?,?)',(root_id(bootstrap),rid))
             q.commit()
         q.close(); self.verify_durable(bootstrap,recovery)
     def _con(self):
@@ -48,6 +52,7 @@ class DurableRegistryAuthority:
         CREATE UNIQUE INDEX IF NOT EXISTS registry_authority_versions ON registry_authorities(version);
         CREATE TABLE IF NOT EXISTS registry_authority_head(singleton INTEGER PRIMARY KEY CHECK(singleton=1),authority_id TEXT NOT NULL,version INTEGER NOT NULL,epoch INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS registry_authority_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1),bootstrap_id TEXT NOT NULL,recovery_id TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS registry_recovery_authority(recovery_id TEXT PRIMARY KEY,body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS registry_authorized_entries(entry_digest TEXT PRIMARY KEY,entry_json TEXT NOT NULL,authority_id TEXT NOT NULL,authority_version INTEGER NOT NULL);
         ''')
     def _put_root(self,q,r,*,kind,predecessor,proof_old,proof_new,proof_recovery):
@@ -58,6 +63,12 @@ class DurableRegistryAuthority:
         if row is None: raise HistoricalAuthorityMissing(aid)
         r=_root_from_json(row[0])
         if root_id(r)!=aid: raise AuthoritySubstitution('authority content digest mismatch')
+        return r
+    def _load_recovery(self,q,rid):
+        row=q.execute('SELECT body FROM registry_recovery_authority WHERE recovery_id=?',(rid,)).fetchone()
+        if row is None: raise UnsafeRecovery('missing durable recovery authority')
+        r=_recovery_from_json(row[0])
+        if recovery_id(r)!=rid: raise UnsafeRecovery('recovery authority content digest mismatch')
         return r
     def current(self):
         q=self._con()
@@ -89,7 +100,8 @@ class DurableRegistryAuthority:
         try:
             q.execute('BEGIN IMMEDIATE'); aid,v,e=q.execute('SELECT authority_id,version,epoch FROM registry_authority_head WHERE singleton=1').fetchone(); old=self._load_root(q,aid)
             if new.provider_id!=old.provider_id or new.authority_epoch!=old.authority_epoch+1 or new.version!=old.version+1: raise UnsafeRecovery('invalid recovery successor')
-            p=recovery_payload(old,new,self.recovery.generation); verify_threshold(self.recovery.keys,self.recovery.threshold,self.recovery.revoked,p,recovery_sigs)
+            rid=q.execute('SELECT recovery_id FROM registry_authority_meta WHERE singleton=1').fetchone()[0]; rec=self._load_recovery(q,rid)
+            p=recovery_payload(old,new,rec.generation); verify_threshold(rec.keys,rec.threshold,rec.revoked,p,recovery_sigs)
             nid=self._put_root(q,new,kind='recovery',predecessor=aid,proof_old='[]',proof_new='[]',proof_recovery=_sig_json(recovery_sigs))
             changed=q.execute('UPDATE registry_authority_head SET authority_id=?,version=?,epoch=? WHERE singleton=1 AND authority_id=? AND version=? AND epoch=?',(nid,new.version,new.authority_epoch,aid,v,e)).rowcount
             if changed!=1: raise AuthorityRollback('recovery CAS lost')
@@ -146,6 +158,7 @@ class DurableRegistryAuthority:
             meta=q.execute('SELECT bootstrap_id,recovery_id FROM registry_authority_meta WHERE singleton=1').fetchone()
             if meta is None: raise AuthoritySubstitution('missing authority meta')
             if bootstrap is not None and meta[0]!=root_id(bootstrap): raise AuthorityRollback('bootstrap substitution/rollback')
+            durable_recovery=self._load_recovery(q,meta[1])
             if recovery is not None and meta[1]!=recovery_id(recovery): raise UnsafeRecovery('recovery authority substitution')
             rows=q.execute('SELECT authority_id,version,epoch,transition_kind,predecessor_id,proof_old,proof_new,proof_recovery FROM registry_authorities ORDER BY version').fetchall()
             if not rows: raise AuthoritySubstitution('missing authority history')
@@ -160,8 +173,7 @@ class DurableRegistryAuthority:
                     p=rotation_payload(previous,r); verify_threshold(previous.keys,previous.threshold,previous.revoked,p,_sig_parse(po)); verify_threshold(r.keys,r.threshold,r.revoked,p,_sig_parse(pn))
                 elif kind=='recovery':
                     if previous is None or pred!=root_id(previous): raise AuthoritySubstitution('recovery predecessor mismatch')
-                    rec=recovery or self.recovery
-                    if recovery_id(rec)!=meta[1]: raise UnsafeRecovery('wrong recovery authority')
+                    rec=durable_recovery
                     p=recovery_payload(previous,r,rec.generation); verify_threshold(rec.keys,rec.threshold,rec.revoked,p,_sig_parse(pr))
                 else: raise AuthoritySubstitution('unknown transition')
                 previous=r
