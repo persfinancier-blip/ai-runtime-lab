@@ -33,6 +33,8 @@ For one logical provider:
 - **Mixed SQL snapshots:** the first restart verifier read ledger rows and provider/receipt state through different connections. Fixed by transaction-internal provider/receipt verification helpers used from one read snapshot.
 - **Challenge-dependent receipt overwrite:** LAB-036 reconciliation signs a fresh challenge. Treating each fresh observation as replacement evidence made a valid repeated verification look like substitution. Fixed by keeping the first exact signed observation immutable and separating stable receipt identity from freshness checks.
 - **Direct rotation bypass:** exposing inherited standalone `provider_history.rotate()` let a caller supply `pending_prepared=0` and skip the shared transaction. The supported integrated history now permits authority mutation only through `rotate_provider()`.
+- **Integrated persisted-binding omission:** restart recomputed a historical receipt binding but initially ignored the separately persisted `stable_binding` column. The integrated loader now requires stored and recomputed bindings to match exactly.
+- **Standalone persisted-binding omission:** the low-level `DurableProviderHistory` had the same weakness and did not audit historical receipts on restart. Standalone restart/load now reverify every receipt signature and exact persisted binding.
 
 ## Security boundary
 
@@ -42,7 +44,16 @@ The local SQL commit is also not atomic with an external provider's own key-rota
 
 ## Validation state
 
-The original isolated slice passed 12/12 tests and compileall before publication. The later integrated files add mixed old/new history, restart, repeated verification, direct-bypass, receipt-corruption and reserve-vs-rotation race tests. Those newer published bytes require a fresh exact-source execution gate before LAB-081 can be declared DONE.
+The final executable PR-head files and exact merged LAB-080/LAB-036 dependencies were reconstructed through the GitHub connector and verified against their Git blob identities before execution.
+
+Observed final gate:
+
+- 50/50 normal tests passed across LAB-081, LAB-080, and LAB-036;
+- LAB-081 standalone persisted-binding corruption regression passed;
+- `python -m compileall -q experiments` passed;
+- LAB-080 unsafe monotonic-only baseline failed as expected because it trusted an unrelated higher position;
+- LAB-036 unsafe unauthenticated-read baseline failed as expected because it trusted an unauthenticated claimed position;
+- a fresh remote patch audit found no unresolved code-path defect after the persisted-binding fixes.
 
 ## Non-goals
 
