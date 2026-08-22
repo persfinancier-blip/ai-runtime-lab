@@ -75,29 +75,45 @@ class AuditFixTests(Tests):
                 "ALREADY_COMMITTED",
             )
 
+    def _make_unknown_then_rotate(self, td):
+        _, r = self.setup(td)
+        e1 = self.entry()
+        sink = Sink()
+        w1 = CorrectedRegistryBrokerWorker(r, self.runtime(sink), b"x")
+        with self.assertRaises(Exception):
+            w1.process(
+                Req("unknown", "p"),
+                {"sink_id": "sink-A"},
+                e1,
+                now=0,
+                timeout_after_commit=True,
+            )
+        e2 = self.entry(2, pred=e1.entry_digest, endpoint="https://b.example")
+        r.observe(e2)
+        w2 = CorrectedRegistryBrokerWorker(
+            r, self.runtime(sink, endpoint="https://b.example"), b"x"
+        )
+        return r, sink, w2, e2
+
     def test_unknown_requires_current_reconcile_capability(self):
         with tempfile.TemporaryDirectory() as td:
-            _, r = self.setup(td)
-            e1 = self.entry()
-            sink = Sink()
-            w1 = CorrectedRegistryBrokerWorker(r, self.runtime(sink), b"x")
-            with self.assertRaises(Exception):
-                w1.process(
-                    Req("unknown", "p"),
-                    {"sink_id": "sink-A"},
-                    e1,
-                    now=0,
-                    timeout_after_commit=True,
-                )
-            e2 = self.entry(2, pred=e1.entry_digest, endpoint="https://b.example")
-            r.observe(e2)
-            w2 = CorrectedRegistryBrokerWorker(
-                r, self.runtime(sink, endpoint="https://b.example"), b"x"
-            )
+            _, sink, w2, e2 = self._make_unknown_then_rotate(td)
             with self.assertRaises(HistoricalExecutionBlocked):
                 w2.process(
                     Req("unknown", "p"),
                     {"sink_id": "sink-A", "reconcile_by_key": False},
+                    e2,
+                    now=1,
+                )
+            self.assertEqual(sink.count, 1)
+
+    def test_unknown_missing_reconcile_capability_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            _, sink, w2, e2 = self._make_unknown_then_rotate(td)
+            with self.assertRaises(HistoricalExecutionBlocked):
+                w2.process(
+                    Req("unknown", "p"),
+                    {"sink_id": "sink-A"},
                     e2,
                     now=1,
                 )
