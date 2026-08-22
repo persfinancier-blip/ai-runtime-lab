@@ -151,6 +151,15 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
                         raise base.CorruptRegistry(
                             "confirmed record lacks registry identity"
                         )
+                    historical_entry = self._load_entry(q, entry_digest)
+                    self.authority.verify(historical_entry)
+                    if (
+                        historical_entry.sink_id != sink_id
+                        or historical_entry.generation != generation
+                    ):
+                        raise base.CorruptRegistry(
+                            "confirmed record registry identity mismatch"
+                        )
                     capplan = (
                         self.bound._load_binding(q, request.request_id)
                         if hasattr(self.bound, "_load_binding")
@@ -177,7 +186,7 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
 
 class CorrectedRegistryBrokerWorker(base.RegistryBrokerWorker):
     def __init__(self, registry, runtime, secret):
-        if not isinstance(registry, CorrectedRegistryBoundJournal):
+        if type(registry) is not CorrectedRegistryBoundJournal:
             raise base.RegistryBindingError(
                 "supported broker worker requires audited registry journal"
             )
