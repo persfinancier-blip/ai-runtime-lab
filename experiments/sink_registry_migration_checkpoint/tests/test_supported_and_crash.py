@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +39,37 @@ class SupportedSurfaceTests(unittest.TestCase):
         lifecycle = DurableRegistryAuthority(path, root, recovery)
         return ThresholdLifecycleRegistryBoundJournal(bound, lifecycle)
 
+    def _proof(self, registry, checkpoint):
+        q = registry.journal._con()
+        try:
+            authority_id = q.execute(
+                "SELECT authority_id FROM registry_authority_head WHERE singleton=1"
+            ).fetchone()[0]
+            body = json.loads(
+                q.execute(
+                    "SELECT body FROM registry_authorities WHERE authority_id=?",
+                    (authority_id,),
+                ).fetchone()[0]
+            )
+        finally:
+            q.close()
+        keys = [bytes.fromhex(value) for _, value in sorted(body["keys"].items())]
+        return __import__(
+            "experiments.sink_registry_migration_checkpoint.integration",
+            fromlist=["RealMigrationProof", "sign_checkpoint"],
+        ).RealMigrationProof(
+            checkpoint.checkpoint_id,
+            checkpoint.terminal_authority_id,
+            checkpoint.terminal_authority_version,
+            tuple(
+                __import__(
+                    "experiments.sink_registry_migration_checkpoint.integration",
+                    fromlist=["sign_checkpoint"],
+                ).sign_checkpoint(checkpoint, key)
+                for key in keys[: body["threshold"]]
+            ),
+        )
+
     def test_exact_final_lab077_journal_is_accepted(self):
         with tempfile.TemporaryDirectory() as td:
             registry = self._registry(td)
@@ -63,6 +95,30 @@ class SupportedSurfaceTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             SupportedMigrationCoordinator(Duck())
+
+    def test_idempotent_retry_reauthenticates_historical_authority(self):
+        with tempfile.TemporaryDirectory() as td:
+            registry = self._registry(td)
+            coordinator = SupportedMigrationCoordinator(registry)
+            checkpoint = coordinator.preview(cutoff_sequence=0)
+            proof = self._proof(registry, checkpoint)
+            coordinator.migrate(checkpoint, proof)
+
+            q = registry.journal._con()
+            try:
+                authority_id = q.execute(
+                    "SELECT authority_id FROM registry_authority_head WHERE singleton=1"
+                ).fetchone()[0]
+                q.execute(
+                    "UPDATE registry_authorities SET body='{}' WHERE authority_id=?",
+                    (authority_id,),
+                )
+                q.commit()
+            finally:
+                q.close()
+
+            with self.assertRaises(Exception):
+                coordinator.migrate(checkpoint, proof)
 
 
 class CrashAndRestartTests(RealIntegrationTests):
