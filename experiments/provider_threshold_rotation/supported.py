@@ -13,6 +13,7 @@ from experiments.asymmetric_provider_history.supported import (
 
 from .enablement import ThresholdEnablement, verify_enablement
 from .protocol import DurableRotationAuthority, RotationAuthority, Signature
+from .strict import require_canonical_authority
 
 
 class SupportedThresholdAuthorizedAsymmetricProviderLedger(
@@ -34,8 +35,7 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
         rotation_authority: RotationAuthority,
         enablement: ThresholdEnablement,
     ):
-        if type(rotation_authority) is not RotationAuthority:
-            raise TypeError("exact LAB-083 RotationAuthority required")
+        require_canonical_authority(rotation_authority)
         if type(enablement) is not ThresholdEnablement:
             raise TypeError("exact LAB-083 ThresholdEnablement required")
         super().__init__(path, attested, bootstrap, signer)
@@ -68,6 +68,7 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
                 q.execute("BEGIN IMMEDIATE")
                 head = self.provider_history._current_locked(q)
                 authority = self.rotation_authority.current_locked(q)
+                require_canonical_authority(authority)
                 if (
                     enablement.start_provider_generation_id != head.generation_id
                     or enablement.start_provider_generation != head.generation
@@ -109,6 +110,7 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
             raise InvalidTransition("missing threshold enablement")
         row = rows[0]
         authority = self.rotation_authority._load_locked(q, row[2])
+        require_canonical_authority(authority)
         enablement = ThresholdEnablement(
             row[0],
             row[1],
@@ -194,6 +196,7 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
         old_signatures: tuple[Signature, ...],
         new_signatures: tuple[Signature, ...],
     ):
+        require_canonical_authority(new_authority)
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
@@ -226,7 +229,8 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
                 (enablement.start_provider_generation,),
             ).fetchall()
             transitions = [(r[0], r[1], r[2]) for r in rows]
-            self.rotation_authority.verify_durable_locked(q, transitions)
+            current = self.rotation_authority.verify_durable_locked(q, transitions)
+            require_canonical_authority(current)
             q.commit()
             return True
         except:
