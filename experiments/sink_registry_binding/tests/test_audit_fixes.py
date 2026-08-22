@@ -5,7 +5,10 @@ from experiments.sink_registry_binding.audit_fixes import (
     CorrectedRegistryBoundJournal,
     CorrectedRegistryBrokerWorker,
 )
-from experiments.sink_registry_binding.protocol import HistoricalExecutionBlocked
+from experiments.sink_registry_binding.protocol import (
+    HistoricalExecutionBlocked,
+    RegistryAuthError,
+)
 from experiments.sink_registry_binding.tests.test_protocol import Tests, Sink, Req, Bound, Journal
 
 
@@ -14,6 +17,41 @@ class AuditFixTests(Tests):
         j = Journal(f"{td}/j.db")
         r = CorrectedRegistryBoundJournal(Bound(j), self.auth)
         return j, r
+
+    def test_preexisting_content_address_row_is_verified_before_activation(self):
+        with tempfile.TemporaryDirectory() as td:
+            j, r = self.setup(td)
+            entry = self.entry()
+            q = j._con()
+            try:
+                q.execute(
+                    "INSERT INTO sink_registry_entries VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        entry.entry_digest,
+                        entry.sink_id,
+                        entry.generation,
+                        entry.adapter_digest,
+                        entry.endpoint_origin,
+                        entry.operation_profile,
+                        entry.predecessor_entry_digest,
+                        entry.issuer_id,
+                        entry.issuer_generation,
+                        "0" * 64,
+                    ),
+                )
+                q.commit()
+            finally:
+                q.close()
+            with self.assertRaises(RegistryAuthError):
+                r.observe(entry)
+            q = j._con()
+            try:
+                self.assertEqual(
+                    q.execute("SELECT COUNT(*) FROM sink_registry_heads").fetchone()[0],
+                    0,
+                )
+            finally:
+                q.close()
 
     def test_confirmed_receipt_ignores_stale_inputs(self):
         with tempfile.TemporaryDirectory() as td:
