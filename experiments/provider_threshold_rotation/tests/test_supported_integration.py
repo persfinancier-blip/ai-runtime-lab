@@ -122,7 +122,7 @@ class SupportedIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             _, ledger, s1, _, raw, _ = self.make_ledger(path)
-            ledger.reserve(Intent("pending", "component-A", "anchor", {"v": 1}))
+            ledger.reserve(Intent("pending", "component-A", "migration", {"v": 1}))
             _, a2, s2, proof, quorum = self.rotation_material(ledger, s1, raw, position=0)
             with self.assertRaises(PendingRotationBlocked):
                 ledger.rotate_provider(s2, proof, a2, quorum)
@@ -153,7 +153,7 @@ class SupportedIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             provider1, ledger, s1, auth, raw, enablement = self.make_ledger(path)
-            intent = Intent("before-rotation", "component-A", "anchor", {"v": 1})
+            intent = Intent("before-rotation", "component-A", "migration", {"v": 1})
             confirmed = ledger.execute(intent)
             self.assertEqual(confirmed.status, "CONFIRMED")
             old_receipt = ledger.provider_history.load_receipt(confirmed.request_id)
