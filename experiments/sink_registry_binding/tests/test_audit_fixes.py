@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 
+from experiments.sink_registry_binding import protocol as base
 from experiments.sink_registry_binding.audit_fixes import (
     CorrectedRegistryBoundJournal,
     CorrectedRegistryBrokerWorker,
@@ -8,15 +9,49 @@ from experiments.sink_registry_binding.audit_fixes import (
 from experiments.sink_registry_binding.protocol import (
     HistoricalExecutionBlocked,
     RegistryAuthError,
+    RegistryBindingError,
 )
 from experiments.sink_registry_binding.tests.test_protocol import Tests, Sink, Req, Bound, Journal
+
+
+class LegacyAuditRegistryBoundJournal(CorrectedRegistryBoundJournal):
+    """Test-only adapter preserving the historical dict capability fixture.
+
+    The supported surface is stricter; this subclass exists only so inherited
+    prototype tests can continue exercising registry-specific audit behavior.
+    """
+
+    def _capability_fields(self, capability, *, now):
+        return base.RegistryBoundJournal._capability_fields(
+            self, capability, now=now
+        )
 
 
 class AuditFixTests(Tests):
     def setup(self, td):
         j = Journal(f"{td}/j.db")
-        r = CorrectedRegistryBoundJournal(Bound(j), self.auth)
+        r = LegacyAuditRegistryBoundJournal(Bound(j), self.auth)
         return j, r
+
+    def test_supported_surface_rejects_unauthenticated_new_capability(self):
+        with tempfile.TemporaryDirectory() as td:
+            j = Journal(f"{td}/strict.db")
+            r = CorrectedRegistryBoundJournal(Bound(j), self.auth)
+            with self.assertRaises(RegistryBindingError):
+                r.reserve(
+                    Req("strict", "p"),
+                    {"sink_id": "sink-A", "reconcile_by_key": True},
+                    self.entry(),
+                    now=0,
+                )
+            q = j._con()
+            try:
+                self.assertEqual(
+                    q.execute("SELECT COUNT(*) FROM broker_requests").fetchone()[0],
+                    0,
+                )
+            finally:
+                q.close()
 
     def test_preexisting_content_address_row_is_verified_before_activation(self):
         with tempfile.TemporaryDirectory() as td:
