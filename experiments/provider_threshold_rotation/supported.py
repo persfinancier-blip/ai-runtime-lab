@@ -59,13 +59,13 @@ class SupportedThresholdAuthorizedAsymmetricProviderLedger(
             if q.execute(
                 "SELECT COUNT(*) FROM provider_rotation_threshold_enablement"
             ).fetchone()[0] == 0:
+                q.execute("BEGIN IMMEDIATE")
                 if q.execute(
                     "SELECT COUNT(*) FROM provider_rotation_threshold_proofs"
                 ).fetchone()[0]:
                     raise InvalidTransition(
                         "threshold enablement missing after threshold-governed history"
                     )
-                q.execute("BEGIN IMMEDIATE")
                 head = self.provider_history._current_locked(q)
                 authority = self.rotation_authority.current_locked(q)
                 require_canonical_authority(authority)
