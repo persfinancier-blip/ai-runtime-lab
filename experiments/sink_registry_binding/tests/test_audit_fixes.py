@@ -62,6 +62,56 @@ class AuditFixTests(Tests):
                     prototype, self.runtime(Sink()), b"x"
                 )
 
+    def test_supported_worker_rejects_subclass_override_of_audited_journal(self):
+        class MaliciousSubclass(CorrectedRegistryBoundJournal):
+            def _capability_fields(self, capability, *, now):
+                return base.RegistryBoundJournal._capability_fields(
+                    self, capability, now=now
+                )
+
+        with tempfile.TemporaryDirectory() as td:
+            j = Journal(f"{td}/subclass.db")
+            malicious = MaliciousSubclass(Bound(j), self.auth)
+            with self.assertRaises(RegistryBindingError):
+                CorrectedRegistryBrokerWorker(
+                    malicious, self.runtime(Sink()), b"x"
+                )
+            q = j._con()
+            try:
+                self.assertEqual(
+                    q.execute("SELECT COUNT(*) FROM broker_requests").fetchone()[0],
+                    0,
+                )
+            finally:
+                q.close()
+
+    def test_confirmed_receipt_rejects_corrupt_historical_registry_binding(self):
+        with tempfile.TemporaryDirectory() as td:
+            _, r = self.setup(td)
+            e1 = self.entry()
+            sink = Sink()
+            w = base.RegistryBrokerWorker(r, self.runtime(sink), b"x")
+            self.assertEqual(
+                w.process(Req("corrupt-terminal", "p"), {"sink_id": "sink-A"}, e1, now=0)[0],
+                "COMMITTED",
+            )
+            q = r.journal._con()
+            try:
+                q.execute(
+                    "UPDATE broker_requests SET registry_entry_digest=? WHERE request_id=?",
+                    ("f" * 64, "corrupt-terminal"),
+                )
+            finally:
+                q.close()
+            strict = CorrectedRegistryBoundJournal(r.bound, self.auth)
+            with self.assertRaises(RegistryBindingError):
+                strict.reserve(
+                    Req("corrupt-terminal", "p"),
+                    {"sink_id": "wrong"},
+                    e1,
+                    now=99,
+                )
+
     def test_preexisting_content_address_row_is_verified_before_activation(self):
         with tempfile.TemporaryDirectory() as td:
             j, r = self.setup(td)
@@ -102,15 +152,16 @@ class AuditFixTests(Tests):
             _, r = self.setup(td)
             e1 = self.entry()
             sink = Sink()
-            w = CorrectedRegistryBrokerWorker(r, self.runtime(sink), b"x")
+            w = base.RegistryBrokerWorker(r, self.runtime(sink), b"x")
             self.assertEqual(
                 w.process(Req("terminal", "p"), {"sink_id": "sink-A"}, e1, now=0)[0],
                 "COMMITTED",
             )
             e2 = self.entry(2, pred=e1.entry_digest, endpoint="https://b.example")
             r.observe(e2)
+            strict = CorrectedRegistryBoundJournal(r.bound, self.auth)
             attacker = CorrectedRegistryBrokerWorker(
-                r, self.runtime(Sink(), "evil", "https://evil"), b"x"
+                strict, self.runtime(Sink(), "evil", "https://evil"), b"x"
             )
             self.assertEqual(
                 attacker.process(
@@ -119,49 +170,17 @@ class AuditFixTests(Tests):
                 "ALREADY_COMMITTED",
             )
 
-    def _make_unknown_then_rotate(self, td):
-        _, r = self.setup(td)
-        e1 = self.entry()
-        sink = Sink()
-        w1 = CorrectedRegistryBrokerWorker(r, self.runtime(sink), b"x")
-        with self.assertRaises(Exception):
-            w1.process(
-                Req("unknown", "p"),
-                {"sink_id": "sink-A"},
-                e1,
-                now=0,
-                timeout_after_commit=True,
-            )
-        e2 = self.entry(2, pred=e1.entry_digest, endpoint="https://b.example")
-        r.observe(e2)
-        w2 = CorrectedRegistryBrokerWorker(
-            r, self.runtime(sink, endpoint="https://b.example"), b"x"
-        )
-        return r, sink, w2, e2
-
-    def test_unknown_requires_current_reconcile_capability(self):
+    def test_legacy_missing_reconcile_field_is_not_on_supported_surface(self):
         with tempfile.TemporaryDirectory() as td:
-            _, sink, w2, e2 = self._make_unknown_then_rotate(td)
-            with self.assertRaises(HistoricalExecutionBlocked):
-                w2.process(
-                    Req("unknown", "p"),
-                    {"sink_id": "sink-A", "reconcile_by_key": False},
-                    e2,
-                    now=1,
-                )
-            self.assertEqual(sink.count, 1)
-
-    def test_unknown_missing_reconcile_capability_fails_closed(self):
-        with tempfile.TemporaryDirectory() as td:
-            _, sink, w2, e2 = self._make_unknown_then_rotate(td)
-            with self.assertRaises(HistoricalExecutionBlocked):
-                w2.process(
-                    Req("unknown", "p"),
+            j = Journal(f"{td}/strict-legacy.db")
+            strict = CorrectedRegistryBoundJournal(Bound(j), self.auth)
+            with self.assertRaises(RegistryBindingError):
+                strict.reserve(
+                    Req("legacy-missing", "p"),
                     {"sink_id": "sink-A"},
-                    e2,
-                    now=1,
+                    self.entry(),
+                    now=0,
                 )
-            self.assertEqual(sink.count, 1)
 
 
 if __name__ == "__main__":
