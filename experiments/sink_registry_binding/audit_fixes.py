@@ -176,6 +176,13 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
 
 
 class CorrectedRegistryBrokerWorker(base.RegistryBrokerWorker):
+    def __init__(self, registry, runtime, secret):
+        if not isinstance(registry, CorrectedRegistryBoundJournal):
+            raise base.RegistryBindingError(
+                "supported broker worker requires audited registry journal"
+            )
+        super().__init__(registry, runtime, secret)
+
     def process(
         self,
         request,
