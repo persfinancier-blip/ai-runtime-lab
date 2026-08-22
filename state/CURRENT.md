@@ -12,43 +12,39 @@ LAB-081 — preserve verification of historical shared-anchor receipts across au
 - Active: Issue #153 / LAB-081 — IN_PROGRESS.
 - Active branch: `lab/081-provider-generation-history`.
 - Active draft PR: #154 `[LAB-081] Historical provider generation continuity`.
-- Current published PR HEAD observed at creation: `50373e4af6d7dfaeaf342f86cc074dc4f24946a8`.
+- Current published PR HEAD: `d4e23da423273b4e0bbd6e38bd094d7a6ee49816`.
 
 ## Last completed step
 
-A first LAB-081 slice was implemented and published. It introduces durable content-addressed provider-generation descriptors, exact same-provider N→N+1 transition proofs authenticated by both old and new generation keys, a durable current-generation head, historical signed-receipt persistence, current-only new-effect authority, and restart verification of the provider history.
+The real LAB-080 integration is published: provider generation history and the shared-anchor ledger use the same SQLite database; reservation and provider rotation serialize through the same write boundary; historical signed observations are retained for old CONFIRMED entries; direct standalone integrated provider-history rotation is blocked; and mixed-generation/restart/race tests are present.
 
-The isolated corrected suite passed 12/12 and compileall passed before publication. The research note records TUF root continuity as the donor mechanism: explicit persisted trust-generation continuity rather than caller-supplied historical keys.
+A fresh audit in the current run found another durable-integrity defect: `IntegratedProviderHistory._load_receipt_locked()` recomputed the authenticated receipt's stable binding but ignored the separately persisted `historical_provider_receipts.stable_binding` column. Corrupting only that durable column therefore survived restart verification. The branch now reads the persisted binding and requires exact equality with the recomputed authenticated binding. A dedicated `test_audit_regressions.py` corrupts only that column and requires restart failure.
 
-A separate audit then found a cross-layer race in the intended LAB-080 integration: checking for PREPARED shared-anchor work outside the provider-rotation transaction is unsafe because reserve can race between check and head update. A local refactor exposing a transaction-internal `_rotate_locked(...)` passed the same 12/12 tests, but those corrected bytes are not yet published and therefore are not claimed as PR-head evidence.
-
-Direct `git clone` was probed in this run and failed before checkout because `github.com` DNS resolution is unavailable. GitHub connector remains the durable read/write route.
+Direct `git clone` was re-probed in this run and failed before checkout because `github.com` DNS resolution remains unavailable. GitHub connector is the durable read/write route.
 
 ## Evidence produced
 
-- Draft PR #154.
-- Branch `lab/081-provider-generation-history`.
-- `experiments/provider_generation_history/protocol.py`.
-- `experiments/provider_generation_history/tests/test_protocol.py`.
-- `experiments/provider_generation_history/README.md`.
-- `research/2026-08-22-provider-generation-history.md`.
-- Isolated corrected local suite: 12/12 passed.
-- Compileall: passed.
-- Remote PR patch audit performed on the first published slice.
-- Primary donor: TUF root-update continuity (old-root + new-root authorization and rollback rejection).
+- Draft PR #154 remains open, mergeable, and draft.
+- Current branch HEAD `d4e23da423273b4e0bbd6e38bd094d7a6ee49816`.
+- Durable-binding fix commit `5ef0f1ad0119bd6045e78c690e3de34dfa542500`.
+- Audit regression commit `d4e23da423273b4e0bbd6e38bd094d7a6ee49816`.
+- Original isolated corrected suite: 12/12 passed; compileall passed before later integration changes.
+- Current integrated/audit-fix HEAD is deliberately **not** claimed exact-source tested yet.
+- Fresh remote code audit identified and fixed the persisted stable-binding omission.
+- Primary donor remains TUF root-update continuity: explicit persisted trust-generation continuity rather than caller-supplied historical keys.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- PR #154 must remain draft until the actual LAB-080 integration and exact-source regression gate pass.
-- The published first slice does not yet durably capture LAB-036 signed observations at LAB-080 confirmation, so it cannot yet verify mixed old/new LAB-080 ledger history after rotation.
-- PREPARED check and provider-generation rotation must be one SQLite write transaction against the shared LAB-080 database; a separate pre-check is a known race.
+- PR #154 must remain draft until exact-source regression execution of the current HEAD passes.
+- Direct shell checkout is unavailable in the observed runtime because GitHub DNS resolution fails; connector reconstruction is the supported fallback.
 - Historical generations are verification-only and must never regain new-effect authority.
+- The reference uses HMAC historical material because LAB-036 is HMAC-based; verification-only is an audited execution-policy property, not cryptographic key-custody separation. Production should retain public-only verification material / protected signing custody.
 - Provider-generation lifecycle is not provider consensus, cross-provider failover, HSM custody, or general PKI.
 
 ## Exact next action
 
-Resume Issue #153 / PR #154. First publish the transaction-safe `_rotate_locked(...)` refactor. Then implement the real LAB-080 integration surface over exact merged `SupportedSharedAnchorLedger`: use the same database, serialize PREPARED check + generation-head rotation in one `BEGIN IMMEDIATE`, persist the exact signed provider observation when an entry becomes CONFIRMED, and override historical reauthentication so old CONFIRMED receipts are verified with the exact authenticated historical generation while current external reads/new increments still require the current generation. Add a mixed-history test with one old CONFIRMED entry, provider rotation, one new CONFIRMED entry, restart, component verification across both entries, old-generation new-effect rejection, and rotation-vs-PREPARED serialization. Then reconstruct exact PR-head bytes through the GitHub connector, run LAB-081 + LAB-080 + LAB-036 regressions, unsafe baseline and compileall, perform a fresh remote patch audit, and only then consider PR #154 ready for merge.
+Resume Issue #153 / PR #154. Reconstruct exact current PR-head executable bytes plus exact merged LAB-080 and LAB-036 dependencies through the GitHub connector and verify their Git blob identities. Execute LAB-081 protocol + integration + audit-regression suites, LAB-080 protocol/supported regressions, LAB-036 regressions, the unsafe baseline, and compileall. If failures occur, fix and republish rather than weakening the gate. Then perform a fresh complete remote patch audit of every PR file. If the exact-source gate and audit are clean and HEAD has not moved, mark PR #154 ready, squash-merge, close Issue #153 DONE, and choose the next highest-value correctness bottleneck.
 
 ## Backlog
 
