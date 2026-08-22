@@ -84,6 +84,18 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaises(CurrentGenerationRequired):
                 ledger.provider_history.require_current("anchor-A", 1)
 
+    def test_direct_provider_history_rotation_is_blocked(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.ledger(path, attested(p1, 1, self.k1))
+            ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
+            with self.assertRaises(PendingRotationBlocked):
+                ledger.provider_history.rotate(
+                    self.g2, ledger.provider_history.make_transition(self.g1, self.g2)
+                )
+            self.assertEqual(ledger.provider_history.current().generation, 1)
+
     def test_prepared_intent_and_rotation_serialize_in_same_database(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
