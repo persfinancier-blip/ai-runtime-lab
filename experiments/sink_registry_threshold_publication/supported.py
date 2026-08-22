@@ -3,7 +3,7 @@
 New sink-registry publication requires ``ThresholdEnvelope``. Historical
 single-signature LAB-076 publication methods remain available only in older
 experiment modules for audit history/backwards regression; this module exposes
-only the audited threshold-aware request/publication ordering.
+only the final audited threshold-aware atomic request/publication ordering.
 """
 
 from experiments.sink_registry_authority_lifecycle.audit_fixes import (
@@ -18,9 +18,9 @@ from experiments.sink_registry_authority_lifecycle.protocol import (
     UnsafeRecovery,
 )
 from experiments.sink_registry_binding.supported import RegistryEntry, RuntimeAdapter
-from experiments.sink_registry_threshold_publication.audit_fixes import (
-    CorrectedThresholdLifecycleRegistryBoundJournal as ThresholdLifecycleRegistryBoundJournal,
-    CorrectedThresholdLifecycleRegistryBrokerWorker as ThresholdLifecycleRegistryBrokerWorker,
+from experiments.sink_registry_threshold_publication.final_fixes import (
+    FinalThresholdLifecycleRegistryBoundJournal as ThresholdLifecycleRegistryBoundJournal,
+    FinalThresholdLifecycleRegistryBrokerWorker as ThresholdLifecycleRegistryBrokerWorker,
 )
 from experiments.sink_registry_threshold_publication.integration import ThresholdHistoricalMissing
 from experiments.sink_registry_threshold_publication.protocol import (
