@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 from experiments.anchor_attestation.protocol import AttestedCatchup
-from experiments.provider_generation_history.integration import HistoricalSharedAnchorLedger
+from experiments.provider_generation_history.integration import (
+    HistoricalSharedAnchorLedger,
+    IntegratedProviderHistory,
+)
 from experiments.provider_generation_history.protocol import (
-    CurrentGenerationRequired,
     GenerationDescriptor,
     HistoricalReceipt,
     HistoricalVerificationError,
+    PendingRotationBlocked,
 )
 from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution, LedgerEntry, UnexplainedAdvance
+from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
+
+
+class CoordinatorOnlyProviderHistory(IntegratedProviderHistory):
+    """Provider history whose authority-changing API is only the shared-ledger coordinator."""
+
+    def rotate(self, *args, **kwargs):
+        raise PendingRotationBlocked(
+            "integrated provider rotation must use SupportedHistoricalSharedAnchorLedger.rotate_provider()"
+        )
 
 
 class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
@@ -17,12 +30,17 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     The first exact signed provider observation for a confirmed request is immutable
     historical evidence. Later verification never replaces it with a new challenge;
     current anchor freshness is established separately by LAB-080 authenticated reads.
+
+    Provider-generation mutation is coordinator-only so a caller cannot bypass the
+    shared LAB-080 PREPARED check by invoking the standalone history API directly.
     """
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
         if type(attested) is not AttestedCatchup:
             raise TypeError("exact LAB-036 AttestedCatchup required")
-        super().__init__(path, attested, bootstrap)
+        self.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
+        SupportedSharedAnchorLedger.__init__(self, path, attested)
+        self._require_runtime_matches_durable_head()
 
     def _stored_receipt(self, entry: LedgerEntry):
         q = self._con()
