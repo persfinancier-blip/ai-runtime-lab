@@ -101,17 +101,35 @@ class SupportedAuditTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 registry.head("sink-A")
 
-    def test_standalone_durable_verification_excludes_concurrent_rotation_commit(self):
+    def test_supported_durable_verifier_fences_concurrent_rotation_commit(self):
         with tempfile.TemporaryDirectory() as td:
             _, _, lifecycle, _, root, r1keys, _ = self.stack(td)
             r2keys, r2map = keys("r2")
             r2 = RootState("sink-registry", 2, 1, 2, r2map)
             payload = rotation_payload(root, r2)
 
-            guard = lifecycle._con()
-            guard.execute("BEGIN IMMEDIATE")
-            finished = threading.Event()
+            from experiments.sink_registry_authority_lifecycle import protocol as raw
+
+            original = raw.DurableRegistryAuthority.verify_durable
+            entered = threading.Event()
+            release = threading.Event()
+            audit_finished = threading.Event()
+            rotation_finished = threading.Event()
             errors = []
+
+            def slow_raw_verify(self, *args, **kwargs):
+                entered.set()
+                if not release.wait(2):
+                    raise RuntimeError("test verifier release timeout")
+                return original(self, *args, **kwargs)
+
+            def audit():
+                try:
+                    lifecycle.verify_durable()
+                except Exception as exc:
+                    errors.append(exc)
+                finally:
+                    audit_finished.set()
 
             def rotate():
                 try:
@@ -119,22 +137,29 @@ class SupportedAuditTests(unittest.TestCase):
                 except Exception as exc:
                     errors.append(exc)
                 finally:
-                    finished.set()
+                    rotation_finished.set()
 
-            thread = threading.Thread(target=rotate)
-            thread.start()
-            time.sleep(0.05)
-            self.assertFalse(finished.is_set())
-            # A consistent verifier must be able to inspect the pre-rotation state
-            # while the competing writer is fenced by the same SQLite boundary.
-            from experiments.sink_registry_authority_lifecycle import protocol as raw
-            self.assertTrue(raw.DurableRegistryAuthority.verify_durable(lifecycle))
-            guard.commit()
-            guard.close()
-            thread.join(2)
-            self.assertTrue(finished.is_set())
-            self.assertFalse(errors)
-            self.assertEqual(lifecycle.current().version, 2)
+            raw.DurableRegistryAuthority.verify_durable = slow_raw_verify
+            try:
+                audit_thread = threading.Thread(target=audit)
+                audit_thread.start()
+                self.assertTrue(entered.wait(1))
+
+                rotation_thread = threading.Thread(target=rotate)
+                rotation_thread.start()
+                time.sleep(0.05)
+                self.assertFalse(rotation_finished.is_set())
+
+                release.set()
+                audit_thread.join(2)
+                rotation_thread.join(2)
+                self.assertTrue(audit_finished.is_set())
+                self.assertTrue(rotation_finished.is_set())
+                self.assertFalse(errors)
+                self.assertEqual(lifecycle.current().version, 2)
+            finally:
+                raw.DurableRegistryAuthority.verify_durable = original
+                release.set()
 
 
 if __name__ == "__main__":
