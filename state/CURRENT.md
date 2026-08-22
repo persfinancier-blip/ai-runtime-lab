@@ -4,51 +4,53 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-080 — allow multiple authenticated durable intents to share one monotonic anchor without weakening LAB-079 rollback detection. Any observed anchor advancement beyond a component's local watermark must be explained by a contiguous authenticated intent/receipt ledger; unexplained positions remain fail-closed.
+LAB-081 — preserve verification of historical shared-anchor receipts across authenticated provider-generation rotation while keeping new-effect authority restricted to the current provider generation.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-079.
-- Completed Issue #149 / LAB-079.
-- Merged PR #150 / LAB-079 as `7f283b14cc67d50c223a1c13c349b8183084696b`.
-- Next: Issue #151 / LAB-080 — READY.
+- Completed: LAB-001 through LAB-080.
+- Completed Issue #151 / LAB-080.
+- Merged PR #152 / LAB-080 as `ddcc12e56243cfbe5ccdad56baa874e583720223`.
+- Next: Issue #153 / LAB-081 — READY.
 - Active branch: none yet.
 - Active PR: none.
 
 ## Last completed step
 
-LAB-079 was taken through its exact-source integration gate. A new real-stack test exercised the actual final LAB-077 threshold registry, LAB-078 `SupportedMigrationCoordinator`, and LAB-036 authenticated anchor. During the final audit, a real fail-open was reproduced: a corrupted `migration_anchor_meta.global_sequence` could disagree with the binding row while `catch_up()` still advanced the external provider. The supported boundary was hardened so the local sequence/binding pair is checked before provider action and CAS-rechecked before local confirmation.
+LAB-080 added an authenticated shared monotonic-anchor intent/receipt ledger over LAB-036. Multiple components may share one provider only when every intervening external position is explained by a contiguous CONFIRMED ledger suffix and freshly reauthenticated exact provider requests. A commit-boundary SQL re-read fences ledger mutation before watermark advancement.
 
-The final exact-source regression set passed after the fix and PR #150 was moved out of draft and squash-merged normally.
+The final audit also hardened restart state: the supported boundary now verifies `reserved_position` against the exact contiguous ledger tail, validates PREPARED/watermark structure, and explicitly fails closed when retained entries belong to a historical provider generation that LAB-036 can no longer verify.
+
+PR #152 passed its exact-source execution/audit gate and was squash-merged normally.
 
 ## Evidence produced
 
-- LAB-079 merge: `7f283b14cc67d50c223a1c13c349b8183084696b`.
-- Final PR #150 HEAD before merge: `c5998774755e11170e3120320c474ff6b094f80b`.
-- Final supported LAB-079 blob executed locally: `f8a915db4de86f62f87bf987f1244b5e08ad96f9`.
-- Sequence-fencing regression blob: `9631dbe39fbb9679403c6dd340e3045cc16ead46`.
-- Real-stack integration regression blob: `5870ebeb14e1b13771c8c2bd1b4aa620a9ad26fc`.
-- Combined exact-source LAB-079 + LAB-036 + final LAB-077 gate: 41/41 passed.
-- Exact LAB-036 regression: 12/12 passed.
-- Final LAB-077 audit regression: 4/4 passed.
-- `python -m compileall -q experiments` passed.
-- Unsafe local-only rollback seed failed as expected.
-- Real-stack scenarios proved: pre-migration SQLite snapshot restore detection, unrelated pre-advanced anchor rejection, timeout-after-commit reconciliation without a duplicate increment, and first post-migration threshold successor followed by anchored restart.
+- LAB-080 merge: `ddcc12e56243cfbe5ccdad56baa874e583720223`.
+- Final PR #152 HEAD before merge: `d3ceb7450c2f52b1a3514d8a67a6ea7edaecb9d2`.
+- Exact protocol blob: `68834409363c93eee4e9a9a7b9ec076098af0acf`.
+- Exact primary tests blob: `d2d127fb67147dda2c5f6786731c0a3310a067e6`.
+- Exact restart tests blob: `aa9b0f3784f97b14b59b128a2e7686e94848d377`.
+- Exact supported boundary blob: `22a05c04831f65c1d7fe9077df3bb780c4008e09`.
+- Exact supported tests blob: `763ee7f6958ed6fda1adde402452fedde5046ea1`.
+- Merged LAB-036 dependency blob executed locally: `15d8b7cf8ff093490ccb75679030d3a0fe41e401`.
+- Corrected exact-source LAB-080 suite: 18/18 passed.
+- Unsafe monotonic-only seed failed as expected.
+- Compileall passed.
+- Race regression proved mutation of an externally verified ledger slice is detected before watermark commit.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Direct shell GitHub DNS remained unavailable in the LAB-079 run; connector reconstruction plus Git blob verification is a proven exact-source fallback.
-- LAB-079 deliberately treats an external position ahead of the local migration sequence as unexplained/fail-closed. That is safe for a dedicated anchor but prevents legitimate sharing of one anchor among multiple components.
-- A higher anchor position must never be accepted merely because it is monotonic or signed; every intervening advancement needs exact authenticated intent identity.
-- Shared-anchor verification is not distributed consensus, provider availability, or a general event bus.
+- LAB-080 intentionally fails closed across provider-generation rotation because LAB-036 verifies only the currently configured provider key/generation. This is now the highest-value correctness/availability gap.
+- Historical verification must not allow an old/revoked provider generation to authorize new increments.
+- Provider-generation lifecycle is not provider consensus, cross-provider failover, HSM custody, or general PKI.
 
 ## Exact next action
 
-Start Issue #151 / LAB-080. Create a branch and build an unsafe baseline showing that `anchor >= local` accepts unrelated advancement. Then implement a minimal append-only shared-anchor intent ledger: persist stable intent identity/payload/provider/predecessor before increment, use exact request IDs for LAB-036 execution/reconciliation, persist authenticated receipt identity for each resulting position, and verify a contiguous suffix from a component's local watermark to the observed external position. Demonstrate two independent authorized components sharing one provider, plus gaps, duplicate positions, content substitution, provider-generation rotation, ledger rollback, UNKNOWN/retry and unknown intent-type failure cases. Keep consensus and remote ledger services out of scope.
+Start Issue #153 / LAB-081. Create a branch and reproduce the current-key-only availability cliff plus an unsafe caller-supplied historical-key baseline. Build a durable authenticated provider-generation history that separates current publication/effect authority from historical receipt verification. Integrate it with LAB-080 so old CONFIRMED receipts remain verifiable after rotation while only the current generation can create new anchor requests. Cover rollback, same-generation key substitution, missing/corrupt transition proof, cross-provider substitution, rotation around PREPARED work, restart, and a ledger containing CONFIRMED entries from both old and new generations. Run exact-source LAB-081 + LAB-080 + LAB-036 regressions and audit before integration.
 
 ## Backlog
 
-- #151 / LAB-080 — shared monotonic-anchor intent ledger and explained-ahead conformance — READY.
+- #153 / LAB-081 — historical anchor-provider generation continuity and receipt verification — READY.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
