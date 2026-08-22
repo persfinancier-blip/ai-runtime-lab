@@ -22,7 +22,13 @@ from experiments.sink_registry_threshold_publication.supported import (
 
 
 class SupportedMigrationCoordinator(RealMigrationCoordinator):
-    """Exact-type composition with the final audited LAB-077 journal."""
+    """Exact-type composition with the final audited LAB-077 journal.
+
+    Supported migration never treats the idempotent INSERT/lookup path as proof
+    of authority.  After either a fresh commit or an exact retry, re-run the
+    mixed-history verifier so the stored checkpoint signatures and historical
+    authority material are reauthenticated before reporting success.
+    """
 
     def __init__(self, registry):
         if type(registry) is not ThresholdLifecycleRegistryBoundJournal:
@@ -30,6 +36,11 @@ class SupportedMigrationCoordinator(RealMigrationCoordinator):
                 "supported LAB-078 migration requires the exact final LAB-077 journal"
             )
         super().__init__(registry)
+
+    def migrate(self, checkpoint, proof):
+        checkpoint_id = super().migrate(checkpoint, proof)
+        self.verify_mixed_history()
+        return checkpoint_id
 
 
 __all__ = [
