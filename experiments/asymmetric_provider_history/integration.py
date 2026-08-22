@@ -51,7 +51,6 @@ class IntegratedAsymmetricProviderHistory(AsymmetricProviderHistory):
         ).fetchall()
         if not rows:
             raise HistoricalVerificationError("missing asymmetric provider history")
-
         publics = []
         for generation_id, provider_id, generation, public_key_hex in rows:
             public = PublicGeneration(provider_id, generation, public_key_hex)
@@ -59,10 +58,8 @@ class IntegratedAsymmetricProviderHistory(AsymmetricProviderHistory):
             if public.generation_id != generation_id:
                 raise HistoricalVerificationError("public generation identity mismatch")
             publics.append(public)
-
         if publics[0].generation_id != self.bootstrap.generation_id:
             raise HistoryRollback("asymmetric bootstrap generation changed")
-
         for old, new in zip(publics, publics[1:]):
             row = q.execute(
                 "SELECT old_generation_id,provider_id,old_signature,new_signature "
@@ -86,11 +83,9 @@ class IntegratedAsymmetricProviderHistory(AsymmetricProviderHistory):
                 raise HistoricalVerificationError("asymmetric transition continuity mismatch")
             verify_signature(old, proof.unsigned, proof.old_signature)
             verify_signature(new, proof.unsigned, proof.new_signature)
-
         current = self._current_locked(q)
         if current.generation_id != publics[-1].generation_id:
             raise HistoryRollback("asymmetric head rollback/substitution")
-
         for row in q.execute(
             "SELECT provider_id,generation,position,request_id,kind,challenge,signature,stable_binding "
             "FROM asymmetric_provider_receipts"
@@ -256,13 +251,11 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                     raise IntentConflict("intent_id reused with different content")
                 q.commit()
                 return entry
-
             pending = q.execute(
                 "SELECT COUNT(*) FROM shared_anchor_intents WHERE status='PREPARED'"
             ).fetchone()[0]
             if pending:
                 raise PendingIntent("another anchor intent is unresolved")
-
             durable = self.provider_history._current_locked(q)
             predecessor = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
@@ -319,13 +312,11 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         expected = new_attested.verifier.expected
         if (expected.provider_id, expected.generation) != (new.provider_id, new.generation):
             raise InvalidTransition("new LAB-036 provider does not match Ed25519 generation")
-
         challenge = new_attested.challenge()
         observed = new_attested.authenticated_read(
             challenge=challenge,
             request_id=f"asymmetric-provider-rotation-read:{new.generation}",
         )
-
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
@@ -347,7 +338,6 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             raise
         finally:
             q.close()
-
         self.attested = new_attested
         self.signer = new_signer
         self._require_runtime_matches_durable_head()
@@ -410,12 +400,10 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             raise
         finally:
             q.close()
-
         if receipt is not None:
             return self._receipt_binds_entry(receipt, entry)
         if entry.status == "CONFIRMED":
             raise HistoricalVerificationError("confirmed ledger row is missing asymmetric receipt")
-
         self._runtime_matches_entry(entry)
         challenge = self.attested.challenge()
         observed = self.attested.provider.reconcile_increment(
@@ -431,7 +419,6 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         )
         if verified.position != entry.position or verified.request_id != entry.request_id:
             raise UnexplainedAdvance("provider result does not bind ledger position/request")
-
         receipt = self._signed_receipt_from_observation(verified)
         self._receipt_binds_entry(receipt, entry)
         q = self._con()
@@ -481,7 +468,6 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             ).fetchall()
             if len(rows) != reserved:
                 raise IntentSubstitution("reserved_position does not match ledger tail")
-
             prepared = 0
             for expected_position, row in enumerate(rows, 1):
                 entry = self._row_entry(row)
@@ -500,6 +486,8 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                     ):
                         raise ProviderMismatch("PREPARED intent belongs to historical generation")
                     if self.provider_history._maybe_load_receipt_locked(q, entry.request_id) is not None:
+                        # A receipt may legitimately exist after the external effect and before
+                        # ledger confirmation; it must still bind the exact PREPARED row.
                         receipt = self.provider_history._load_receipt_locked(q, entry.request_id)
                         self._receipt_binds_entry(receipt, entry)
                 else:
@@ -509,7 +497,6 @@ class AsymmetricHistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                     self._receipt_binds_entry(receipt, entry)
             if prepared > 1:
                 raise IntentSubstitution("multiple unresolved durable intents")
-
             for component_id, position in q.execute(
                 "SELECT component_id,position FROM component_anchor_watermarks"
             ).fetchall():
