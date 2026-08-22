@@ -1,9 +1,9 @@
 """Supported LAB-077 threshold-publication surface.
 
-New sink-registry publication requires ``ThresholdEnvelope``. The historical
+New sink-registry publication requires ``ThresholdEnvelope``. Historical
 single-signature LAB-076 publication methods remain available only in older
-experiment modules for audit history and backwards regression; this module does
-not export them as a supported publication path.
+experiment modules for audit history/backwards regression; this module exposes
+only the audited threshold-aware request/publication ordering.
 """
 
 from experiments.sink_registry_authority_lifecycle.audit_fixes import (
@@ -18,11 +18,11 @@ from experiments.sink_registry_authority_lifecycle.protocol import (
     UnsafeRecovery,
 )
 from experiments.sink_registry_binding.supported import RegistryEntry, RuntimeAdapter
-from experiments.sink_registry_threshold_publication.integration import (
-    ThresholdHistoricalMissing,
-    ThresholdLifecycleRegistryBoundJournal,
-    ThresholdLifecycleRegistryBrokerWorker,
+from experiments.sink_registry_threshold_publication.audit_fixes import (
+    CorrectedThresholdLifecycleRegistryBoundJournal as ThresholdLifecycleRegistryBoundJournal,
+    CorrectedThresholdLifecycleRegistryBrokerWorker as ThresholdLifecycleRegistryBrokerWorker,
 )
+from experiments.sink_registry_threshold_publication.integration import ThresholdHistoricalMissing
 from experiments.sink_registry_threshold_publication.protocol import (
     AuthorityMismatch,
     InvalidSignatureSet,
