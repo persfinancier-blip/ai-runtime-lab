@@ -11,6 +11,17 @@ class CorrectedRegistryBoundJournal(base.RegistryBoundJournal):
     checked in one snapshot and activated in a later snapshot.
     """
 
+    def _capability_fields(self, capability, *, now):
+        # The base prototype retains a dict compatibility path for historical
+        # interface tests. The audited/supported surface must never convert an
+        # unauthenticated structural claim into execution or reconciliation
+        # authority. Terminal CONFIRMED reads return before this gate.
+        if not (hasattr(capability, "claim") and hasattr(capability, "attestation")):
+            raise base.RegistryBindingError(
+                "authenticated sink capability attestation required"
+            )
+        return super()._capability_fields(capability, now=now)
+
     def observe(self, entry):
         entry = self.authority.verify(entry)
         entry_digest = entry.entry_digest
