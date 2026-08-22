@@ -69,6 +69,15 @@ class CorrectedLifecycleRegistryBoundJournal(
         super().__init__(bound, lifecycle)
         self.authority = _StrictHistoricalAuthorityAdapter(lifecycle)
 
+    def reserve(self, request, capability, entry, *, now):
+        # LAB-075 reserve() verifies authority before it calls observe(). Under the
+        # strict historical-only adapter a legitimate first publication would
+        # therefore be rejected as "missing history". Publish atomically through
+        # LAB-076 first; inherited reserve() then sees the exact historical binding
+        # and remains strict for all subsequent read/resume paths.
+        self.observe(entry)
+        return super().reserve(request, capability, entry, now=now)
+
     def verify_durable(self):
         guard = self.journal._con()
         try:
