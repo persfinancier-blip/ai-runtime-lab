@@ -4,45 +4,57 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-082 — make LAB-081's historical verification-only provider state cryptographic by retaining Ed25519 public verification material in durable history while keeping private signing capability outside the database.
+LAB-082 — replace LAB-081 durable historical HMAC verification material with Ed25519 public verification-only history while preserving LAB-080 shared-anchor serialization/restart semantics and the existing external rollback boundary.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-081.
 - Active: Issue #155 / LAB-082 — IN_PROGRESS.
 - Branch: `lab/082-asymmetric-provider-history`.
-- Draft PR #156 created normally this run; head `b1d3badf770f2152685108fca57a4c86aeb13cd0`.
+- Draft PR #156: open, mergeable, intentionally draft.
+- Current audited/working PR HEAD: `1ac3447260ce8e9b8f61f7c53039dd19cc97f37d` at last metadata fetch; subsequent README/research/PR-metadata edits do not change executable design but re-fetch HEAD before validation.
 
 ## Last completed step
 
-Re-read the operating contract/state/resume prompt and resumed LAB-082. Reconstructed the exact published protocol, corrected test, and unsafe-test blobs through the GitHub connector. Retried the previously blocked normal PR operation; draft PR #156 was created successfully. Per-run shell checkout was probed and still fails before checkout because `github.com` DNS cannot resolve, so no exact published-source execution is claimed for this run.
+Integrated the LAB-082 Ed25519 history behind the real LAB-080 SQLite shared-anchor boundary instead of leaving it as an isolated reference subsystem. Reservation reads the provider head in the same `BEGIN IMMEDIATE` transaction that appends PREPARED work; provider rotation rejects unresolved PREPARED work and advances the asymmetric head under that same SQL serialization boundary.
 
-A fresh patch audit confirms the current five-file slice is still an isolated asymmetric reference subsystem rather than the LAB-081/LAB-080 supported integration. Whole-store rollback/bootstrap freshness must remain bound to the existing external-anchor layer; the isolated SQLite history must not be promoted as independently rollback-proof.
+Current LAB-036 HMAC observations are used only for execution-time authentication. Once reconciliation is authenticated, the current Ed25519 signer signs exact provider/generation/position/request evidence. CONFIRMED history can then be verified after rotation/restart from public Ed25519 material without retaining the old LAB-036 HMAC key.
+
+A separate concurrency audit found that two workers can reconcile the same committed request using different fresh challenges, producing two different but valid signatures. A new audited `SupportedAsymmetricHistoricalSharedAnchorLedger` now treats the first valid exact-request-bound durable receipt as canonical and converges later workers onto it. It also accepts a concurrent PREPARED→CONFIRMED advance only when request identity and receipt binding match exactly.
 
 ## Evidence produced
 
-- Issue #155 updated IN_PROGRESS.
-- Draft PR #156: open, draft; head `b1d3badf770f2152685108fca57a4c86aeb13cd0`.
-- Exact branch blobs reconstructed via connector:
-  - protocol `a2fc3456233930d94aaaca5fe57b1debd50cbdab`;
-  - corrected tests `f737f71559e90e9a748fc3bd3d3e0cf90872a898`;
-  - unsafe seed `f8d4cb7a30eee2373fa0c1ecdeef4d2edfdbe0ce`.
-- Prior observed pre-publication evidence remains: corrected suite 16/16, unsafe symmetric baseline failed as expected, compileall passed.
-- Current-run direct `git clone --branch lab/082-asymmetric-provider-history` failed with `Could not resolve host: github.com`; do not convert prior local results into exact-branch execution evidence.
+- New branch integration: `experiments/asymmetric_provider_history/integration.py`.
+- New audited supported surface: `experiments/asymmetric_provider_history/supported.py`.
+- New cross-layer tests: `tests/test_integration.py` and `tests/test_supported.py`.
+- README and research note updated with the real integration boundary and non-goals.
+- Issue #155 and PR #156 descriptions updated to match actual state.
+- PR #156 remains open/mergeable/draft with 9 changed LAB-082 files.
+- Previously observed isolated pre-integration evidence remains only: corrected protocol suite 16/16, unsafe symmetric baseline failed as expected, compileall passed.
+- Direct GitHub shell access was re-probed in this run and still fails before checkout: `Could not resolve host: github.com`.
+- No exact-source execution is claimed for the new integrated PR-head bytes.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Direct shell GitHub checkout is unavailable in this run; connector reconstruction is the supported fallback.
-- Exact published branch bytes are identified, but exact-source execution of the current PR head remains a merge gate.
-- LAB-082 has not yet replaced/adapted LAB-081's historical HMAC verification behind the supported LAB-080 shared-anchor serialization surface.
-- Ed25519 removes signing capability from durable historical material, but this reference does not provide HSM/KMS custody, provider consensus, cross-provider failover, PKI certificate issuance, or compromise recovery.
+- Exact-source regression execution of the integrated/current PR head remains the only merge gate.
+- Direct shell checkout is unavailable in this runtime; reconstruct exact bytes via GitHub connector and verify Git blob identities before execution.
+- The base integration class is experimental; the audited consumption surface is `SupportedAsymmetricHistoricalSharedAnchorLedger`.
+- Ed25519 removes signing capability from durable historical storage itself, but does not claim that an independently retained old private key cannot sign.
+- Whole-store rollback/bootstrap freshness remains delegated to LAB-034–037 and later external/shared-anchor layers; an internally consistent old DB plus matching old trust can still pass local LAB-082 verification.
 
 ## Exact next action
 
-Keep PR #156 draft. Build the integration behind merged LAB-081/LAB-080: current LAB-036 observations may be authenticated at execution time, but durable historical verification must use Ed25519 public material/signatures so no historical HMAC/private signing key is required after rotation. Preserve the same SQLite PREPARED-vs-rotation serialization and restart semantics. Add mixed-generation, restart, race, private-material-absence, receipt/capability rebinding, corruption, and whole-store rollback/bootstrap-boundary regressions.
+Re-fetch PR #156 and its exact current HEAD. Reconstruct exact executable bytes through the GitHub connector and verify each Git blob identity. Execute:
 
-Then reconstruct/execute exact PR-head bytes through connector fallback, run LAB-082 plus LAB-081/LAB-080/LAB-036 regressions and compileall, perform a fresh remote audit, and only mark ready/merge if clean.
+1. LAB-082 `test_protocol`, `test_integration`, and `test_supported`;
+2. LAB-082 unsafe symmetric expected-failure seed;
+3. merged LAB-081 provider-generation-history regressions;
+4. merged LAB-080 shared-anchor-intent-ledger regressions;
+5. merged LAB-036 anchor-attestation regressions;
+6. `python -m compileall -q experiments` (or the bounded relevant experiment paths if full-tree runtime is excessive).
+
+Then perform a fresh full remote patch audit. If all exact-source tests are clean and HEAD is unchanged, mark PR #156 ready, squash-merge, close Issue #155 DONE, and select the next highest-value unblocked research gap. If execution exposes a defect, fix it on the branch, add a regression, and repeat the exact-source gate before merge.
 
 ## Backlog
 
