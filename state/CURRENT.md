@@ -4,51 +4,50 @@ Last updated: 2026-08-22
 
 ## Active objective
 
-LAB-075 — remove the remaining trusted `sink_id -> runtime adapter/endpoint` mapping behind LAB-074 by binding each new broker reservation to an authenticated/versioned registry entry and enforcing safe rotation/reconciliation semantics.
+LAB-076 — remove LAB-075's remaining static single-key sink-registry `RegistryAuthority` assumption by making registry signing authority versioned, restart-persistent, rotation/revocation-aware, and bound to historical registry entries without reviving old signing authority.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-074.
-- Active: Issue #141 / LAB-075 — IN_PROGRESS.
-- Active branch: `lab/075-sink-registry-binding-v2`.
-- Active draft PR: #142; current HEAD after this run's supported-surface composition fixes is `b029ab29093275f0e3f1c12cbc87ee731f5df820`.
-- PR remains draft until exact-source execution is clean; mergeability can transiently report false while GitHub recomputes after commits.
+- Completed: LAB-001 through LAB-075.
+- LAB-075 Issue #141 — DONE.
+- LAB-075 PR #142 squash-merged as `d16b7a14f33090cb57b4b1b241a5e279a1b979df`.
+- Active: Issue #143 / LAB-076 — IN_PROGRESS.
+- Active branch: `lab/076-registry-authority-lifecycle`.
+- Active PR: none yet.
 
 ## Last completed step
 
-A fresh supported-surface authority audit found two composition fail-opens beyond the previously fixed missing-`reconcile_by_key` case.
+LAB-075 exact published source was reconstructed through the GitHub connector and matched locally by Git blob identity. The final combined LAB-075/LAB-074/LAB-073/LAB-072 regression contour passed 89/89; compileall passed; the unsafe string-only adapter baseline failed as expected because the unsafe design executed one attacker side effect.
 
-First, `CorrectedRegistryBoundJournal` still inherited the historical prototype's dict-capability compatibility path. That path fabricates safe retry/capability fields for structural test input, so on the audited `supported.py` surface an unauthenticated caller could otherwise reach a new reservation/execution path without a verified LAB-073 attestation. The audited class now overrides `_capability_fields` and requires claim+attestation for every non-terminal path; the inherited LAB-073 verifier remains authoritative. Terminal `CONFIRMED` remains receipt-only and returns before this gate.
+The final audit found two additional blockers before merge and both were fixed and retested. First, the supported worker used `isinstance`, so a subclass of the audited journal could override `_capability_fields` and restore the legacy unauthenticated capability path; exact-type gating now rejects that composition before request processing. Second, terminal CONFIRMED receipt lookup did not authenticate the stored historical registry reference; the receipt-only path now reloads and verifies the exact signed historical entry and its sink/generation binding before returning the durable receipt. New regressions cover both cases.
 
-Second, the supported worker itself could be manually paired with an unaudited prototype registry journal, reintroducing the legacy compatibility path by composition. `CorrectedRegistryBrokerWorker` now refuses any registry that is not the audited `CorrectedRegistryBoundJournal` surface (including its explicit test-only subclass).
+After those fixes, exact published blobs `audit_fixes.py=2afdca0619a0bc6c6de2581c598c8d7f50f58b52` and `test_audit_fixes.py=8b7b8cd8feac81fa82d751b3106f776eb278c261` were executed in the same 89/89 regression contour. PR #142 was marked ready and squash-merged normally.
 
 ## Evidence produced
 
-- Re-read `AGENTS.md`, this state, `prompts/SELF_RESUME.md`, Issue #141, PR #142, current supported/audit/prototype paths and real-integration tests.
-- Reconfirmed direct `git` and raw GitHub access are unavailable in this runtime: DNS resolution for `raw.githubusercontent.com` failed; GitHub connector remains functional.
-- Finding 1: unauthenticated legacy dict capability could inherit fabricated `SAFE_RETRY_RECONCILE` authority on the supported surface.
-- Fix commit `5aa1e7b03105067425e304927cd0816cdb7e6f9a`: audited `_capability_fields` fails closed for unauthenticated non-terminal paths.
-- Regression/fixture commit `81e2bdbe67b97b4d1ca8bd996816aceff10f3628`: strict rejection with zero broker rows; legacy dict compatibility isolated to test-only fixtures.
-- Finding 2: supported worker could be composed with unaudited prototype journal and bypass the new gate.
-- Fix commit `b16c56979aea41879771dda677b0e19dd1f11193`: supported worker requires audited registry journal.
-- Regression commit `b029ab29093275f0e3f1c12cbc87ee731f5df820`: worker/prototype-journal composition is rejected before request processing.
-- PR #142 body updated to document the authenticated-capability supported-surface contract.
-- No exact-source test success is claimed for the new HEAD. Prior 14/14 and 30/30 results predate these security fixes and are supporting history only.
+- PR #142 validated HEAD: `989e414f2fb7a6d6c2f175ca509767a7c4ea9a26`.
+- Final merge: `d16b7a14f33090cb57b4b1b241a5e279a1b979df`.
+- Exact-source combined regression suite: 89/89 passed.
+- Unsafe LAB-075 seed: expected failure `1 != 0` because attacker adapter executed in the unsafe string-only design.
+- Compileall: passed.
+- Issue #141 updated with final acceptance/evidence and closed DONE.
+- No other open issue existed after LAB-075; Issue #143 / LAB-076 was created as the next correctness gap.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- No known unresolved code defect after the latest static/remote audit, but validation is incomplete for the newly published HEAD.
-- Direct GitHub clone/raw download is unavailable in this runtime due DNS; connector reconstruction is the supported fallback.
-- Do not mark LAB-075 DONE until exact published-source execution and final remote patch audit are clean.
-- LAB-075 must reuse LAB-022–025 transport/destination enforcement; adapter digest is a reference profile identity, not a claim that Python object identity is production code identity.
+- Direct GitHub clone/raw download was unavailable in the LAB-075 validation runtime due DNS; connector reconstruction is a proven supported fallback.
+- LAB-075's registry entries are authenticated, but `RegistryAuthority` is still supplied as one ambient static HMAC key/generation. That key lifecycle is the active correctness gap.
+- Reuse the repository's existing threshold/root/recovery work where possible; do not create an unrelated self-signed replacement mechanism.
+- Historical authority must remain available for verification of already-bound entries without granting it authority to sign new entries.
+- Distributed PKI/consensus, service discovery, and transport security remain out of scope for LAB-076.
 
 ## Exact next action
 
-Reconstruct the exact executable bytes of PR #142 HEAD `b029ab29093275f0e3f1c12cbc87ee731f5df820` through the GitHub connector and verify Git blob identities locally. Execute the LAB-075 supported/audit-fix + real integration tests, LAB-074/LAB-073/LAB-072 regressions, unsafe baseline, and compileall. The new regressions must prove (1) unauthenticated dict capability creates no broker row and (2) supported worker cannot be paired with the unaudited prototype journal. Then perform a fresh remote patch audit of all changed executable paths. If all gates are clean and PR HEAD is unchanged after validation, mark #142 ready, squash-merge it, close Issue #141 DONE, and select the next highest-value unblocked correctness gap.
+On branch `lab/076-registry-authority-lifecycle`, inspect the reusable threshold/root/recovery mechanisms from LAB-037/LAB-038/LAB-057 and the merged LAB-075 supported registry surface. Define the smallest durable authority state and transition contract that binds each registry entry to an exact historical authority generation. Build a deterministic prototype/failure matrix covering static-key substitution, restart rollback, same-generation key replacement, old-signer use after revocation, historical CONFIRMED verification, missing/corrupt historical authority, authority-rotation vs registry-publication races, and unsafe self-asserted recovery. Reuse existing threshold/recovery primitives rather than duplicating them. Run tests, audit, and publish the first coherent slice to the active branch before opening a draft PR.
 
 ## Backlog
 
-- #141 / LAB-075 — authenticated sink-adapter and endpoint registry binding — IN_PROGRESS.
+- #143 / LAB-076 — sink-registry authority lifecycle, rotation, and restart conformance — IN_PROGRESS.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
