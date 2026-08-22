@@ -10,7 +10,10 @@ from experiments.anchor_attestation.protocol import (
     ProviderIdentity,
     SignedAnchorProvider,
 )
-from experiments.asymmetric_provider_history.protocol import GenerationSigner
+from experiments.asymmetric_provider_history.protocol import (
+    GenerationSigner,
+    HistoricalVerificationError,
+)
 from experiments.asymmetric_provider_history.supported import (
     SupportedAsymmetricHistoricalSharedAnchorLedger,
 )
@@ -88,6 +91,39 @@ class SupportedSurfaceTests(unittest.TestCase):
             confirmed = ledger.execute(intent)
             self.assertEqual(confirmed.status, "CONFIRMED")
             self.assertEqual(provider.increment_calls, before)
+
+    def test_signed_read_cannot_substitute_for_reconcile_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            _, ledger = self.ledger(path)
+            intent = Intent("semantic", "component-A", "migration", {"v": 1})
+            ledger.execute(intent)
+            entry = ledger.entry(intent.intent_id)
+
+            challenge = "signed-read-is-not-effect-proof"
+            unsigned = {
+                "kind": "READ",
+                "provider_id": entry.provider_id,
+                "generation": entry.provider_generation,
+                "position": entry.position,
+                "request_id": entry.request_id,
+                "challenge": challenge,
+            }
+            signature = ledger.signer.sign(unsigned)
+
+            q = sqlite3.connect(path)
+            try:
+                q.execute(
+                    "UPDATE asymmetric_provider_receipts "
+                    "SET kind='READ', challenge=?, signature=? WHERE request_id=?",
+                    (challenge, signature, entry.request_id),
+                )
+                q.commit()
+            finally:
+                q.close()
+
+            with self.assertRaises(HistoricalVerificationError):
+                ledger.verify_durable()
 
 
 if __name__ == "__main__":
