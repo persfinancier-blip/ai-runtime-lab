@@ -88,13 +88,16 @@ class IntegratedProviderHistory(DurableProviderHistory):
 
     def _load_receipt_locked(self, q, request_id):
         row = q.execute(
-            "SELECT provider_id,generation,position,request_id,kind,challenge,signature "
+            "SELECT provider_id,generation,position,request_id,kind,challenge,signature,stable_binding "
             "FROM historical_provider_receipts WHERE request_id=?",
             (request_id,),
         ).fetchone()
         if row is None:
             raise HistoricalVerificationError("missing historical receipt")
-        return self._verify_receipt_locked(q, HistoricalReceipt(*row))
+        receipt = self._verify_receipt_locked(q, HistoricalReceipt(*row[:7]))
+        if row[7] != receipt.stable_binding:
+            raise HistoricalVerificationError("historical receipt stable binding mismatch")
+        return receipt
 
     def _rotate_locked(self, q, new: GenerationDescriptor, proof: TransitionProof):
         new.validate()
