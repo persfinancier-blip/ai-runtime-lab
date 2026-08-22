@@ -10,15 +10,20 @@ LAB-083 — contain compromise of one current LAB-082 provider signing key by re
 
 - Completed: LAB-001 through LAB-082.
 - Active: Issue #157 / LAB-083 — IN_PROGRESS.
-- Active branch: `lab/083-threshold-provider-rotation-v2` (the original branch was empty/stale and behind main).
+- Active branch: `lab/083-threshold-provider-rotation-v2`.
 - Active draft PR: #158 / `[LAB-083] Threshold-authorized asymmetric provider rotation`.
-- Current PR HEAD: `dc5a1525cd0b24341bd40f461a937b4651eb3c00`.
+- Current PR HEAD: `b55051ab781efa282fd34a94ebe8a78dad0030ef`.
+- PR #158 is currently mergeable and intentionally remains draft.
 
 ## Last completed step
 
-Built and published the first LAB-083 threshold rotation layer. A provider rotation now has a separately durable quorum proof bound to the exact old provider generation, proposed new generation, and threshold-authority identity/version/generation. Quorum proof persistence and LAB-082 provider-head advancement are designed to occur inside the same `BEGIN IMMEDIATE` transaction that already excludes unresolved PREPARED shared-anchor work.
+Built and published the first threshold-authorized LAB-083 provider-rotation layer. Provider rotation now stores a separately durable quorum proof bound to the exact old provider generation, proposed new generation, and threshold-authority identity/version/generation, inside the same `BEGIN IMMEDIATE` transaction that advances the LAB-082 provider head and excludes unresolved PREPARED shared-anchor work.
 
-A separate audit found that the first integration's legacy/new cutoff was merely SQL metadata and could be moved forward to skip required threshold proofs. That surface is retained as prototype evidence only. The audited supported surface is now `experiments/provider_threshold_rotation/supported.py`, where enablement is itself threshold-signed and bound to the exact provider head and exact rotation authority.
+Two audit findings were fixed before integration:
+1. The first prototype's legacy/new cutoff was ordinary SQL metadata. Moving it could skip required threshold proofs. The supported surface now uses a threshold-signed `ThresholdEnablement` bound to the exact provider generation and exact threshold authority.
+2. If the enablement row were deleted after threshold-governed transitions already existed, a constructor could otherwise attempt to create a new cutoff at the later head. The supported surface now refuses rebootstrap when any threshold proof already exists.
+
+The earlier `integration.py` is retained only as prototype/audit evidence. `supported.py` is the fail-closed LAB-083 surface.
 
 ## Evidence produced
 
@@ -28,20 +33,22 @@ A separate audit found that the first integration's legacy/new cutoff was merely
 - Signed enablement/cutoff suite: 3/3 passed.
 - Unsafe old+attacker-new baseline failed as expected because LAB-082-like old+new-only authorization accepts the compromise scenario.
 - Compile/py_compile passed for the new package.
-- Draft PR #158 is currently mergeable and intentionally remains draft.
-- Direct `git clone` was probed in this runtime and failed before execution because `github.com` DNS resolution is unavailable; connector reconstruction remains the exact-source fallback.
+- Draft PR #158 opened from current `main`; nine changed paths are additions only.
+- Direct `git clone` was probed and failed before execution because this runtime cannot resolve `github.com`; connector reconstruction remains the required exact-source fallback.
+- An attempted Issue #157 metadata refresh after the second audit fix was blocked before execution by an external safety-status gate; repository `state/CURRENT.md` remains authoritative for this handoff.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- PR #158 is not ready to merge: the new `supported.py` has not yet been executed from exact published bytes against the merged LAB-082/LAB-080 dependency stack.
-- The earlier `integration.py` has an unsigned cutoff and is explicitly not the supported LAB-083 surface.
+- PR #158 is not ready to merge: exact published `supported.py` has not yet been executed against merged LAB-082/LAB-080/LAB-036.
 - Historical pre-LAB-083 provider transitions remain legacy verification-only; they are not retroactively promoted to threshold-authorized transitions.
+- Strict type/canonical-encoding regressions for enablement/authority records are still required (including Python `bool == 1` style aliases).
+- The current reference threshold authority implements normal old+new quorum rotation but not yet an explicit break-glass recovery path; LAB-083 must either reuse an existing lab recovery authority or record a deliberate non-goal before DONE.
 - Current quorum keys are a local reference mechanism, not HSM/KMS custody or distributed consensus.
 
 ## Exact next action
 
-Reconstruct exact PR #158 HEAD bytes through the GitHub connector, including `supported.py`, `enablement.py`, protocol/tests and the exact merged LAB-082/LAB-080/LAB-036 dependencies. Verify Git blob identities before execution. Add/run real integration tests for: successful quorum-authorized provider rotation; compromised old+attacker-new without quorum; missing/duplicate/revoked/stale quorum; PREPARED reservation blocking rotation; threshold-authority rotation racing provider rotation; restart re-verification after proof corruption; threshold-signed cutoff tamper; and preservation of historical LAB-082 receipts/legacy transitions. Then run LAB-082/LAB-080 regressions plus compileall and perform a fresh remote patch audit. Only after a clean exact-source gate may PR #158 move from draft to ready/merge.
+Reconstruct exact PR #158 HEAD bytes through the GitHub connector, including `supported.py`, `enablement.py`, protocol/tests and exact merged LAB-082/LAB-080/LAB-036 dependencies. Verify Git blob identities before execution. Add/run real integration tests for: successful quorum-authorized provider rotation; compromised old+attacker-new without quorum; missing/duplicate/revoked/stale quorum; PREPARED reservation blocking rotation; threshold-authority rotation racing provider rotation; restart proof corruption; signed-enablement deletion/tamper; strict type/canonical encodings; and preservation of historical LAB-082 receipts/legacy transitions. Reuse an existing threshold recovery authority if practical rather than inventing another one. Then run LAB-082/LAB-080 regressions plus compileall and perform a fresh remote patch audit. Only after a clean exact-source gate may PR #158 move from draft to ready/merge.
 
 ## Backlog
 
