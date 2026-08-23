@@ -1,23 +1,35 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import sqlite3
+from pathlib import Path
+
 from experiments.asymmetric_provider_history.supported import (
     SupportedAsymmetricHistoricalSharedAnchorLedger,
 )
 from experiments.provider_threshold_rotation.protocol import (
     InvalidAuthority,
     ProviderRotationIntent,
+    Signature,
     StaleAuthority,
     ThresholdNotMet,
     ThresholdProof,
+    mac,
     verify_threshold,
 )
 from experiments.provider_threshold_rotation.strict import require_canonical_authority
-from experiments.provider_rotation_recovery.protocol import (
-    RecoveryAuthorityMismatch,
-    RecoveryError,
+from experiments.provider_threshold_rotation.supported import (
+    SupportedThresholdAuthorizedAsymmetricProviderLedger,
 )
+from experiments.provider_rotation_recovery.protocol import RecoveryError
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
+    AsymmetricRecoveryCustody,
+    PublicRecoveryAuthority,
     accepted_public_signatures,
+    custody_rotation_payload,
+    sha as custody_sha,
     verify_public_threshold,
 )
 from experiments.provider_recovery_authority_lifecycle.final_supported import (
@@ -37,31 +49,127 @@ class AsymmetricBreakGlassError(RuntimeError):
     pass
 
 
+class PublicRecoveryRotationError(AsymmetricBreakGlassError):
+    pass
+
+
 def asymmetric_break_glass_payload(
-    *, boundary_digest, old_root, new_root, symmetric_authority, public_authority
+    *, boundary_digest, old_root, new_root, public_authority
 ):
     return {
-        "kind": "provider-asymmetric-break-glass-v1",
+        "kind": "provider-asymmetric-break-glass-v2",
         "boundary_digest": boundary_digest,
         "old_root_id": old_root.authority_id,
         "old_root_version": old_root.version,
         "old_root_generation": old_root.generation,
         "new_root": new_root.descriptor,
-        "symmetric_authority_id": symmetric_authority.authority_id,
-        "symmetric_authority_version": symmetric_authority.version,
-        "symmetric_authority_generation": symmetric_authority.generation,
         "public_authority_id": public_authority.authority_id,
         "public_authority_version": public_authority.version,
         "public_authority_generation": public_authority.generation,
     }
 
 
-class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
-    """Real LAB-086 surface: signed legacy cutoff + Ed25519-only suffix."""
+def _accepted_root_signatures(root, payload, signatures):
+    root.validate()
+    seen = set()
+    accepted = []
+    revoked = set(root.revoked)
+    for item in signatures:
+        if not isinstance(item, Signature):
+            continue
+        if item.signer_id in revoked:
+            continue
+        hx = root.keys.get(item.signer_id)
+        if hx is None:
+            continue
+        expected = mac(bytes.fromhex(hx), payload)
+        if not hmac.compare_digest(expected, item.signature):
+            continue
+        if item.signer_id in seen:
+            continue
+        seen.add(item.signer_id)
+        accepted.append(item)
+    if len(accepted) < root.threshold:
+        raise ThresholdNotMet(
+            f"public recovery root coauthorization valid={len(accepted)} threshold={root.threshold}"
+        )
+    return tuple(accepted)
 
-    def __init__(self, *args, **kwargs):
+
+def _boundary_exists(path):
+    path = str(path)
+    if not Path(path).exists():
+        return False
+    q = sqlite3.connect(path)
+    try:
+        table = q.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_asymmetric_break_glass_boundary'"
+        ).fetchone()
+        if table is None:
+            return False
+        return (
+            q.execute(
+                "SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1"
+            ).fetchone()
+            is not None
+        )
+    finally:
+        q.close()
+
+
+class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
+    """LAB-086 surface with a public-only post-cutoff recovery authority.
+
+    Before migration it can bootstrap through LAB-085.  After the authenticated
+    cutoff, restart bypasses LAB-084/085 symmetric recovery controllers entirely:
+    only LAB-083 root/provider state, the Ed25519 public recovery history and the
+    signed migration projection are loaded.
+    """
+
+    def __init__(
+        self,
+        path,
+        attested,
+        bootstrap,
+        signer,
+        rotation_authority,
+        enablement,
+        recovery_authority=None,
+        public_recovery_authority=None,
+        custody_enablement_signatures=None,
+    ):
+        post_cutoff = _boundary_exists(path)
         self._lab086_initializing = True
-        super().__init__(*args, **kwargs)
+        if post_cutoff:
+            if type(public_recovery_authority) is not PublicRecoveryAuthority:
+                raise TypeError("exact LAB-085 PublicRecoveryAuthority required")
+            SupportedThresholdAuthorizedAsymmetricProviderLedger.__init__(
+                self,
+                path,
+                attested,
+                bootstrap,
+                signer,
+                rotation_authority,
+                enablement,
+            )
+            self.public_recovery_custody = AsymmetricRecoveryCustody(
+                path, public_recovery_authority
+            )
+        else:
+            if recovery_authority is None:
+                raise TypeError("pre-cutoff LAB-084 RecoveryAuthority required")
+            SupportedRecoveryCustodyLedger.__init__(
+                self,
+                path,
+                attested,
+                bootstrap,
+                signer,
+                rotation_authority,
+                enablement,
+                recovery_authority,
+                public_recovery_authority,
+                custody_enablement_signatures=custody_enablement_signatures,
+            )
         self._lab086_initializing = False
         self.migration_guard = AuthenticatedBreakGlassMigrationGuard(self)
         q = self._con()
@@ -83,19 +191,47 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             """CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_proofs(
               new_rotation_authority_id TEXT PRIMARY KEY,old_rotation_authority_id TEXT NOT NULL,
               old_rotation_version INTEGER NOT NULL,old_rotation_generation INTEGER NOT NULL,
-              symmetric_authority_id TEXT NOT NULL,public_authority_id TEXT NOT NULL,
-              public_authority_version INTEGER NOT NULL,public_authority_generation INTEGER NOT NULL,
-              boundary_digest TEXT NOT NULL,intent_digest TEXT NOT NULL,public_signatures_json TEXT NOT NULL)"""
+              public_authority_id TEXT NOT NULL,public_authority_version INTEGER NOT NULL,
+              public_authority_generation INTEGER NOT NULL,boundary_digest TEXT NOT NULL,
+              intent_digest TEXT NOT NULL,public_signatures_json TEXT NOT NULL)"""
+        )
+        q.execute(
+            """CREATE TABLE IF NOT EXISTS provider_asymmetric_recovery_public_root_proofs(
+              new_public_authority_id TEXT PRIMARY KEY,old_public_authority_id TEXT NOT NULL,
+              root_authority_id TEXT NOT NULL,root_version INTEGER NOT NULL,root_generation INTEGER NOT NULL,
+              intent_digest TEXT NOT NULL,root_signatures_json TEXT NOT NULL)"""
+        )
+
+    def _post_cutoff(self, q):
+        return (
+            q.execute(
+                "SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1"
+            ).fetchone()
+            is not None
         )
 
     def recover_rotation_authority(self, *a, **k):
         raise AsymmetricBreakGlassError(
-            "HMAC-only recovery is verification-only history"
+            "HMAC-only recovery is verification-only legacy history"
         )
 
     def recover_rotation_authority_with_custody(self, *a, **k):
         raise AsymmetricBreakGlassError(
-            "compatibility HMAC recovery is disabled after LAB-086 migration"
+            "compatibility HMAC recovery is disabled on the LAB-086 surface"
+        )
+
+    def rotate_recovery_authority_with_custody(self, *args, **kwargs):
+        q = self._con()
+        try:
+            post = self._post_cutoff(q)
+        finally:
+            q.close()
+        if post:
+            raise PublicRecoveryRotationError(
+                "post-cutoff symmetric recovery rotation is disabled; use rotate_public_recovery_authority"
+            )
+        return SupportedRecoveryCustodyLedger.rotate_recovery_authority_with_custody(
+            self, *args, **kwargs
         )
 
     @staticmethod
@@ -120,6 +256,168 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
         ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
+    def public_recovery_rotation_payload(self, new_public):
+        if type(new_public) is not PublicRecoveryAuthority:
+            raise TypeError("exact PublicRecoveryAuthority required")
+        q = self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            self._ensure_asymmetric_schema_locked(q)
+            boundary = self.migration_guard.verify_locked(q)
+            if boundary is None:
+                raise MigrationGuardError("authenticated migration boundary required")
+            old = self.public_recovery_custody.current_locked(q)
+            root = self.rotation_authority.current_locked(q)
+            new_public.validate()
+            if (
+                new_public.name != old.name
+                or new_public.version != old.version + 1
+                or new_public.generation != old.generation + 1
+            ):
+                raise PublicRecoveryRotationError(
+                    "public recovery authority must advance exactly one"
+                )
+            payload = custody_rotation_payload(old, new_public, root.authority_id)
+            q.commit()
+            return payload
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+
+    def rotate_public_recovery_authority(
+        self,
+        new_public,
+        old_public_signatures,
+        new_public_signatures,
+        root_signatures,
+    ):
+        if type(new_public) is not PublicRecoveryAuthority:
+            raise TypeError("exact PublicRecoveryAuthority required")
+        q = self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            self._reject_prepared_locked(q)
+            self._ensure_asymmetric_schema_locked(q)
+            boundary = self.migration_guard.verify_locked(q)
+            if boundary is None:
+                raise MigrationGuardError("authenticated migration boundary required")
+            old = self.public_recovery_custody.current_locked(q)
+            root = self.rotation_authority.current_locked(q)
+            if (
+                new_public.name != old.name
+                or new_public.version != old.version + 1
+                or new_public.generation != old.generation + 1
+            ):
+                raise PublicRecoveryRotationError(
+                    "public recovery authority must advance exactly one"
+                )
+            payload = custody_rotation_payload(old, new_public, root.authority_id)
+            old_valid = accepted_public_signatures(
+                old, payload, tuple(old_public_signatures)
+            )
+            new_valid = accepted_public_signatures(
+                new_public, payload, tuple(new_public_signatures)
+            )
+            verify_public_threshold(old, payload, old_valid)
+            verify_public_threshold(new_public, payload, new_valid)
+            root_valid = _accepted_root_signatures(root, payload, tuple(root_signatures))
+            self.public_recovery_custody.rotate_locked(
+                q, new_public, root.authority_id, old_valid, new_valid
+            )
+            proof = (
+                old.authority_id,
+                root.authority_id,
+                root.version,
+                root.generation,
+                custody_sha(payload),
+                self.rotation_authority._encode_signatures(root_valid),
+            )
+            existing = q.execute(
+                "SELECT old_public_authority_id,root_authority_id,root_version,root_generation,"
+                "intent_digest,root_signatures_json FROM provider_asymmetric_recovery_public_root_proofs "
+                "WHERE new_public_authority_id=?",
+                (new_public.authority_id,),
+            ).fetchone()
+            if existing is not None and existing != proof:
+                raise PublicRecoveryRotationError("public recovery root proof substitution")
+            if existing is None:
+                q.execute(
+                    "INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)",
+                    (new_public.authority_id, *proof),
+                )
+            self._verify_public_recovery_rotations_locked(q, boundary)
+            q.commit()
+            return {
+                "old_public_authority_id": old.authority_id,
+                "new_public_authority_id": new_public.authority_id,
+                "root_authority_id": root.authority_id,
+                "root_signers": tuple(sorted(s.signer_id for s in root_valid)),
+            }
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+
+    def _verify_public_recovery_rotations_locked(self, q, boundary):
+        public_rows = q.execute(
+            "SELECT authority_id FROM provider_recovery_public_authorities ORDER BY version"
+        ).fetchall()
+        if not public_rows:
+            raise PublicRecoveryRotationError("missing public recovery history")
+        publics = [
+            self.public_recovery_custody._load_authority_locked(q, row[0])
+            for row in public_rows
+        ]
+        cutoff_id = boundary["public_authority_id"]
+        cutoff_version = boundary["public_authority_version"]
+        cutoff_index = None
+        for index, public in enumerate(publics):
+            if public.authority_id == cutoff_id:
+                cutoff_index = index
+                break
+        if cutoff_index is None or publics[cutoff_index].version != cutoff_version:
+            raise PublicRecoveryRotationError("cutoff public authority absent from history")
+        windows = {
+            cutoff_id: [boundary["root_version"], None]
+        }
+        required = 0
+        for old, new in zip(publics[cutoff_index:], publics[cutoff_index + 1 :]):
+            row = q.execute(
+                "SELECT old_public_authority_id,root_authority_id,root_version,root_generation,"
+                "intent_digest,root_signatures_json "
+                "FROM provider_asymmetric_recovery_public_root_proofs WHERE new_public_authority_id=?",
+                (new.authority_id,),
+            ).fetchone()
+            if row is None or row[0] != old.authority_id:
+                raise PublicRecoveryRotationError(
+                    "post-cutoff public recovery transition lacks root proof"
+                )
+            root = self.rotation_authority._load_locked(q, row[1])
+            if (root.version, root.generation) != (row[2], row[3]):
+                raise PublicRecoveryRotationError("public recovery root metadata mismatch")
+            payload = custody_rotation_payload(old, new, root.authority_id)
+            if custody_sha(payload) != row[4]:
+                raise PublicRecoveryRotationError("public recovery intent digest mismatch")
+            accepted = _accepted_root_signatures(
+                root, payload, self.rotation_authority._decode_signatures(row[5])
+            )
+            if self.rotation_authority._encode_signatures(accepted) != row[5]:
+                raise PublicRecoveryRotationError("noncanonical public recovery root signatures")
+            windows[old.authority_id][1] = root.version
+            windows[new.authority_id] = [root.version, None]
+            required += 1
+        count = q.execute(
+            "SELECT COUNT(*) FROM provider_asymmetric_recovery_public_root_proofs"
+        ).fetchone()[0]
+        if count != required:
+            raise PublicRecoveryRotationError("orphan public recovery root proof")
+        return {key: tuple(value) for key, value in windows.items()}
+
     def asymmetric_recovery_payload(self, new_authority):
         require_canonical_authority(new_authority)
         q = self._con()
@@ -131,18 +429,12 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             if boundary is None:
                 raise MigrationGuardError("authenticated migration boundary required")
             old = self.rotation_authority.current_locked(q)
-            symmetric = self.recovery_lifecycle.current_locked(q)
             public = self.public_recovery_custody.current_locked(q)
-            compat = self.recovery.current_recovery_locked(q)
-            if compat.authority_id != symmetric.recovery.authority_id:
-                raise RecoveryAuthorityMismatch("recovery heads diverged")
-            self._compatible(symmetric, public)
             self._require_successor(old, new_authority)
             out = asymmetric_break_glass_payload(
                 boundary_digest=boundary["boundary_digest"],
                 old_root=old,
                 new_root=new_authority,
-                symmetric_authority=symmetric,
                 public_authority=public,
             )
             q.commit()
@@ -168,18 +460,12 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             if boundary is None:
                 raise MigrationGuardError("authenticated migration boundary required")
             old = self.rotation_authority.current_locked(q)
-            symmetric = self.recovery_lifecycle.current_locked(q)
             public = self.public_recovery_custody.current_locked(q)
-            compat = self.recovery.current_recovery_locked(q)
-            if compat.authority_id != symmetric.recovery.authority_id:
-                raise RecoveryAuthorityMismatch("recovery heads diverged")
-            self._compatible(symmetric, public)
             self._require_successor(old, new_authority)
             payload = asymmetric_break_glass_payload(
                 boundary_digest=boundary["boundary_digest"],
                 old_root=old,
                 new_root=new_authority,
-                symmetric_authority=symmetric,
                 public_authority=public,
             )
             accepted = accepted_public_signatures(
@@ -204,13 +490,12 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             if changed != 1:
                 raise StaleAuthority("root head changed during asymmetric recovery")
             q.execute(
-                "INSERT INTO provider_asymmetric_break_glass_proofs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO provider_asymmetric_break_glass_proofs VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
                     new_authority.authority_id,
                     old.authority_id,
                     old.version,
                     old.generation,
-                    symmetric.authority_id,
                     public.authority_id,
                     public.version,
                     public.generation,
@@ -238,12 +523,12 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             q.close()
 
     def _verify_asymmetric_edge_locked(
-        self, q, old, new, windows, boundary_digest
+        self, q, old, new, public_windows, boundary_digest
     ):
         row = q.execute(
             "SELECT old_rotation_authority_id,old_rotation_version,old_rotation_generation,"
-            "symmetric_authority_id,public_authority_id,public_authority_version,"
-            "public_authority_generation,boundary_digest,intent_digest,public_signatures_json "
+            "public_authority_id,public_authority_version,public_authority_generation,"
+            "boundary_digest,intent_digest,public_signatures_json "
             "FROM provider_asymmetric_break_glass_proofs WHERE new_rotation_authority_id=?",
             (new.authority_id,),
         ).fetchone()
@@ -255,43 +540,31 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             old.generation,
         ):
             raise AsymmetricBreakGlassError("asymmetric predecessor mismatch")
-        if row[7] != boundary_digest:
+        if row[6] != boundary_digest:
             raise AsymmetricBreakGlassError("boundary mismatch")
-        symmetric = self.recovery_lifecycle._load_recovery_locked(q, row[3])
-        public = self.public_recovery_custody._load_authority_locked(q, row[4])
-        self._compatible(symmetric, public)
-        if (public.version, public.generation) != (row[5], row[6]):
+        public = self.public_recovery_custody._load_authority_locked(q, row[3])
+        if (public.version, public.generation) != (row[4], row[5]):
             raise AsymmetricBreakGlassError("public recovery metadata mismatch")
-        binding = q.execute(
-            "SELECT public_authority_id,version,generation "
-            "FROM provider_recovery_custody_bindings WHERE symmetric_authority_id=?",
-            (symmetric.authority_id,),
-        ).fetchone()
-        if binding != (public.authority_id, symmetric.version, symmetric.generation):
-            raise AsymmetricBreakGlassError("unbound public recovery authority")
-        window = windows.get(symmetric.recovery.authority_id)
+        window = public_windows.get(public.authority_id)
         if window is None:
-            raise RecoveryAuthorityMismatch("unknown recovery generation")
-        versioned, lower, upper = window
-        if versioned.authority_id != symmetric.authority_id:
-            raise RecoveryAuthorityMismatch("recovery lifecycle mismatch")
-        if lower is not None and old.version < lower:
-            raise RecoveryAuthorityMismatch("generation used before activation")
+            raise PublicRecoveryRotationError("unknown post-cutoff public recovery generation")
+        lower, upper = window
+        if old.version < lower:
+            raise PublicRecoveryRotationError("public recovery generation used before activation")
         if upper is not None and old.version >= upper:
-            raise RecoveryAuthorityMismatch("stale generation used after rotation")
+            raise PublicRecoveryRotationError("stale public recovery generation used after rotation")
         payload = asymmetric_break_glass_payload(
             boundary_digest=boundary_digest,
             old_root=old,
             new_root=new,
-            symmetric_authority=symmetric,
             public_authority=public,
         )
-        if _digest(payload) != row[8]:
+        if _digest(payload) != row[7]:
             raise AsymmetricBreakGlassError("intent digest mismatch")
-        decoded = self.public_recovery_custody._decode_signatures(row[9])
+        decoded = self.public_recovery_custody._decode_signatures(row[8])
         accepted = accepted_public_signatures(public, payload, decoded)
         verify_public_threshold(public, payload, accepted)
-        if self.public_recovery_custody._encode_signatures(accepted) != row[9]:
+        if self.public_recovery_custody._encode_signatures(accepted) != row[8]:
             raise AsymmetricBreakGlassError("noncanonical signatures")
 
     def _verify_provider_thresholds_locked(self, q, by_id):
@@ -325,13 +598,16 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
 
     def _verify_lab086_locked(self, q):
         self._ensure_asymmetric_schema_locked(q)
-        self._verify_custody_bindings_locked(q)
-        self._verify_break_glass_custody_locked(q)
         boundary = self.migration_guard.verify_locked(q)
         if boundary is None:
+            # Pre-cutoff only: symmetric LAB-085 is still authoritative.
+            self._verify_custody_bindings_locked(q)
+            self._verify_break_glass_custody_locked(q)
             return SupportedRecoveryAuthorityLifecycleLedger._verify_mixed_authority_history_locked(
                 self, q, self._provider_transitions_locked(q)
             )
+
+        public_windows = self._verify_public_recovery_rotations_locked(q, boundary)
         rows = q.execute(
             "SELECT authority_id FROM provider_rotation_authorities ORDER BY version"
         ).fetchall()
@@ -343,7 +619,6 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
         if authorities[0].authority_id != self.rotation_authority.bootstrap.authority_id:
             raise StaleAuthority("root bootstrap changed")
         by_id = {a.authority_id: a for a in authorities}
-        windows = self._lifecycle_windows_locked(q, by_id)
         total = (
             q.execute(
                 "SELECT COUNT(*) FROM provider_rotation_authority_transitions"
@@ -357,6 +632,10 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
         )
         if total != len(authorities) - 1:
             raise RecoveryError("root proof count mismatch")
+        legacy_projection = {
+            tuple(row)
+            for row in boundary["projection"]["semantic"]["legacy_recovery_edges"]
+        }
         for old, new in zip(authorities, authorities[1:]):
             self._require_successor(old, new)
             normal = q.execute(
@@ -364,7 +643,8 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
                 (new.authority_id,),
             ).fetchone()[0]
             legacy = q.execute(
-                "SELECT recovery_authority_id,recovery_generation,signatures_json "
+                "SELECT old_rotation_authority_id,old_rotation_version,old_rotation_generation,"
+                "recovery_authority_id,recovery_generation,intent_digest,signatures_json "
                 "FROM provider_rotation_recovery_transitions WHERE new_rotation_authority_id=?",
                 (new.authority_id,),
             ).fetchone()
@@ -377,39 +657,32 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             if normal:
                 self._verify_normal_edge_locked(q, old, new)
             elif legacy is not None:
-                # After the authenticated migration boundary, legacy HMAC proof
-                # bytes are intentionally gone. The exact recovery edge metadata
-                # is committed by the threshold-signed boundary projection, while
-                # LAB-085 public custody verifies every post-enablement edge.
-                # Pre-enablement edges are likewise covered by the signed cutoff
-                # after their full HMAC verification immediately before migration.
-                if legacy[2] != "[]":
+                projected = (
+                    new.authority_id,
+                    legacy[0],
+                    legacy[1],
+                    legacy[2],
+                    legacy[3],
+                    legacy[4],
+                    legacy[5],
+                )
+                if projected not in legacy_projection:
+                    raise AsymmetricBreakGlassError(
+                        "legacy root edge is not committed by migration boundary"
+                    )
+                if legacy[6] != "[]":
                     raise AsymmetricBreakGlassError(
                         "legacy HMAC proof bytes were not scrubbed"
                     )
-                window = windows.get(legacy[0])
-                if window is None:
-                    raise RecoveryAuthorityMismatch(
-                        "legacy proof unknown recovery generation"
-                    )
-                versioned, lower, upper = window
-                if versioned.recovery.generation != legacy[1]:
-                    raise RecoveryAuthorityMismatch("legacy generation mismatch")
-                if lower is not None and old.version < lower:
-                    raise RecoveryAuthorityMismatch(
-                        "legacy used before activation"
-                    )
-                if upper is not None and old.version >= upper:
-                    raise RecoveryAuthorityMismatch(
-                        "legacy used after deactivation"
+                if new.version > boundary["root_version"]:
+                    raise AsymmetricBreakGlassError(
+                        "legacy HMAC edge exists after migration cutoff"
                     )
             else:
                 if old.version < boundary["root_version"]:
-                    raise AsymmetricBreakGlassError(
-                        "asymmetric proof before cutoff"
-                    )
+                    raise AsymmetricBreakGlassError("asymmetric proof before cutoff")
                 self._verify_asymmetric_edge_locked(
-                    q, old, new, windows, boundary["boundary_digest"]
+                    q, old, new, public_windows, boundary["boundary_digest"]
                 )
         if (
             self.rotation_authority.current_locked(q).authority_id
@@ -424,10 +697,6 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
             self, "migration_guard"
         ):
             return True
-        # Hold one write-excluding guard across every lower verifier and the LAB-086
-        # cross-layer checks. Running provider/public-custody verification before
-        # acquiring this guard permits a concurrent writer to mutate already-checked
-        # proof rows before the final binding pass observes them.
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
