@@ -6,6 +6,9 @@ from pathlib import Path
 from experiments.asymmetric_break_glass_history.migration_guard import (
     AuthenticatedBreakGlassMigrationGuard,
     LegacyHistoryChanged,
+    MigrationGuardError,
+    _digest,
+    migration_payload,
 )
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
@@ -100,6 +103,59 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             payload = guard.payload()
             with self.assertRaises(CustodyThresholdNotMet):
                 guard.establish(public_signatures(public_signers, payload, 1))
+
+    def test_stale_historical_recovery_quorum_cannot_authorize_cutoff(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, _, root1, rec1, rec1_raw, public1, old_public_signers, _ = self.make_ledger(path)
+            _, root_raw = authority()
+            rec2, rec2_raw = recovery(2, 2, "recovery-new")
+            public2, public2_signers = public_recovery(2, 2, "public-new")
+            symmetric_payload, public_payload = ledger.recovery_custody_rotation_payloads(rec2, public2)
+            ledger.rotate_recovery_authority_with_custody(
+                rec2,
+                public2,
+                signatures(rec1_raw, symmetric_payload, 3),
+                signatures(rec2_raw, symmetric_payload, 3),
+                signatures(root_raw, symmetric_payload, 2),
+                public_signatures(old_public_signers, public_payload, 3),
+                public_signatures(public2_signers, public_payload, 3),
+            )
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            q = ledger._con()
+            try:
+                q.execute("BEGIN IMMEDIATE")
+                legacy = guard._legacy_digest_locked(q, root1.version)
+                payload = migration_payload(
+                    legacy_digest=legacy,
+                    cutoff_root=root1,
+                    symmetric_authority_id=rec1.authority_id,
+                    public_authority=public1,
+                )
+                boundary = _digest(payload)
+                encoded = ledger.public_recovery_custody._encode_signatures(
+                    public_signatures(old_public_signers, payload, 3)
+                )
+                q.execute(
+                    "INSERT INTO provider_asymmetric_break_glass_boundary VALUES(1,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        legacy,
+                        root1.authority_id,
+                        root1.version,
+                        root1.generation,
+                        rec1.authority_id,
+                        public1.authority_id,
+                        public1.version,
+                        public1.generation,
+                        boundary,
+                        encoded,
+                    ),
+                )
+                q.commit()
+            finally:
+                q.close()
+            with self.assertRaises(MigrationGuardError):
+                guard.verify()
 
     def test_legacy_history_tamper_after_cutoff_is_detected(self):
         with tempfile.TemporaryDirectory() as td:
