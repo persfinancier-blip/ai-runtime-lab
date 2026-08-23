@@ -46,7 +46,7 @@ def _public_hex(key: Ed25519PublicKey) -> str:
 def signer_id(public_key_hex: str) -> str:
     if not _strict_hex(public_key_hex, 32):
         raise CustodyError("invalid public key encoding")
-    return hashlib.sha256(bytes.fromhex(public_key_hex)).hexdigest()[:16]
+    return hashlib.sha256(bytes.fromhex(public_key_hex)).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -155,11 +155,14 @@ def custody_rotation_payload(old: PublicRecoveryAuthority, new: PublicRecoveryAu
     }
 
 
-def verify_public_threshold(authority: PublicRecoveryAuthority, payload: dict, signatures) -> tuple[str, ...]:
+def accepted_public_signatures(authority: PublicRecoveryAuthority, payload: dict, signatures) -> tuple[PublicSignature, ...]:
     authority.validate()
-    seen = set(); valid = []
+    seen = set(); accepted = []
     for item in signatures:
-        item.validate()
+        try:
+            item.validate()
+        except CustodyError:
+            continue
         if item.signer_id in seen or item.signer_id in authority.revoked:
             continue
         seen.add(item.signer_id)
@@ -168,12 +171,17 @@ def verify_public_threshold(authority: PublicRecoveryAuthority, payload: dict, s
             continue
         try:
             Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_hex)).verify(bytes.fromhex(item.signature), canon(payload))
-            valid.append(item.signer_id)
+            accepted.append(item)
         except InvalidSignature:
             continue
-    if len(valid) < authority.threshold:
-        raise CustodyThresholdNotMet(f"valid={len(valid)} threshold={authority.threshold}")
-    return tuple(sorted(valid))
+    return tuple(accepted)
+
+
+def verify_public_threshold(authority: PublicRecoveryAuthority, payload: dict, signatures) -> tuple[str, ...]:
+    accepted = accepted_public_signatures(authority, payload, signatures)
+    if len(accepted) < authority.threshold:
+        raise CustodyThresholdNotMet(f"valid={len(accepted)} threshold={authority.threshold}")
+    return tuple(sorted(item.signer_id for item in accepted))
 
 
 class AsymmetricRecoveryCustody:
@@ -303,7 +311,9 @@ class AsymmetricRecoveryCustody:
         if new.version != old.version + 1 or new.generation != old.generation + 1:
             raise CustodyRollback("public recovery version/generation must advance exactly one")
         payload = custody_rotation_payload(old, new, root_authority_id)
-        proof = CustodyRotationProof(sha(payload), tuple(old_signatures), tuple(new_signatures))
+        accepted_old = accepted_public_signatures(old, payload, old_signatures)
+        accepted_new = accepted_public_signatures(new, payload, new_signatures)
+        proof = CustodyRotationProof(sha(payload), accepted_old, accepted_new)
         verify_public_threshold(old, payload, proof.old_signatures)
         verify_public_threshold(new, payload, proof.new_signatures)
         self._insert_authority_locked(q, new)
