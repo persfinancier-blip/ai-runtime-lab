@@ -7,11 +7,13 @@ from pathlib import Path
 
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
+from experiments.provider_recovery_authority_lifecycle.custody_break_glass import custody_enablement_payload
 from experiments.provider_recovery_authority_lifecycle.final_supported import SupportedRecoveryCustodyLedger
 from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody_supported import (
     attested,
     authority,
     public_recovery,
+    public_signatures,
     recovery,
     signatures,
 )
@@ -33,8 +35,19 @@ class FinalSupportedCustodyTests(unittest.TestCase):
             1,
             signatures(root_raw, base.payload, 2),
         )
+        custody_enablement = custody_enablement_payload(root, rec, public)
         ledger = SupportedRecoveryCustodyLedger(
-            path, a1, signer.public, signer, root, enable, rec.recovery, public
+            path,
+            a1,
+            signer.public,
+            signer,
+            root,
+            enable,
+            rec.recovery,
+            public,
+            custody_enablement_signatures=public_signatures(
+                public_signers, custody_enablement, 3
+            ),
         )
         return ledger, signer, root, rec, public, enable
 
