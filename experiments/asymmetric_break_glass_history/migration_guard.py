@@ -1,87 +1,60 @@
 from __future__ import annotations
-
 import hashlib
 import json
-
-from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
-    accepted_public_signatures,
-    verify_public_threshold,
-)
-from experiments.provider_recovery_authority_lifecycle.final_supported import (
-    SupportedRecoveryCustodyLedger,
-)
-from experiments.provider_recovery_authority_lifecycle.supported import (
-    SupportedRecoveryAuthorityLifecycleLedger,
-)
-from experiments.provider_rotation_recovery.protocol import RecoveryAuthorityMismatch
-
+from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import accepted_public_signatures, verify_public_threshold
+from experiments.provider_recovery_authority_lifecycle.final_supported import SupportedRecoveryCustodyLedger
+from experiments.provider_recovery_authority_lifecycle.supported import SupportedRecoveryAuthorityLifecycleLedger
+from .strict_fence import install_public_mutation_fence_locked
 
 class MigrationGuardError(RuntimeError):
     pass
 
-
 class LegacyHistoryChanged(MigrationGuardError):
     pass
 
-
 def _canon(value) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
 
 def _digest(value) -> str:
     raw = value if isinstance(value, (bytes, bytearray)) else _canon(value)
     return hashlib.sha256(raw).hexdigest()
 
-
-def migration_payload(
-    *, legacy_digest, cutoff_root, public_authority
-):
-    return {
-        "kind": "provider-asymmetric-break-glass-boundary-v3",
-        "legacy_digest": legacy_digest,
-        "cutoff_root_id": cutoff_root.authority_id,
-        "cutoff_root_version": cutoff_root.version,
-        "cutoff_root_generation": cutoff_root.generation,
-        "public_authority_id": public_authority.authority_id,
-        "public_authority_version": public_authority.version,
-        "public_authority_generation": public_authority.generation,
-        "legacy_recovery_hmac_material": "scrubbed",
-    }
-
+def migration_payload(*, legacy_digest, cutoff_root, public_authority):
+    return {'kind': 'provider-asymmetric-break-glass-boundary-v3', 'legacy_digest': legacy_digest, 'cutoff_root_id': cutoff_root.authority_id, 'cutoff_root_version': cutoff_root.version, 'cutoff_root_generation': cutoff_root.generation, 'public_authority_id': public_authority.authority_id, 'public_authority_version': public_authority.version, 'public_authority_generation': public_authority.generation, 'legacy_recovery_hmac_material': 'scrubbed'}
 
 def _exact_supported_ledger(ledger):
     if type(ledger) is SupportedRecoveryCustodyLedger:
         return True
     try:
-        from experiments.asymmetric_break_glass_history.suffix import (
-            SupportedAsymmetricBreakGlassLedger,
-        )
+        from experiments.asymmetric_break_glass_history.suffix import SupportedAsymmetricBreakGlassLedger
     except ImportError:
         return False
     return type(ledger) is SupportedAsymmetricBreakGlassLedger
-
 
 class AuthenticatedBreakGlassMigrationGuard:
     """Convert verified LAB-084/085 recovery history into a public-only cutoff.
 
     Before migration the complete compatibility history is checked by LAB-085.
-    The cutoff then signs a canonical non-secret projection of that verified state.
-    In the same transaction all durable recovery HMAC key maps and recovery-HMAC
-    proof bytes are destroyed.  Post-cutoff verification uses only the signed
-    projection plus Ed25519 public-custody history; it never reconstructs a
-    symmetric recovery authority.
+    The cutoff signs a canonical non-secret projection of that verified state. In
+    the same transaction all durable recovery HMAC key maps and recovery-HMAC proof
+    bytes are destroyed. Post-cutoff verification uses only the signed projection
+    plus Ed25519 public-custody history.
+
+    The migration boundary also installs an unconditional SQL deny fence for every
+    underlying public-recovery mutation path. Historical proof rows remain restart
+    evidence only and are never interpreted by SQL as mutation authority.
     """
 
     def __init__(self, ledger):
         if not _exact_supported_ledger(ledger):
-            raise TypeError("exact LAB-085/LAB-086 supported ledger required")
+            raise TypeError('exact LAB-085/LAB-086 supported ledger required')
         self.ledger = ledger
         q = ledger._con()
         try:
-            q.execute("BEGIN IMMEDIATE")
+            q.execute('BEGIN IMMEDIATE')
             self._ensure_schema_locked(q)
             boundary_exists = self._boundary_row_locked(q) is not None
-            if type(ledger) is SupportedRecoveryCustodyLedger and not boundary_exists:
+            if type(ledger) is SupportedRecoveryCustodyLedger and (not boundary_exists):
                 self._verify_inherited_locked(q)
             self.verify_locked(q)
             q.commit()
@@ -94,160 +67,20 @@ class AuthenticatedBreakGlassMigrationGuard:
 
     @staticmethod
     def _ensure_schema_locked(q):
-        q.execute(
-            """CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_boundary(
-              singleton INTEGER PRIMARY KEY CHECK(singleton=1),legacy_digest TEXT NOT NULL,
-              cutoff_root_id TEXT NOT NULL,cutoff_root_version INTEGER NOT NULL,cutoff_root_generation INTEGER NOT NULL,
-              public_authority_id TEXT NOT NULL,public_authority_version INTEGER NOT NULL,
-              public_authority_generation INTEGER NOT NULL,boundary_digest TEXT NOT NULL,signatures_json TEXT NOT NULL)"""
-        )
-        q.execute(
-            """CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_legacy_projection(
-              singleton INTEGER PRIMARY KEY CHECK(singleton=1),projection_json TEXT NOT NULL)"""
-        )
-        # Security triggers are executable policy, not cache. A durable database
-        # may have been initialized by an older LAB-086 build using the same trigger
-        # names with weaker predicates. CREATE TRIGGER IF NOT EXISTS would silently
-        # preserve those obsolete definitions. Replace every owned trigger while the
-        # caller holds BEGIN IMMEDIATE so upgrade and restart install the exact
-        # current policy atomically before any writer can proceed.
-        for trigger_name in (
-            "provider_asymmetric_break_glass_no_legacy_hmac",
-            "provider_asymmetric_break_glass_no_symmetric_lifecycle",
-            "provider_asymmetric_break_glass_no_symmetric_authority",
-            "provider_asymmetric_break_glass_no_compat_authority",
-            "lab086_public_authority_requires_root_proof",
-            "lab086_public_authority_is_immutable",
-            "lab086_public_transition_requires_root_proof",
-            "lab086_public_transition_is_immutable",
-            "lab086_public_head_requires_root_proof",
-        ):
-            q.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
-
-        # Old LAB-085 writers must fail inside their transaction after migration.
-        q.execute(
-            """CREATE TRIGGER provider_asymmetric_break_glass_no_legacy_hmac
-            BEFORE INSERT ON provider_rotation_recovery_transitions
-            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new HMAC break-glass rows'); END"""
-        )
-        q.execute(
-            """CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_lifecycle
-            BEFORE INSERT ON provider_recovery_lifecycle_transitions
-            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery lifecycle rows'); END"""
-        )
-        q.execute(
-            """CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_authority
-            BEFORE INSERT ON provider_recovery_lifecycle_authorities
-            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery authorities'); END"""
-        )
-        q.execute(
-            """CREATE TRIGGER provider_asymmetric_break_glass_no_compat_authority
-            BEFORE INSERT ON provider_rotation_recovery_authorities
-            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new compatibility recovery authorities'); END"""
-        )
-        # The migration boundary is also the durable public-custody fence.  The
-        # final LAB-086 surface writes the exact current-root proof first in the
-        # same transaction; stale/mutation-first LAB-085/LAB-086 writers do not.
-        q.execute(
-            """CREATE TABLE IF NOT EXISTS provider_asymmetric_recovery_public_root_proofs(
-              new_public_authority_id TEXT PRIMARY KEY,old_public_authority_id TEXT NOT NULL,
-              root_authority_id TEXT NOT NULL,root_version INTEGER NOT NULL,root_generation INTEGER NOT NULL,
-              intent_digest TEXT NOT NULL,root_signatures_json TEXT NOT NULL)"""
-        )
-        q.execute(
-            """CREATE TRIGGER lab086_public_authority_requires_root_proof
-            BEFORE INSERT ON provider_recovery_public_authorities
-            WHEN EXISTS(
-              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
-            ) AND NOT EXISTS(
-              SELECT 1
-              FROM provider_asymmetric_recovery_public_root_proofs p
-              JOIN provider_recovery_public_head h ON h.singleton=1
-              JOIN provider_rotation_authority_head r ON r.singleton=1
-              WHERE p.new_public_authority_id=NEW.authority_id
-                AND p.old_public_authority_id=h.authority_id
-                AND p.root_authority_id=r.authority_id
-                AND p.root_version=r.version
-                AND p.root_generation=r.generation
-            )
-            BEGIN
-              SELECT RAISE(ABORT,'LAB-086 public recovery successor requires current-root proof first');
-            END"""
-        )
-        q.execute(
-            """CREATE TRIGGER lab086_public_authority_is_immutable
-            BEFORE UPDATE ON provider_recovery_public_authorities
-            WHEN EXISTS(
-              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
-            )
-            BEGIN
-              SELECT RAISE(ABORT,'LAB-086 public recovery authorities are immutable after cutoff');
-            END"""
-        )
-        q.execute(
-            """CREATE TRIGGER lab086_public_transition_requires_root_proof
-            BEFORE INSERT ON provider_recovery_public_transitions
-            WHEN EXISTS(
-              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
-            ) AND NOT EXISTS(
-              SELECT 1
-              FROM provider_asymmetric_recovery_public_root_proofs p
-              JOIN provider_recovery_public_head h ON h.singleton=1
-              JOIN provider_rotation_authority_head r ON r.singleton=1
-              WHERE p.new_public_authority_id=NEW.new_authority_id
-                AND p.old_public_authority_id=NEW.old_authority_id
-                AND p.old_public_authority_id=h.authority_id
-                AND p.root_authority_id=NEW.root_authority_id
-                AND p.root_authority_id=r.authority_id
-                AND p.root_version=r.version
-                AND p.root_generation=r.generation
-            )
-            BEGIN
-              SELECT RAISE(ABORT,'LAB-086 public recovery transition requires exact root proof first');
-            END"""
-        )
-        q.execute(
-            """CREATE TRIGGER lab086_public_transition_is_immutable
-            BEFORE UPDATE ON provider_recovery_public_transitions
-            WHEN EXISTS(
-              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
-            )
-            BEGIN
-              SELECT RAISE(ABORT,'LAB-086 public recovery transitions are immutable after cutoff');
-            END"""
-        )
-        q.execute(
-            """CREATE TRIGGER lab086_public_head_requires_root_proof
-            BEFORE UPDATE ON provider_recovery_public_head
-            WHEN EXISTS(
-              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
-            ) AND NOT EXISTS(
-              SELECT 1
-              FROM provider_asymmetric_recovery_public_root_proofs p
-              JOIN provider_rotation_authority_head r ON r.singleton=1
-              WHERE p.new_public_authority_id=NEW.authority_id
-                AND p.old_public_authority_id=OLD.authority_id
-                AND p.root_authority_id=r.authority_id
-                AND p.root_version=r.version
-                AND p.root_generation=r.generation
-            )
-            BEGIN
-              SELECT RAISE(ABORT,'LAB-086 public recovery head requires exact current-root proof');
-            END"""
-        )
+        q.execute('CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_boundary(\n              singleton INTEGER PRIMARY KEY CHECK(singleton=1),legacy_digest TEXT NOT NULL,\n              cutoff_root_id TEXT NOT NULL,cutoff_root_version INTEGER NOT NULL,cutoff_root_generation INTEGER NOT NULL,\n              public_authority_id TEXT NOT NULL,public_authority_version INTEGER NOT NULL,\n              public_authority_generation INTEGER NOT NULL,boundary_digest TEXT NOT NULL,signatures_json TEXT NOT NULL)')
+        q.execute('CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_legacy_projection(\n              singleton INTEGER PRIMARY KEY CHECK(singleton=1),projection_json TEXT NOT NULL)')
+        for trigger_name in ('provider_asymmetric_break_glass_no_legacy_hmac', 'provider_asymmetric_break_glass_no_symmetric_lifecycle', 'provider_asymmetric_break_glass_no_symmetric_authority', 'provider_asymmetric_break_glass_no_compat_authority'):
+            q.execute(f'DROP TRIGGER IF EXISTS {trigger_name}')
+        q.execute("CREATE TRIGGER provider_asymmetric_break_glass_no_legacy_hmac\n            BEFORE INSERT ON provider_rotation_recovery_transitions\n            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)\n            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new HMAC break-glass rows'); END")
+        q.execute("CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_lifecycle\n            BEFORE INSERT ON provider_recovery_lifecycle_transitions\n            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)\n            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery lifecycle rows'); END")
+        q.execute("CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_authority\n            BEFORE INSERT ON provider_recovery_lifecycle_authorities\n            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)\n            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery authorities'); END")
+        q.execute("CREATE TRIGGER provider_asymmetric_break_glass_no_compat_authority\n            BEFORE INSERT ON provider_rotation_recovery_authorities\n            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)\n            BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new compatibility recovery authorities'); END")
+        q.execute('CREATE TABLE IF NOT EXISTS provider_asymmetric_recovery_public_root_proofs(\n              new_public_authority_id TEXT PRIMARY KEY,old_public_authority_id TEXT NOT NULL,\n              root_authority_id TEXT NOT NULL,root_version INTEGER NOT NULL,root_generation INTEGER NOT NULL,\n              intent_digest TEXT NOT NULL,root_signatures_json TEXT NOT NULL)')
+        install_public_mutation_fence_locked(q)
 
     @staticmethod
     def _boundary_row_locked(q):
-        return q.execute(
-            "SELECT legacy_digest,cutoff_root_id,cutoff_root_version,cutoff_root_generation,"
-            "public_authority_id,public_authority_version,public_authority_generation,"
-            "boundary_digest,signatures_json "
-            "FROM provider_asymmetric_break_glass_boundary WHERE singleton=1"
-        ).fetchone()
+        return q.execute('SELECT legacy_digest,cutoff_root_id,cutoff_root_version,cutoff_root_generation,public_authority_id,public_authority_version,public_authority_generation,boundary_digest,signatures_json FROM provider_asymmetric_break_glass_boundary WHERE singleton=1').fetchone()
 
     def _verify_inherited_locked(self, q):
         SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self.ledger)
@@ -266,107 +99,19 @@ class AuthenticatedBreakGlassMigrationGuard:
         return [list(row) for row in q.execute(sql, args).fetchall()]
 
     def _semantic_snapshot_locked(self, q, cutoff_version):
-        """Reconstruct frozen non-secret LAB-084/085 recovery semantics."""
-        return {
-            "compat_authorities": self._rows(
-                q,
-                "SELECT authority_id,name,generation,threshold,revoked_json "
-                "FROM provider_rotation_recovery_authorities ORDER BY generation",
-            ),
-            "compat_head": self._rows(
-                q,
-                "SELECT authority_id,generation FROM provider_rotation_recovery_head WHERE singleton=1",
-            ),
-            "lifecycle_authorities": self._rows(
-                q,
-                "SELECT authority_id,version,name,generation,threshold,revoked_json "
-                "FROM provider_recovery_lifecycle_authorities ORDER BY version",
-            ),
-            "lifecycle_head": self._rows(
-                q,
-                "SELECT authority_id,version,generation FROM provider_recovery_lifecycle_head WHERE singleton=1",
-            ),
-            "lifecycle_transitions": self._rows(
-                q,
-                "SELECT new_authority_id,old_authority_id,root_authority_id,root_version,"
-                "root_generation,intent_digest FROM provider_recovery_lifecycle_transitions "
-                "ORDER BY root_version,new_authority_id",
-            ),
-            "custody_bindings": self._rows(
-                q,
-                "SELECT symmetric_authority_id,public_authority_id,version,generation "
-                "FROM provider_recovery_custody_bindings ORDER BY version",
-            ),
-            "legacy_recovery_edges": self._rows(
-                q,
-                "SELECT r.new_rotation_authority_id,r.old_rotation_authority_id,"
-                "r.old_rotation_version,r.old_rotation_generation,r.recovery_authority_id,"
-                "r.recovery_generation,r.intent_digest "
-                "FROM provider_rotation_recovery_transitions r "
-                "JOIN provider_rotation_authorities a ON a.authority_id=r.new_rotation_authority_id "
-                "WHERE a.version<=? ORDER BY a.version",
-                (cutoff_version,),
-            ),
-            "custody_proofs": self._rows(
-                q,
-                "SELECT p.new_rotation_authority_id,p.public_authority_id,p.symmetric_authority_id,"
-                "p.compatibility_intent_digest,p.custody_intent_digest,p.public_signatures_json "
-                "FROM provider_rotation_recovery_custody_proofs p "
-                "JOIN provider_rotation_authorities a ON a.authority_id=p.new_rotation_authority_id "
-                "WHERE a.version<=? ORDER BY a.version",
-                (cutoff_version,),
-            ),
-            "custody_enablement": self._rows(
-                q,
-                "SELECT start_rotation_authority_id,start_rotation_version,start_rotation_generation,"
-                "symmetric_authority_id,public_authority_id "
-                "FROM provider_recovery_custody_enablement WHERE singleton=1",
-            ),
-            "custody_enablement_proof": self._rows(
-                q,
-                "SELECT enablement_digest,public_signatures_json "
-                "FROM provider_recovery_custody_enablement_proof WHERE singleton=1",
-            ),
-        }
+        return {'compat_authorities': self._rows(q, 'SELECT authority_id,name,generation,threshold,revoked_json FROM provider_rotation_recovery_authorities ORDER BY generation'), 'compat_head': self._rows(q, 'SELECT authority_id,generation FROM provider_rotation_recovery_head WHERE singleton=1'), 'lifecycle_authorities': self._rows(q, 'SELECT authority_id,version,name,generation,threshold,revoked_json FROM provider_recovery_lifecycle_authorities ORDER BY version'), 'lifecycle_head': self._rows(q, 'SELECT authority_id,version,generation FROM provider_recovery_lifecycle_head WHERE singleton=1'), 'lifecycle_transitions': self._rows(q, 'SELECT new_authority_id,old_authority_id,root_authority_id,root_version,root_generation,intent_digest FROM provider_recovery_lifecycle_transitions ORDER BY root_version,new_authority_id'), 'custody_bindings': self._rows(q, 'SELECT symmetric_authority_id,public_authority_id,version,generation FROM provider_recovery_custody_bindings ORDER BY version'), 'legacy_recovery_edges': self._rows(q, 'SELECT r.new_rotation_authority_id,r.old_rotation_authority_id,r.old_rotation_version,r.old_rotation_generation,r.recovery_authority_id,r.recovery_generation,r.intent_digest FROM provider_rotation_recovery_transitions r JOIN provider_rotation_authorities a ON a.authority_id=r.new_rotation_authority_id WHERE a.version<=? ORDER BY a.version', (cutoff_version,)), 'custody_proofs': self._rows(q, 'SELECT p.new_rotation_authority_id,p.public_authority_id,p.symmetric_authority_id,p.compatibility_intent_digest,p.custody_intent_digest,p.public_signatures_json FROM provider_rotation_recovery_custody_proofs p JOIN provider_rotation_authorities a ON a.authority_id=p.new_rotation_authority_id WHERE a.version<=? ORDER BY a.version', (cutoff_version,)), 'custody_enablement': self._rows(q, 'SELECT start_rotation_authority_id,start_rotation_version,start_rotation_generation,symmetric_authority_id,public_authority_id FROM provider_recovery_custody_enablement WHERE singleton=1'), 'custody_enablement_proof': self._rows(q, 'SELECT enablement_digest,public_signatures_json FROM provider_recovery_custody_enablement_proof WHERE singleton=1')}
 
     def _build_projection_locked(self, q, cutoff_root, public_head):
         roots = {}
-        for (authority_id,) in q.execute(
-            "SELECT authority_id FROM provider_rotation_authorities ORDER BY version"
-        ).fetchall():
+        for authority_id, in q.execute('SELECT authority_id FROM provider_rotation_authorities ORDER BY version').fetchall():
             candidate = self.ledger.rotation_authority._load_locked(q, authority_id)
             roots[candidate.authority_id] = candidate
         windows = self.ledger._lifecycle_windows_locked(q, roots)
         serialized_windows = []
-        for recovery_id, (versioned, lower, upper) in sorted(
-            windows.items(), key=lambda item: item[1][0].version
-        ):
-            binding = q.execute(
-                "SELECT public_authority_id,version,generation "
-                "FROM provider_recovery_custody_bindings WHERE symmetric_authority_id=?",
-                (versioned.authority_id,),
-            ).fetchone()
-            serialized_windows.append(
-                {
-                    "recovery_authority_id": recovery_id,
-                    "symmetric_authority_id": versioned.authority_id,
-                    "version": versioned.version,
-                    "generation": versioned.generation,
-                    "activation_root_version": lower,
-                    "deactivation_root_version": upper,
-                    "public_authority_id": None if binding is None else binding[0],
-                }
-            )
-        return {
-            "schema_version": 1,
-            "cutoff_root_id": cutoff_root.authority_id,
-            "cutoff_root_version": cutoff_root.version,
-            "cutoff_public_authority_id": public_head.authority_id,
-            "cutoff_public_version": public_head.version,
-            "cutoff_public_generation": public_head.generation,
-            "semantic": self._semantic_snapshot_locked(q, cutoff_root.version),
-            "recovery_windows": serialized_windows,
-        }
+        for recovery_id, (versioned, lower, upper) in sorted(windows.items(), key=lambda item: item[1][0].version):
+            binding = q.execute('SELECT public_authority_id,version,generation FROM provider_recovery_custody_bindings WHERE symmetric_authority_id=?', (versioned.authority_id,)).fetchone()
+            serialized_windows.append({'recovery_authority_id': recovery_id, 'symmetric_authority_id': versioned.authority_id, 'version': versioned.version, 'generation': versioned.generation, 'activation_root_version': lower, 'deactivation_root_version': upper, 'public_authority_id': None if binding is None else binding[0]})
+        return {'schema_version': 1, 'cutoff_root_id': cutoff_root.authority_id, 'cutoff_root_version': cutoff_root.version, 'cutoff_public_authority_id': public_head.authority_id, 'cutoff_public_version': public_head.version, 'cutoff_public_generation': public_head.generation, 'semantic': self._semantic_snapshot_locked(q, cutoff_root.version), 'recovery_windows': serialized_windows}
 
     @staticmethod
     def _encode_projection(projection):
@@ -377,11 +122,11 @@ class AuthenticatedBreakGlassMigrationGuard:
         try:
             value = json.loads(raw)
         except Exception as exc:
-            raise MigrationGuardError("invalid migration projection JSON") from exc
-        if not isinstance(value, dict) or value.get("schema_version") != 1:
-            raise MigrationGuardError("invalid migration projection schema")
+            raise MigrationGuardError('invalid migration projection JSON') from exc
+        if not isinstance(value, dict) or value.get('schema_version') != 1:
+            raise MigrationGuardError('invalid migration projection schema')
         if _canon(value).decode() != raw:
-            raise MigrationGuardError("noncanonical migration projection")
+            raise MigrationGuardError('noncanonical migration projection')
         return value
 
     @staticmethod
@@ -389,48 +134,30 @@ class AuthenticatedBreakGlassMigrationGuard:
         q.execute("UPDATE provider_rotation_recovery_transitions SET signatures_json='[]'")
         q.execute("UPDATE provider_rotation_recovery_authorities SET keys_json='{}'")
         q.execute("UPDATE provider_recovery_lifecycle_authorities SET keys_json='{}'")
-        q.execute(
-            "UPDATE provider_recovery_lifecycle_transitions "
-            "SET old_signatures_json='[]',new_signatures_json='[]',root_signatures_json='[]'"
-        )
+        q.execute("UPDATE provider_recovery_lifecycle_transitions SET old_signatures_json='[]',new_signatures_json='[]',root_signatures_json='[]'")
 
     @staticmethod
     def _assert_legacy_hmac_material_scrubbed_locked(q):
-        checks = (
-            ("provider_rotation_recovery_transitions", "signatures_json", "[]"),
-            ("provider_rotation_recovery_authorities", "keys_json", "{}"),
-            ("provider_recovery_lifecycle_authorities", "keys_json", "{}"),
-            ("provider_recovery_lifecycle_transitions", "old_signatures_json", "[]"),
-            ("provider_recovery_lifecycle_transitions", "new_signatures_json", "[]"),
-            ("provider_recovery_lifecycle_transitions", "root_signatures_json", "[]"),
-        )
+        checks = (('provider_rotation_recovery_transitions', 'signatures_json', '[]'), ('provider_rotation_recovery_authorities', 'keys_json', '{}'), ('provider_recovery_lifecycle_authorities', 'keys_json', '{}'), ('provider_recovery_lifecycle_transitions', 'old_signatures_json', '[]'), ('provider_recovery_lifecycle_transitions', 'new_signatures_json', '[]'), ('provider_recovery_lifecycle_transitions', 'root_signatures_json', '[]'))
         for table, column, expected in checks:
-            count = q.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE {column}!=?", (expected,)
-            ).fetchone()[0]
+            count = q.execute(f'SELECT COUNT(*) FROM {table} WHERE {column}!=?', (expected,)).fetchone()[0]
             if count:
-                raise MigrationGuardError(
-                    f"legacy symmetric recovery material remains in {table}.{column}"
-                )
+                raise MigrationGuardError(f'legacy symmetric recovery material remains in {table}.{column}')
         return True
 
     def payload(self):
         q = self.ledger._con()
         try:
-            q.execute("BEGIN IMMEDIATE")
+            q.execute('BEGIN IMMEDIATE')
             self._ensure_schema_locked(q)
             if self._boundary_row_locked(q) is not None:
-                raise MigrationGuardError("migration boundary already exists")
+                raise MigrationGuardError('migration boundary already exists')
             self.ledger._reject_prepared_locked(q)
             self._verify_preboundary_locked(q)
             root = self.ledger.rotation_authority.current_locked(q)
             public = self.ledger.public_recovery_custody.current_locked(q)
             projection = self._build_projection_locked(q, root, public)
-            out = migration_payload(
-                legacy_digest=_digest(projection),
-                cutoff_root=root,
-                public_authority=public,
-            )
+            out = migration_payload(legacy_digest=_digest(projection), cutoff_root=root, public_authority=public)
             q.commit()
             return out
         except:
@@ -443,46 +170,22 @@ class AuthenticatedBreakGlassMigrationGuard:
     def establish(self, public_signatures):
         q = self.ledger._con()
         try:
-            q.execute("BEGIN IMMEDIATE")
+            q.execute('BEGIN IMMEDIATE')
             self._ensure_schema_locked(q)
             if self._boundary_row_locked(q) is not None:
-                raise MigrationGuardError("migration boundary already exists")
+                raise MigrationGuardError('migration boundary already exists')
             self.ledger._reject_prepared_locked(q)
-            # Last use of symmetric recovery verification. If this passes, the
-            # signed projection becomes the historical authority boundary.
             self._verify_preboundary_locked(q)
             root = self.ledger.rotation_authority.current_locked(q)
             public = self.ledger.public_recovery_custody.current_locked(q)
             projection = self._build_projection_locked(q, root, public)
             legacy = _digest(projection)
-            payload = migration_payload(
-                legacy_digest=legacy,
-                cutoff_root=root,
-                public_authority=public,
-            )
-            accepted = accepted_public_signatures(
-                public, payload, tuple(public_signatures)
-            )
+            payload = migration_payload(legacy_digest=legacy, cutoff_root=root, public_authority=public)
+            accepted = accepted_public_signatures(public, payload, tuple(public_signatures))
             verify_public_threshold(public, payload, accepted)
             bd = _digest(payload)
-            q.execute(
-                "INSERT INTO provider_asymmetric_break_glass_legacy_projection VALUES(1,?)",
-                (self._encode_projection(projection),),
-            )
-            q.execute(
-                "INSERT INTO provider_asymmetric_break_glass_boundary VALUES(1,?,?,?,?,?,?,?,?,?)",
-                (
-                    legacy,
-                    root.authority_id,
-                    root.version,
-                    root.generation,
-                    public.authority_id,
-                    public.version,
-                    public.generation,
-                    bd,
-                    self.ledger.public_recovery_custody._encode_signatures(accepted),
-                ),
-            )
+            q.execute('INSERT INTO provider_asymmetric_break_glass_legacy_projection VALUES(1,?)', (self._encode_projection(projection),))
+            q.execute('INSERT INTO provider_asymmetric_break_glass_boundary VALUES(1,?,?,?,?,?,?,?,?,?)', (legacy, root.authority_id, root.version, root.generation, public.authority_id, public.version, public.generation, bd, self.ledger.public_recovery_custody._encode_signatures(accepted)))
             self._scrub_legacy_hmac_material_locked(q)
             self.verify_locked(q)
             q.commit()
@@ -500,56 +203,38 @@ class AuthenticatedBreakGlassMigrationGuard:
         if row is None:
             return None
         legacy, rid, rv, rg, pid, pv, pg, bd, sigs = row
-        projection_row = q.execute(
-            "SELECT projection_json FROM provider_asymmetric_break_glass_legacy_projection WHERE singleton=1"
-        ).fetchone()
+        projection_row = q.execute('SELECT projection_json FROM provider_asymmetric_break_glass_legacy_projection WHERE singleton=1').fetchone()
         if projection_row is None:
-            raise MigrationGuardError("missing migration legacy projection")
+            raise MigrationGuardError('missing migration legacy projection')
         projection = self._decode_projection(projection_row[0])
         if _digest(projection) != legacy:
-            raise MigrationGuardError("legacy projection digest mismatch")
+            raise MigrationGuardError('legacy projection digest mismatch')
         root = self.ledger.rotation_authority._load_locked(q, rid)
         if (root.version, root.generation) != (rv, rg):
-            raise MigrationGuardError("boundary root metadata mismatch")
-        if (
-            projection.get("cutoff_root_id") != root.authority_id
-            or projection.get("cutoff_root_version") != root.version
-            or projection.get("cutoff_public_authority_id") != pid
-            or projection.get("cutoff_public_version") != pv
-            or projection.get("cutoff_public_generation") != pg
-        ):
-            raise MigrationGuardError("projection/cutoff identity mismatch")
+            raise MigrationGuardError('boundary root metadata mismatch')
+        if projection.get('cutoff_root_id') != root.authority_id or projection.get('cutoff_root_version') != root.version or projection.get('cutoff_public_authority_id') != pid or (projection.get('cutoff_public_version') != pv) or (projection.get('cutoff_public_generation') != pg):
+            raise MigrationGuardError('projection/cutoff identity mismatch')
         public = self.ledger.public_recovery_custody._load_authority_locked(q, pid)
         if (public.version, public.generation) != (pv, pg):
-            raise MigrationGuardError("boundary public authority metadata mismatch")
-        payload = migration_payload(
-            legacy_digest=legacy, cutoff_root=root, public_authority=public
-        )
+            raise MigrationGuardError('boundary public authority metadata mismatch')
+        payload = migration_payload(legacy_digest=legacy, cutoff_root=root, public_authority=public)
         if _digest(payload) != bd:
-            raise MigrationGuardError("boundary digest mismatch")
+            raise MigrationGuardError('boundary digest mismatch')
         decoded = self.ledger.public_recovery_custody._decode_signatures(sigs)
         accepted = accepted_public_signatures(public, payload, decoded)
         verify_public_threshold(public, payload, accepted)
         if self.ledger.public_recovery_custody._encode_signatures(accepted) != sigs:
-            raise MigrationGuardError("noncanonical boundary signatures")
+            raise MigrationGuardError('noncanonical boundary signatures')
         current_semantic = self._semantic_snapshot_locked(q, root.version)
-        if current_semantic != projection.get("semantic"):
-            raise LegacyHistoryChanged("legacy recovery semantics changed after migration")
+        if current_semantic != projection.get('semantic'):
+            raise LegacyHistoryChanged('legacy recovery semantics changed after migration')
         self._assert_legacy_hmac_material_scrubbed_locked(q)
-        return {
-            "boundary_digest": bd,
-            "legacy_digest": legacy,
-            "root_id": root.authority_id,
-            "root_version": root.version,
-            "public_authority_id": public.authority_id,
-            "public_authority_version": public.version,
-            "projection": projection,
-        }
+        return {'boundary_digest': bd, 'legacy_digest': legacy, 'root_id': root.authority_id, 'root_version': root.version, 'public_authority_id': public.authority_id, 'public_authority_version': public.version, 'projection': projection}
 
     def verify(self):
         q = self.ledger._con()
         try:
-            q.execute("BEGIN IMMEDIATE")
+            q.execute('BEGIN IMMEDIATE')
             self._ensure_schema_locked(q)
             result = self.verify_locked(q)
             q.commit()
