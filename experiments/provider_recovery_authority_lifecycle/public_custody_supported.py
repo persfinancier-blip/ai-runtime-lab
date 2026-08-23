@@ -192,6 +192,11 @@ class SupportedPublicRecoveryAuthorityLifecycleLedger(SupportedRecoveryAuthority
             "public custody is enabled; use rotate_recovery_authority_with_custody so both heads advance atomically"
         )
 
+    def recover_rotation_authority(self, *args, **kwargs):
+        raise CustodyBindingError(
+            "public custody is enabled; HMAC-only break-glass recovery is not a supported intermediate surface"
+        )
+
     def rotate_recovery_authority_with_custody(
         self,
         new_symmetric,
