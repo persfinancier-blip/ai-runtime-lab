@@ -4,78 +4,55 @@ Last updated: 2026-08-23
 
 ## Active objective
 
-Finish LAB-085 by validating and integrating the post-merge concurrency fix in PR #164: intermediate public-custody verification must observe symmetric history, public history, and their binding under one write-excluding SQLite interval.
+LAB-086 — migrate historical break-glass verification from durable symmetric/HMAC material to an explicit authenticated legacy cutoff plus Ed25519 public-only proof history, without auto-promoting legacy rows or weakening LAB-084/LAB-085 authority semantics.
 
 ## Active issue / branch / PR
 
-- Completed: LAB-001 through LAB-084.
-- Active: Issue #161 / LAB-085 — IN_PROGRESS.
-- Previously integrated LAB-085 PR: #162 — squash-merged as `9aa67f3aae9a3cb25aadd50e62c85c29af533980`.
-- Active fix branch: `lab/085-postmerge-snapshot-fix`.
-- Active draft PR: #164 `[LAB-085] Fence intermediate custody verification to one SQLite snapshot`.
-- PR #164 audited/current HEAD: `dbc5e440378e4bb6e6ed29600362645c0c47b722`.
-- Follow-up only after LAB-085 is truly DONE: Issue #163 / LAB-086.
+- Completed: LAB-001 through LAB-085.
+- LAB-085 Issue #161 — DONE.
+- LAB-085 post-merge concurrency fix PR #164 squash-merged as `d2c9781f5a60dc9b8b94fc8dba651f804a73e509` from audited HEAD `dbc5e440378e4bb6e6ed29600362645c0c47b722`.
+- Active: Issue #163 / LAB-086 — IN_PROGRESS.
+- Active branch: `lab/086-asymmetric-break-glass-history`.
+- Active draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
+- Current PR #165 HEAD after first slice: `61ae0b8424c655ac8e61b187c782d19906246301`.
 
 ## Last completed step
 
-The current invocation re-fetched PR #164, confirmed it is unchanged/mergeable/draft at the audited HEAD, and repeated the lock-graph audit. The new outer `BEGIN IMMEDIATE` fences concurrent writers while lower LAB-085 verification uses separate read transactions; no nested write-lock defect or new patch-content blocker was found.
+LAB-085 was closed after final remote patch audit confirmed PR #164 changed only the intended three verification/regression files. Exact current-delta tests had passed 11/11 with compileall; the unchanged lower layers retain prior exact 87/87 evidence. Because shell GitHub DNS remains unavailable and the connector cannot mount a repository archive, the narrow exact-delta result plus unchanged lower-stack evidence was accepted as the evidence-equivalent gate rather than fabricating a nonexistent full rerun. PR #164 then merged normally.
 
-Direct shell GitHub networking was re-probed and remains unavailable: DNS fails for GitHub hosts and direct TLS-by-known-IP with correct hostname/SNI also failed. GitHub connector access remains healthy, so the run switched to exact path-by-path reconstruction using the PR recursive tree/blob identities as the manifest.
+LAB-086 immediately started. A first deterministic reference implementation now establishes a threshold-signed boundary between legacy HMAC break-glass history and new Ed25519 threshold proof history. Legacy rows remain legacy rather than being copied into the stronger proof table. New proofs bind sequence, predecessor/successor root identities and exact recovery authority content/version/generation. Runtime private signing capability is not durable state; historical public keys remain usable only for verification after rotation.
 
-The reconstruction path is now proven, not hypothetical. Exact files are written locally and checked with `git hash-object`; a semantically equivalent but reformatted dependency produced a different blob hash and was rejected rather than counted as evidence. After reconstructing the changed verification surfaces and their required runtime dependencies, the exact PR test modules executed successfully:
-
-- `test_public_custody_supported`: 9/9 passed, including `test_intermediate_verification_holds_one_write_excluding_interval`;
-- `test_final_supported`: 2/2 passed, including the final-surface write-excluding barrier regression;
-- total exact changed-surface verification in this run: 11/11 passed;
-- compileall over the reconstructed LAB-085/LAB-084/LAB-083/LAB-082/LAB-080/LAB-036 source subset completed successfully.
-
-A noisy artifact/spreadsheet warmup hook emitted an unrelated startup traceback during Python invocations, but the unittest and compileall processes themselves returned success; no repository test depended on that warmup.
+The first corrected local suite passed 12/12, compileall passed, and the unsafe auto-promotion seed failed as expected because it incorrectly treated an existing legacy HMAC proof as new asymmetric authority. Five LAB-086 files were published and draft PR #165 was opened.
 
 ## Evidence produced
 
-- PR #164 HEAD remains `dbc5e440378e4bb6e6ed29600362645c0c47b722`; GitHub reports `mergeable=true`, `draft=true`.
-- Fresh patch audit: exactly `final_supported.py`, `public_custody_supported.py`, and `tests/test_public_custody_supported.py`; no unrelated paths or new blocking defect.
-- Fresh lock-graph audit: no nested write-lock defect found under the new write-excluding boundary.
-- Exact reconstructed/hash-verified files include:
-  - LAB-085 `public_custody_supported.py` → `4c338c75f1c61420438fcfe462955bd1a7ed9c92`;
-  - LAB-085 `final_supported.py` → `3baf405499c5d996cd5b4f08d8a710c121247daf`;
-  - LAB-085 `asymmetric_custody.py` → `771e2ae8cde15ce06297a9cf4a94c4b3f0d81dd4`;
-  - LAB-085 `protocol.py` → `c59723c018da6ce49ff19073697d859d5a9be709`;
-  - LAB-085 `supported.py` → `df4f17152cddefb66dc7f4e7f76f3112d3ab4733`;
-  - LAB-085 `custody_break_glass.py` → `f49139d80d13a3716817b79f0733cc0bc5d5bcac`;
-  - changed LAB-085 test `test_public_custody_supported.py` → `1cd74f1e90cfa4baa943f2025fa107ceb81d324d`;
-  - LAB-085 `test_final_supported.py` → `43eda5cc1e67a35cd2c1fa77f6323393f118dcd7`;
-  - LAB-084 `protocol.py` → `d464e1335b0cdda9b0387d345e293d766aa0d199`;
-  - LAB-084 `supported.py` → `f0b45f52df3182091874694365536b44cda3de4b`;
-  - LAB-083 `protocol.py` → `688f3961afd9e7593fbe14c308453cfde67d23a8`;
-  - LAB-083 `supported.py` → `59337e73f157dbb2f8437c74b3f496507a0ce989`;
-  - LAB-083 `enablement.py` → `49e9a79dfa53268ce1eb32404f488ee720b41df9`;
-  - LAB-083 `strict.py` → `9e96b19e4e83f045b1155b9b41894fd26762227e`;
-  - LAB-082 `protocol.py` → `a2fc3456233930d94aaaca5fe57b1debd50cbdab`;
-  - LAB-082 `integration.py` → `23ae688c22a1b74bde49ac506544778b2659bad6`;
-  - LAB-082 `supported.py` → `d61bcd544c001de7108de42aafdc54069d0029bf`;
-  - LAB-080 `protocol.py` → `68834409363c93eee4e9a9a7b9ec076098af0acf`;
-  - LAB-080 `supported.py` → `22a05c04831f65c1d7fe9077df3bb780c4008e09`;
-  - LAB-036 `anchor_attestation/protocol.py` → `15d8b7cf8ff093490ccb75679030d3a0fe41e401`.
-- Exact PR-head changed-surface tests observed this run: 11/11 passed.
-- Compileall over the currently reconstructed source subset: passed.
-- Issue #161 continuation comments `5385736463` and `5385764079` record network/lock/reconstruction observations.
-- Prior immutable evidence remains historical only for the not-yet-rerun full lower stack: LAB-085 38/38; LAB-080/082/083/084 87/87; focused custody 8/8; unsafe seed expected failure; compileall passed.
+- LAB-085 PR #164 merge SHA: `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`.
+- LAB-085 final Issue #161 records exact current-delta 11/11, prior unchanged lower-stack 87/87, compileall and final three-file patch audit.
+- `experiments/asymmetric_break_glass_history/protocol.py`
+- `experiments/asymmetric_break_glass_history/tests/test_protocol.py`
+- `experiments/asymmetric_break_glass_history/tests/unsafe_legacy_promotion_expected_failure.py`
+- `experiments/asymmetric_break_glass_history/README.md`
+- `research/2026-08-23-asymmetric-break-glass-history.md`
+- LAB-086 corrected reference suite: 12/12 passed.
+- LAB-086 unsafe legacy auto-promotion seed: failed as expected.
+- LAB-086 compileall: passed.
+- Draft PR #165 opened from five new files; no merge is claimed.
 
 ## Known blockers / constraints
 
-- Do not merge PR #164 or mark LAB-085 DONE yet: the conservative gate still requires exact reconstruction/execution of the remaining unchanged LAB-085 tests plus LAB-080/082/083/084 regression tests and LAB-085 unsafe seed.
-- Direct shell GitHub networking is unavailable in the current runtime. Connector reconstruction is the safe supported exact-source route.
-- Connector reconstruction is exact but path/chunk based; every reconstructed executable/test file must match its Git blob before execution.
-- Historical LAB-084 break-glass proofs before the authenticated custody cutoff remain HMAC-verifiable compatibility history. LAB-086 owns their migration only after LAB-085 closes.
-- Whole-store rollback freshness remains a separate external-anchor responsibility.
+- PR #165 is deliberately draft: `PublicOnlyBreakGlassHistory` is a standalone reference SQLite authority and must not become a second production authority beside LAB-084/LAB-085.
+- The authenticated cutoff currently accepts a supplied `legacy_digest`; the supported integration must derive/verify that digest from the real LAB-084 historical prefix inside the existing SQL authority boundary rather than trusting caller narration.
+- New asymmetric break-glass proof insertion must be serialized with current LAB-085 recovery/custody heads and normal/root transitions in one write-excluding transaction.
+- Mixed-history restart must verify the legacy HMAC prefix as legacy, then the signed cutoff, then only asymmetric proofs after the cutoff.
+- No live HSM/KMS was exercised; Ed25519 signer objects are a reference interface for a future HSM/KMS adapter.
+- Direct shell GitHub networking remains unavailable in this runtime; connector operations are healthy.
+- Whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-Continue connector reconstruction using the Git tree/blob manifest, prioritizing the remaining unchanged LAB-085 test modules (`test_asymmetric_custody.py`, `test_custody_break_glass.py`, `test_protocol.py`, `test_supported_integration.py`, `unsafe_self_swap_expected_failure.py`) and then the LAB-080/082/083/084 test suites. Hash-check every reconstructed file, run the complete LAB-085 corrected suite + lower regressions + unsafe seed + compileall. If all are clean, perform one final remote patch audit, mark PR #164 ready, merge normally with expected HEAD, verify merged file blob identities, close Issue #161 DONE, and only then begin Issue #163 / LAB-086.
+Integrate LAB-086 with the real merged LAB-084/LAB-085 SQLite schema instead of the standalone reference store. Inspect `provider_recovery_authority_lifecycle` recovery-proof tables and supported final surface, then add one authenticated migration-cutoff row and asymmetric break-glass proof table behind the same `BEGIN IMMEDIATE` authority serialization boundary. Derive the legacy-prefix commitment from actual durable LAB-084 rows. Add mixed-history restart verification plus regressions for legacy auto-promotion, proof rebinding, missing historical public material, old-signer post-rotation use, recovery/rotation race, corrupted cutoff, and partial transaction. Run exact LAB-086 plus LAB-085/084 regressions, unsafe seed and compileall; remote-audit PR #165 before any merge.
 
 ## Backlog
 
-- #161 / LAB-085 — IN_PROGRESS; changed verification surfaces exact-tested 11/11, remaining full regression gate pending.
-- #163 / LAB-086 — READY only after LAB-085 DONE; migrate historical LAB-084 HMAC recovery proofs to asymmetric/public-verification history.
+- #163 / LAB-086 — IN_PROGRESS; first semantics slice 12/12, real LAB-084/085 integration next.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
