@@ -17,9 +17,16 @@ must authorize one canonical recovery-authority transition. The supported LAB-08
 3. the public Ed25519 custody head and its old+new public quorum proof; and
 4. an exact `(symmetric authority ID, public authority ID, version, generation)` binding row.
 
-The supported surface rejects a plain symmetric-only recovery-authority rotation once public custody is enabled. Restart verification checks one-to-one history cardinality, exact metadata continuity, predecessor continuity, equality of the co-authorizing root identity for each paired transition, and current-head binding.
+The intermediate public-custody layer rejects plain symmetric-only **recovery-authority lifecycle rotation**. Consequential new break-glass root recovery is exposed only by the final surface below.
 
-`final_supported.py` is the final supported LAB-085 surface. It holds a write-excluding SQLite transaction across symmetric-history verification, public-history verification, and the final binding check so a concurrent writer cannot make those passes observe different authoritative snapshots.
+`final_supported.py` is the final supported LAB-085 surface. It holds a write-excluding SQLite transaction across symmetric-history verification, public-history verification, custody binding, and break-glass proof verification so a concurrent writer cannot make those passes observe different authoritative snapshots.
+
+For every **new** break-glass root recovery after final-custody enablement, the inherited HMAC-only `recover_rotation_authority()` path is blocked. Callers must use `recover_rotation_authority_with_custody()`. Until LAB-086 migrates the historical LAB-084 proof format, that operation requires both:
+
+- the current Ed25519 public recovery quorum over a canonical custody intent; and
+- the compatibility LAB-084 HMAC recovery quorum over the exact legacy recovery intent.
+
+Both proof rows and the recovered rotation-authority head commit in the same `BEGIN IMMEDIATE` transaction. The Ed25519 custody intent includes the exact legacy intent digest, so the two proof families cannot authorize different recoveries. Restart verification requires the public proof for every recovery edge created after the custody-enablement cutoff, while older LAB-084 history remains verification-only compatibility history.
 
 ## Security boundary
 
@@ -39,6 +46,7 @@ python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_
 python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_asymmetric_custody -v
 python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_public_custody_supported -v
 python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_final_supported -v
+python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_custody_break_glass -v
 ```
 
 Unsafe seed (expected failure):
@@ -49,6 +57,8 @@ python -m unittest experiments.provider_recovery_authority_lifecycle.tests.unsaf
 
 ## Explicit remaining boundary
 
-The lifecycle/custody path is public-key-verifiable, but historical LAB-084 **break-glass proofs are still HMAC-based** and therefore still need historical symmetric verification material. They must not be described as public-only. Issue #163 / LAB-086 tracks the authenticated migration of that historical proof path to asymmetric/HSM-KMS-compatible verification.
+Historical LAB-084 **break-glass proofs created before the final custody cutoff are still HMAC-based** and therefore still need historical symmetric verification material. They must not be described as public-only. Issue #163 / LAB-086 tracks authenticated migration of that historical proof path to asymmetric/HSM-KMS-compatible verification.
+
+New break-glass effects are no longer HMAC-only on the final supported surface; the HMAC row is temporary compatibility evidence paired atomically with the required Ed25519 custody proof.
 
 If normal/root authorization and recovery-lifecycle authorization are both unavailable or compromised, fail closed and require an external bootstrap ceremony; there is no recursive self-recovery.
