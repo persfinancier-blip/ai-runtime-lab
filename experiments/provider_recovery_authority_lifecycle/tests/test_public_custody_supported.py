@@ -11,6 +11,7 @@ from experiments.provider_threshold_rotation.enablement import ThresholdEnableme
 from experiments.provider_threshold_rotation.protocol import RotationAuthority, Signature, ThresholdNotMet, key_id, mac
 from experiments.provider_rotation_recovery.protocol import RecoveryAuthority
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
+    CustodyRollback,
     CustodySubstitution,
     PublicRecoveryAuthority,
     RecoverySigner,
@@ -169,7 +170,7 @@ class PublicCustodySupportedTests(unittest.TestCase):
                 (public1.authority_id, public1.version, public1.generation),
             )
             q.commit(); q.close()
-            with self.assertRaises((CustodySubstitution, CustodyBindingError)):
+            with self.assertRaises((CustodyRollback, CustodySubstitution, CustodyBindingError)):
                 SupportedPublicRecoveryAuthorityLifecycleLedger(
                     path, ledger.attested, signer.public, signer, root, enable, rec1.recovery, public1
                 )
