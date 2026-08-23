@@ -142,8 +142,17 @@ class SupportedAsymmetricBreakGlassLedger(SupportedRecoveryCustodyLedger):
         self._verify_provider_thresholds_locked(q,by_id);return True
     def verify_durable(self):
         if getattr(self,"_lab086_initializing",False) or not hasattr(self,"migration_guard"):return True
-        SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(self);self.public_recovery_custody.verify_durable();q=self._con()
-        try:q.execute("BEGIN IMMEDIATE");self._verify_lab086_locked(q);q.commit();return True
+        # Hold one write-excluding guard across every lower verifier and the LAB-086
+        # cross-layer checks.  Running provider/public-custody verification before
+        # acquiring this guard permits a concurrent writer to mutate already-checked
+        # proof rows before the final binding pass observes them.
+        q=self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(self)
+            self.public_recovery_custody.verify_durable()
+            self._verify_lab086_locked(q)
+            q.commit();return True
         except:
             if q.in_transaction:q.rollback()
             raise
