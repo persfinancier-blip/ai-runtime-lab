@@ -10,6 +10,7 @@ from .custody_break_glass import (
     custody_enablement_payload,
 )
 from .public_custody_supported import SupportedPublicRecoveryAuthorityLifecycleLedger
+from .supported import SupportedRecoveryAuthorityLifecycleLedger
 
 
 class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLedger):
@@ -303,7 +304,12 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
         guard = self._con()
         try:
             guard.execute("BEGIN IMMEDIATE")
-            SupportedPublicRecoveryAuthorityLifecycleLedger.verify_durable(self)
+            # Do not call the intermediate surface's public verify_durable here:
+            # it now establishes its own write-excluding guard.  Re-run the
+            # same authoritative layers directly while this final-surface guard
+            # remains the single serialization boundary.
+            SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self)
+            self.public_recovery_custody.verify_durable()
             self._verify_custody_bindings_locked(guard)
             self._verify_break_glass_custody_locked(guard)
             guard.commit()
