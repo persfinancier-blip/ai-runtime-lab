@@ -51,5 +51,17 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path=Path(td)/"db";ledger,_,_,_,_,_,public_signers,_=self.make_ledger(path);self.migrate(ledger,public_signers);root2,_=authority(2,2,"count");payload=ledger.asymmetric_recovery_payload(root2);ledger.recover_rotation_authority_asymmetric(root2,public_signatures(public_signers,payload,3));q=sqlite3.connect(path);q.execute("INSERT INTO provider_rotation_authority_transitions VALUES(?,?,?,?,?)",(root2.authority_id,ledger.rotation_authority.bootstrap.authority_id,"0"*64,"[]","[]"));q.commit();q.close()
             with self.assertRaises(Exception):ledger.verify_durable()
+    def test_verify_durable_holds_write_fence_across_lower_verifiers(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"db";ledger,*_=self.make_ledger(path);observed=[];original=ledger.public_recovery_custody.verify_durable
+            def probed():
+                result=original();q=sqlite3.connect(path,timeout=0)
+                try:q.execute("BEGIN IMMEDIATE")
+                except sqlite3.OperationalError:observed.append("blocked")
+                else:observed.append("writable");q.rollback()
+                finally:q.close()
+                return result
+            ledger.public_recovery_custody.verify_durable=probed
+            self.assertTrue(ledger.verify_durable());self.assertEqual(observed,["blocked"])
 
 if __name__=="__main__":unittest.main()
