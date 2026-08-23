@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 
 from experiments.provider_threshold_rotation.protocol import ThresholdNotMet
-from experiments.provider_recovery_authority_lifecycle.custody_break_glass import CustodyBreakGlassError
+from experiments.provider_recovery_authority_lifecycle.custody_break_glass import (
+    CustodyBreakGlassError,
+    custody_enablement_payload,
+)
 from experiments.provider_recovery_authority_lifecycle.final_supported import SupportedRecoveryCustodyLedger
 from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody_supported import (
     attested,
@@ -35,8 +38,19 @@ class CustodyBreakGlassTests(unittest.TestCase):
             1,
             signatures(root_raw, base.payload, 2),
         )
+        custody_enablement = custody_enablement_payload(root, rec, public)
         ledger = SupportedRecoveryCustodyLedger(
-            path, a1, signer.public, signer, root, enable, rec.recovery, public
+            path,
+            a1,
+            signer.public,
+            signer,
+            root,
+            enable,
+            rec.recovery,
+            public,
+            custody_enablement_signatures=public_signatures(
+                public_signers, custody_enablement, 3
+            ),
         )
         return ledger, signer, root, root_raw, rec, rec_raw, public, public_signers, enable
 
@@ -82,6 +96,7 @@ class CustodyBreakGlassTests(unittest.TestCase):
             q = sqlite3.connect(path)
             self.assertEqual(q.execute("SELECT COUNT(*) FROM provider_rotation_recovery_transitions").fetchone()[0], 1)
             self.assertEqual(q.execute("SELECT COUNT(*) FROM provider_rotation_recovery_custody_proofs").fetchone()[0], 1)
+            self.assertEqual(q.execute("SELECT COUNT(*) FROM provider_recovery_custody_enablement_proof").fetchone()[0], 1)
             q.close()
             restarted = SupportedRecoveryCustodyLedger(
                 path, ledger.attested, signer.public, signer, root1, enable, rec1.recovery, public1
@@ -101,6 +116,41 @@ class CustodyBreakGlassTests(unittest.TestCase):
             q.commit(); q.close()
             with self.assertRaises(CustodyBreakGlassError):
                 ledger.verify_durable()
+
+    def test_forward_cutoff_substitution_cannot_downgrade_public_proof_requirement(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, signer, root1, _, rec1, rec1_raw, public1, public_signers, enable = self.make_ledger(path)
+            root2, public_sigs, compatibility_sigs = self.recovery_material(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
+            ledger.recover_rotation_authority_with_custody(root2, public_sigs, compatibility_sigs)
+
+            # Attack the old unauthenticated design: move the cutoff forward to R2,
+            # delete the R1->R2 public proof, and also delete the cutoff proof in an
+            # attempt to make restart silently re-baseline at the forged cutoff.
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE provider_recovery_custody_enablement SET "
+                "start_rotation_authority_id=?,start_rotation_version=?,start_rotation_generation=? "
+                "WHERE singleton=1",
+                (root2.authority_id, root2.version, root2.generation),
+            )
+            q.execute("DELETE FROM provider_rotation_recovery_custody_proofs")
+            q.execute("DELETE FROM provider_recovery_custody_enablement_proof")
+            q.commit(); q.close()
+
+            with self.assertRaises(CustodyBreakGlassError):
+                SupportedRecoveryCustodyLedger(
+                    path,
+                    ledger.attested,
+                    signer.public,
+                    signer,
+                    root1,
+                    enable,
+                    rec1.recovery,
+                    public1,
+                )
 
     def test_recovery_and_custody_rotation_serialize_to_one_successor(self):
         with tempfile.TemporaryDirectory() as td:
