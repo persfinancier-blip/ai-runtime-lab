@@ -4,65 +4,55 @@ Last updated: 2026-08-23
 
 ## Active objective
 
-LAB-085 — recovery-authority lifecycle and asymmetric custody. The HMAC-only new break-glass bypass found in the prior audit is fixed on the final supported surface; keep PR #162 draft until the exact-source regression stack and one fresh final audit pass.
+LAB-085 — recovery-authority lifecycle and asymmetric custody. Exact PR-head execution has now found and fixed a real initialization defect; keep PR #162 draft until the remaining merged LAB-084/083/082/080 regressions and one fresh final audit are clean.
 
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-084.
 - Active: Issue #161 / LAB-085 — IN_PROGRESS.
 - Branch: `lab/085-recovery-authority-lifecycle`.
-- Draft PR: #162 — open and mergeable; current observed HEAD `e6b0b09b5d2734a2a2d4fbe36437d67772a4e756`.
+- Draft PR: #162 — open, mergeable; current HEAD `aacb4af1855f8afadac57b1564fd4cb452cf490b`.
 - Follow-up: Issue #163 / LAB-086 — migrate historical pre-cutoff LAB-084 HMAC break-glass proof history to asymmetric/public-only verification after LAB-085.
 
 ## Last completed step
 
-Resumed from the final-audit blocker that showed `SupportedRecoveryCustodyLedger` still inherited LAB-084 `recover_rotation_authority()` and therefore allowed a **new** normal/root break-glass recovery with only the symmetric HMAC recovery quorum.
+Reconstructed every executable LAB-085 PR-head file through the GitHub connector and verified its Git blob identity locally. Also reconstructed the exact merged source dependencies used by LAB-080/LAB-082/LAB-083/LAB-084.
 
-The branch now blocks that inherited HMAC-only entry point on the final surface and adds `recover_rotation_authority_with_custody()`. A new break-glass recovery after final-custody enablement must satisfy both proof families in one `BEGIN IMMEDIATE` transaction:
+The first full exact-source LAB-085 execution exposed a real defect hidden by earlier partial checks: `SupportedRecoveryCustodyLedger` defined `_load_enablement_locked()`, unintentionally overriding LAB-083's threshold-enablement loader. During superclass initialization, dynamic dispatch therefore attempted to read `provider_recovery_custody_enablement` before the final LAB-085 schema existed and new ledgers failed to initialize.
 
-1. current Ed25519 public recovery quorum over a canonical custody intent; and
-2. the LAB-084 compatibility HMAC quorum over the exact legacy recovery intent.
+Fixed this by separating the final-layer loader as `_load_break_glass_enablement_locked()`. Exact execution also showed that the public-custody rollback regression expected an overly narrow exception family: the implementation correctly failed closed with `CustodyRollback`, so the test now accepts that precise rollback class.
 
-The Ed25519 intent binds old/new rotation authority, exact public recovery authority, exact symmetric compatibility recovery authority, and the exact LAB-084 compatibility intent digest. The SQL transaction commits the legacy LAB-084 proof row, a new public custody proof row, and rotation-authority head advancement atomically.
+Published fixes:
+- `final_supported.py` commit `78a6d5d15e07dad940b61aa7217e4ea73ca44cf7`, Git blob `44b460491753643a431cd98c98f497b1e50155c7`;
+- `test_public_custody_supported.py` commit / current PR HEAD `aacb4af1855f8afadac57b1564fd4cb452cf490b`, Git blob `b1bbf0ec36ed9ab2dfe1b023559ec9dfcf3e62be`.
 
-A durable custody-enablement row records the root/public/symmetric identities at activation. Restart verification requires a public custody proof for every recovery edge whose predecessor root version is at/after the cutoff, while pre-existing LAB-084 edges remain verification-only compatibility history for LAB-086.
-
-New regressions cover HMAC-only rejection, public-only failure with zero partial proof rows, dual-proof commit + restart, missing public proof detection, and recovery-vs-custody-rotation serialization.
-
-During the fix, an additional transaction-boundary defect was found before test execution: the first implementation used `sqlite3.executescript()` while already holding `BEGIN IMMEDIATE`, which can interfere with the intended transaction boundary in Python. The published code now uses individual DDL statements inside the caller transaction.
+Both published bytes were re-fetched and matched locally with `git hash-object`. The current exact LAB-085 suite then passed **38/38**, and `python -m compileall -q experiments/provider_recovery_authority_lifecycle` passed.
 
 ## Evidence produced
 
-- PR #162 current observed HEAD: `e6b0b09b5d2734a2a2d4fbe36437d67772a4e756`; 14 LAB-085 files; GitHub reports mergeable and draft.
-- New custody break-glass helper: `experiments/provider_recovery_authority_lifecycle/custody_break_glass.py`, Git blob `ecd106185be3eda2c45f53d444e3267dd77f9fdc`.
-- New regression suite: `experiments/provider_recovery_authority_lifecycle/tests/test_custody_break_glass.py`, Git blob `24deb6dcc20f35f04723d187e7c00a812e7f64cc`.
-- Current `final_supported.py` Git blob: `23567c66342e10ba7bb79e0a2751c0bc9cef2b98`.
-- Helper and regression bytes were locally matched with `git hash-object` and syntax-compiled; the corrected local final implementation was syntax-compiled before publication.
-- Remote patch audit of the new helper, final supported layer, and regressions found no new structural authorization bypass after the `executescript` fix.
-- Direct `git clone --branch lab/085-recovery-authority-lifecycle ...` was probed again in this runtime and failed before checkout with `Could not resolve host: github.com`.
-- No full exact-source LAB-085/LAB-084/083/082/080 test run is claimed for the current HEAD.
+- Exact LAB-085 current suite: 38/38 passed after the initialization fix.
+- LAB-085 compileall: passed.
+- Exact current implementation blobs were reconstructed through the GitHub connector; the two newly modified blobs match the locally executed bytes.
+- The exact merged source stack for LAB-036/080/082/083/084 was reconstructed and blob-checked; lower-layer test files are the remaining reconstruction/execution work.
+- Unsafe HMAC-only new break-glass entry point remains blocked on `SupportedRecoveryCustodyLedger`; new consequential recovery requires both Ed25519 public custody quorum and compatibility LAB-084 HMAC quorum in one SQLite transaction.
+- Direct shell GitHub access was probed again and remains unavailable due DNS; connector reconstruction is the safe supported fallback.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- PR #162 must remain draft until exact-source execution.
-- The authorization blocker from the previous run is fixed in code, but the current integrated HEAD has not yet passed the required exact-source regression stack.
-- Historical LAB-084 break-glass proofs created before the final-custody cutoff remain HMAC-based compatibility history; Issue #163 / LAB-086 owns their asymmetric migration. This does not authorize HMAC-only **new** effects on `SupportedRecoveryCustodyLedger`.
-- Direct shell GitHub access remains unavailable in this runtime due DNS; connector reconstruction remains the safe supported fallback.
+- PR #162 must remain draft until the remaining regression and audit gate is complete.
+- Historical LAB-084 break-glass proofs created before the final-custody cutoff remain HMAC-based compatibility history; Issue #163 / LAB-086 owns their asymmetric migration. This does not authorize HMAC-only new effects.
+- The LAB-085 exact suite is clean, but the promised exact merged LAB-084/083/082/080 regression suites have not yet all been executed in this runtime.
 
 ## Exact next action
 
-Reconstruct the exact current PR #162 executable bytes through the GitHub connector, including all LAB-085 files and the merged LAB-084/083/082/080 dependencies required by the regression stack. Verify every reconstructed executable file with `git hash-object` against its GitHub blob ID. Execute:
+Continue from PR #162 HEAD `aacb4af1855f8afadac57b1564fd4cb452cf490b` without repeating the LAB-085 reconstruction. Reconstruct the exact corrected test files from merged `main` for LAB-084 (`provider_rotation_recovery`), LAB-083 (`provider_threshold_rotation`), LAB-082 (`asymmetric_provider_history`), and LAB-080 (`shared_anchor_intent_ledger`) through the GitHub connector; verify each with `git hash-object` against its GitHub blob ID and execute their corrected regression suites against the already reconstructed exact source stack. Then run the LAB-085 unsafe seed (expected failure) and compileall.
 
-- all LAB-085 suites, including the new `test_custody_break_glass`;
-- LAB-084, LAB-083, LAB-082, and LAB-080 regression suites required by the PR gate;
-- the LAB-085 unsafe seed and compileall.
-
-If any new failure appears, fix it and repeat. Then perform one fresh full PR #162 patch audit, re-fetch PR metadata/HEAD, and only if the exact-source run and audit are clean mark the PR ready, squash-merge it, close Issue #161 DONE, and advance to Issue #163 / LAB-086.
+If those are clean, perform one fresh full PR #162 patch audit, re-fetch PR metadata and confirm the HEAD is unchanged. Mark PR ready and squash-merge only if both execution and audit remain clean. Then close Issue #161 DONE and advance Issue #163 / LAB-086. If any regression or audit defect appears, fix it on the branch, repeat the affected exact-source tests, and keep PR draft.
 
 ## Backlog
 
-- #161 / LAB-085 — recovery-authority lifecycle + asymmetric custody — IN_PROGRESS; code-level HMAC-only new-effect bypass fixed, exact-source regression/final-audit gate remains.
+- #161 / LAB-085 — recovery-authority lifecycle + asymmetric custody — IN_PROGRESS; exact LAB-085 38/38 clean after fixing real initialization defect; lower-layer regression/final-audit gate remains.
 - #163 / LAB-086 — asymmetric migration of historical pre-cutoff LAB-084 break-glass proofs — READY after LAB-085.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
