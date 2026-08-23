@@ -9,7 +9,7 @@ from experiments.asymmetric_break_glass_history.migration_guard import (
 )
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
-from experiments.provider_threshold_rotation.protocol import ThresholdNotMet
+from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import CustodyThresholdNotMet
 from experiments.provider_recovery_authority_lifecycle.custody_break_glass import (
     custody_enablement_payload,
 )
@@ -98,7 +98,7 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             ledger, *_, public_signers, _ = self.make_ledger(Path(td) / "db")
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             payload = guard.payload()
-            with self.assertRaises(ThresholdNotMet):
+            with self.assertRaises(CustodyThresholdNotMet):
                 guard.establish(public_signatures(public_signers, payload, 1))
 
     def test_legacy_history_tamper_after_cutoff_is_detected(self):
