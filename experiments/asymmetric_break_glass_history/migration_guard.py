@@ -69,6 +69,17 @@ class AuthenticatedBreakGlassMigrationGuard:
         root=self.ledger.rotation_authority.current_locked(q);symmetric=self.ledger.recovery_lifecycle.current_locked(q);compat=self.ledger.recovery.current_recovery_locked(q);public=self.ledger.public_recovery_custody.current_locked(q)
         if compat.authority_id!=symmetric.recovery.authority_id:raise RecoveryAuthorityMismatch("LAB-084/LAB-085 recovery heads diverged")
         self.ledger._compatible(symmetric,public);return root,symmetric,public
+    def _verify_boundary_recovery_window_locked(self,q,root,symmetric):
+        roots={}
+        for (authority_id,) in q.execute("SELECT authority_id FROM provider_rotation_authorities ORDER BY version").fetchall():
+            candidate=self.ledger.rotation_authority._load_locked(q,authority_id);roots[candidate.authority_id]=candidate
+        window=self.ledger._lifecycle_windows_locked(q,roots).get(symmetric.recovery.authority_id)
+        if window is None:raise MigrationGuardError("boundary references unknown recovery generation")
+        versioned,lower,upper=window
+        if versioned.authority_id!=symmetric.authority_id:raise MigrationGuardError("boundary recovery lifecycle identity mismatch")
+        if lower is not None and root.version<lower:raise MigrationGuardError("boundary recovery generation used before activation")
+        if upper is not None and root.version>=upper:raise MigrationGuardError("stale recovery generation cannot authorize migration boundary")
+        return True
     def payload(self):
         q=self.ledger._con()
         try:
@@ -101,6 +112,7 @@ class AuthenticatedBreakGlassMigrationGuard:
         if (public.version,public.generation)!=(pv,pg):raise MigrationGuardError("boundary public authority metadata mismatch")
         self.ledger._compatible(symmetric,public);binding=q.execute("SELECT public_authority_id,version,generation FROM provider_recovery_custody_bindings WHERE symmetric_authority_id=?",(symmetric.authority_id,)).fetchone()
         if binding!=(public.authority_id,symmetric.version,symmetric.generation):raise MigrationGuardError("boundary recovery authority is not historically bound")
+        self._verify_boundary_recovery_window_locked(q,root,symmetric)
         payload=migration_payload(legacy_digest=legacy,cutoff_root=root,symmetric_authority_id=sid,public_authority=public)
         if _digest(payload)!=bd:raise MigrationGuardError("boundary digest mismatch")
         decoded=self.ledger.public_recovery_custody._decode_signatures(sigs);accepted=accepted_public_signatures(public,payload,decoded);verify_public_threshold(public,payload,accepted)
