@@ -49,7 +49,7 @@ def migration_payload(
 class AuthenticatedBreakGlassMigrationGuard:
     """Authenticated LAB-086 cutoff over the real LAB-084/LAB-085 SQLite state.
 
-    This class deliberately does not become a second authority store.  It reads
+    This class deliberately does not become a second authority store. It reads
     the existing rotation/recovery/custody tables through the final LAB-085
     supported object, commits a threshold-signed cutoff, and installs a durable
     SQL guard that prevents an old LAB-085 worker from appending a new HMAC
@@ -64,6 +64,7 @@ class AuthenticatedBreakGlassMigrationGuard:
         try:
             q.execute("BEGIN IMMEDIATE")
             self._ensure_schema_locked(q)
+            self._verify_inherited_locked(q)
             self.verify_locked(q)
             q.commit()
         except:
@@ -101,6 +102,33 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
 
+    def _provider_transitions_locked(self, q):
+        enablement = self.ledger._load_enablement_locked(q)
+        rows = q.execute(
+            "SELECT t.provider_id,t.old_generation_id,t.new_generation_id,g.generation "
+            "FROM asymmetric_provider_transitions t "
+            "JOIN asymmetric_provider_generations g "
+            "ON g.generation_id=t.new_generation_id "
+            "WHERE g.generation>? ORDER BY g.generation",
+            (enablement.start_provider_generation,),
+        ).fetchall()
+        return [(row[0], row[1], row[2]) for row in rows]
+
+    def _verify_inherited_locked(self, q):
+        """Re-run the inherited authority checks inside the caller's write lock.
+
+        Calling ledger.verify_durable() from this transaction would attempt a
+        nested BEGIN IMMEDIATE on another SQLite connection. Instead use the
+        final LAB-085 internal verifiers while this single write-excluding
+        interval remains authoritative.
+        """
+        self.ledger._verify_mixed_authority_history_locked(
+            q, self._provider_transitions_locked(q)
+        )
+        self.ledger._verify_custody_bindings_locked(q)
+        self.ledger._verify_break_glass_custody_locked(q)
+        return True
+
     def _legacy_snapshot_locked(self, q, cutoff_version):
         rows = q.execute(
             "SELECT r.new_rotation_authority_id,r.old_rotation_authority_id,"
@@ -132,6 +160,16 @@ class AuthenticatedBreakGlassMigrationGuard:
     def _legacy_digest_locked(self, q, cutoff_version):
         return _digest(self._legacy_snapshot_locked(q, cutoff_version))
 
+    def _current_components_locked(self, q):
+        root = self.ledger.rotation_authority.current_locked(q)
+        symmetric = self.ledger.recovery_lifecycle.current_locked(q)
+        compatibility = self.ledger.recovery.current_recovery_locked(q)
+        public = self.ledger.public_recovery_custody.current_locked(q)
+        if compatibility.authority_id != symmetric.recovery.authority_id:
+            raise RecoveryAuthorityMismatch("LAB-084/LAB-085 recovery heads diverged")
+        self.ledger._compatible(symmetric, public)
+        return root, symmetric, public
+
     def payload(self):
         q = self.ledger._con()
         try:
@@ -142,15 +180,8 @@ class AuthenticatedBreakGlassMigrationGuard:
             ).fetchone():
                 raise MigrationGuardError("migration boundary already exists")
             self.ledger._reject_prepared_locked(q)
-            self.ledger._verify_custody_bindings_locked(q)
-            self.ledger._verify_break_glass_custody_locked(q)
-            root = self.ledger.rotation_authority.current_locked(q)
-            symmetric = self.ledger.recovery_lifecycle.current_locked(q)
-            compatibility = self.ledger.recovery.current_recovery_locked(q)
-            public = self.ledger.public_recovery_custody.current_locked(q)
-            if compatibility.authority_id != symmetric.recovery.authority_id:
-                raise RecoveryAuthorityMismatch("LAB-084/LAB-085 recovery heads diverged")
-            self.ledger._compatible(symmetric, public)
+            self._verify_inherited_locked(q)
+            root, symmetric, public = self._current_components_locked(q)
             payload = migration_payload(
                 legacy_digest=self._legacy_digest_locked(q, root.version),
                 cutoff_root=root,
@@ -176,15 +207,8 @@ class AuthenticatedBreakGlassMigrationGuard:
             ).fetchone():
                 raise MigrationGuardError("migration boundary already exists")
             self.ledger._reject_prepared_locked(q)
-            self.ledger._verify_custody_bindings_locked(q)
-            self.ledger._verify_break_glass_custody_locked(q)
-            root = self.ledger.rotation_authority.current_locked(q)
-            symmetric = self.ledger.recovery_lifecycle.current_locked(q)
-            compatibility = self.ledger.recovery.current_recovery_locked(q)
-            public = self.ledger.public_recovery_custody.current_locked(q)
-            if compatibility.authority_id != symmetric.recovery.authority_id:
-                raise RecoveryAuthorityMismatch("LAB-084/LAB-085 recovery heads diverged")
-            self.ledger._compatible(symmetric, public)
+            self._verify_inherited_locked(q)
+            root, symmetric, public = self._current_components_locked(q)
             legacy_digest = self._legacy_digest_locked(q, root.version)
             payload = migration_payload(
                 legacy_digest=legacy_digest,
@@ -253,6 +277,13 @@ class AuthenticatedBreakGlassMigrationGuard:
         if (public.version, public.generation) != (public_version, public_generation):
             raise MigrationGuardError("boundary public authority metadata mismatch")
         self.ledger._compatible(symmetric, public)
+        binding = q.execute(
+            "SELECT public_authority_id,version,generation "
+            "FROM provider_recovery_custody_bindings WHERE symmetric_authority_id=?",
+            (symmetric.authority_id,),
+        ).fetchone()
+        if binding != (public.authority_id, symmetric.version, symmetric.generation):
+            raise MigrationGuardError("boundary recovery authority is not historically bound")
         payload = migration_payload(
             legacy_digest=legacy_digest,
             cutoff_root=root,
@@ -281,7 +312,8 @@ class AuthenticatedBreakGlassMigrationGuard:
         q = self.ledger._con()
         try:
             q.execute("BEGIN IMMEDIATE")
-            self.ledger.verify_durable()
+            self._ensure_schema_locked(q)
+            self._verify_inherited_locked(q)
             result = self.verify_locked(q)
             q.commit()
             return result
