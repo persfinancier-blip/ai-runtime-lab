@@ -76,7 +76,7 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
                 ),
             )
 
-    def _load_enablement_locked(self, q):
+    def _load_break_glass_enablement_locked(self, q):
         row = q.execute(
             "SELECT start_rotation_authority_id,start_rotation_version,start_rotation_generation,"
             "symmetric_authority_id,public_authority_id FROM provider_recovery_custody_enablement WHERE singleton=1"
@@ -196,7 +196,7 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
 
     def _verify_break_glass_custody_locked(self, q):
         self._ensure_break_glass_schema_locked(q)
-        start_root, _, _ = self._load_enablement_locked(q)
+        start_root, _, _ = self._load_break_glass_enablement_locked(q)
         recovery_rows = q.execute(
             "SELECT new_rotation_authority_id,old_rotation_authority_id,old_rotation_version,"
             "recovery_authority_id,recovery_generation,intent_digest "
