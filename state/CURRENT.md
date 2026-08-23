@@ -4,7 +4,7 @@ Last updated: 2026-08-23
 
 ## Active objective
 
-LAB-085 — recovery-authority lifecycle, rotation, and asymmetric custody after completed LAB-084 break-glass recovery.
+LAB-085 — finish recovery-authority lifecycle by binding asymmetric/public-only custody to the authoritative LAB-084/LAB-083 recovery/root state without weakening restart or race semantics.
 
 ## Active issue / branch / PR
 
@@ -12,38 +12,43 @@ LAB-085 — recovery-authority lifecycle, rotation, and asymmetric custody after
 - Active: Issue #161 / LAB-085 — IN_PROGRESS.
 - Branch: `lab/085-recovery-authority-lifecycle`.
 - Draft PR: #162.
-- Current PR HEAD: `6a348a3e7720b68cec09d913e3a73c3a7da65b7e`.
-- Branch compare at this run: ahead 7 / behind 0; six LAB-085 paths are new relative to main.
+- Current PR HEAD: `ef4adacdc340b7c524da9af4736c5b6ba37dea44`.
+- Follow-up: Issue #163 / LAB-086 — asymmetric migration of historical LAB-084 break-glass proofs after LAB-085.
 
 ## Last completed step
 
-Observed that LAB-084 had already completed after the previous handoff: PR #160 is merged as `d91f981f330717ff0fb77103fe201da24a4bb600`, with its PR recording 87/87 corrected checks and a final recovery-head-substitution audit fix. Resumed the already-started LAB-085 branch, inspected its supported integration surface, and opened draft PR #162.
+Resumed PR #162 and addressed the remaining asymmetric-custody acceptance gap instead of treating symmetric lifecycle rotation as complete. Added `asymmetric_custody.py`, an Ed25519 public-only recovery-authority history: runtime `RecoverySigner` objects hold private signing capability, while durable SQLite state stores only public keys, accepted threshold signatures, transition identities, and the public authority head.
 
-The LAB-085 branch currently implements a recovery-authority lifecycle requiring old-recovery quorum + new-recovery quorum + current normal/root quorum over one canonical transition. The supported layer serializes recovery-authority rotation with unresolved LAB-080 PREPARED work and advances the LAB-084 recovery head in the same SQLite transaction. Historical recovery generations are retained for verification windows; stale generations are rejected for new break-glass edges after their activation cutoff.
+A focused audit found two defects before handoff: signer identity was initially truncated and extra malformed signatures could create a restart-only denial of service if persisted. Signer IDs now use full SHA-256 and rotation persists only valid unique accepted quorum signatures; malformed/unknown/revoked noise cannot inflate quorum or poison restart verification.
+
+The branch README now records the KMS/HSM boundary using RFC 8032 plus current AWS/GCP asymmetric-signing documentation. It explicitly states that this public-only custody slice is not yet the authoritative supported recovery head and that LAB-084 break-glass history is still HMAC-based.
 
 ## Evidence produced
 
-- LAB-084 PR #160: merged; merge commit `d91f981f330717ff0fb77103fe201da24a4bb600`.
-- LAB-084 final PR evidence: 17/17 LAB-084, 24/24 LAB-083, 28/28 LAB-082, 18/18 LAB-080 = 87/87 corrected checks; compileall passed; unsafe self-recovery failed as expected.
-- LAB-085 Issue #161 is IN_PROGRESS.
-- LAB-085 draft PR #162 opened at HEAD `6a348a3e7720b68cec09d913e3a73c3a7da65b7e`.
-- `experiments/provider_recovery_authority_lifecycle/supported.py` remote blob: `df4f17152cddefb66dc7f4e7f76f3112d3ab4733`.
-- Fresh remote inspection confirms the supported surface uses one `BEGIN IMMEDIATE` for PREPARED rejection, current normal-root lookup, lifecycle rotation, LAB-084 recovery-authority insertion, and recovery-head CAS.
-- No current exact-source test result is claimed for PR #162 in this run.
+- PR #162 remains open, mergeable, and draft.
+- Exact published asymmetric custody protocol blob: `920a2586e665aa5187a1a1e97e5fc6401cb49e29`.
+- Exact published asymmetric custody test blob: `80f3ade5042ea2872b6395ca8fa4f1802d329d68`.
+- Those exact two files matched locally executed bytes by `git hash-object`.
+- Focused asymmetric custody suite: 7/7 passed.
+- The suite covers public-only restart verification, old+new quorum, private-material non-persistence, authority substitution, transition tamper, and malformed-signature-noise robustness.
+- Direct `git clone` from GitHub was probed in this run and failed before execution with DNS resolution failure; connector-backed repository operations remain available.
+- Issue #163 created for the remaining later migration of historical break-glass proofs from HMAC verification to asymmetric/HSM-KMS-compatible public verification.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- PR #162 remains draft pending exact-source execution and regression/audit evidence.
-- Current recovery keys are still symmetric reference material; asymmetric public-only historical custody/HSM-KMS modeling remains part of LAB-085 acceptance and must not be overstated as complete merely because lifecycle rotation exists.
-- If both normal/root authorization and recovery lifecycle authorization are unavailable or compromised, fail closed; no recursive self-recovery.
+- PR #162 must remain draft: the asymmetric custody head is not yet atomically bound to the exact LAB-084/LAB-085 recovery head and current LAB-083 root.
+- Existing LAB-084 break-glass proofs are HMAC-based and still require historical symmetric material. LAB-085 must not claim that those proofs are already public-only; Issue #163 tracks that migration.
+- Full exact-source LAB-085 + LAB-084/083/082/080 regression gate has not yet been rerun for current PR HEAD.
+- If both normal/root authorization and recovery-lifecycle authorization are unavailable/compromised, fail closed and require external bootstrap ceremony.
 
 ## Exact next action
 
-Resume PR #162 at HEAD `6a348a3e7720b68cec09d913e3a73c3a7da65b7e`. Reconstruct exact executable LAB-085 PR-head blobs plus merged LAB-084/083/082/080 dependencies through the GitHub connector into a local workspace and verify Git blob identities. Run LAB-085 `test_protocol` and `test_supported_integration`, LAB-084/083/082/080 regressions, the LAB-085 unsafe self-swap seed, and compileall. Fix any failure and rerun. Then perform a fresh full PR patch audit, with special attention to lifecycle-window cutoffs, root/recovery rotation races, durable historical proof verification, and whether asymmetric custody acceptance is actually satisfied. Only if clean should PR #162 be marked ready and merged; otherwise persist the blocker/fix and keep it draft.
+On PR #162, add a supported asymmetric custody integration layer that binds `(symmetric recovery authority, public recovery authority)` by exact name/version/generation and advances the public custody head, LAB-085 lifecycle head, LAB-084 recovery head, and current-root-authorized transition inside one `BEGIN IMMEDIATE`. Add restart corruption tests for mismatched public/symmetric heads and a race test for recovery-custody rotation versus root/recovery transition. Then reconstruct the exact PR-head executable files plus merged LAB-084/083/082/080 dependencies through the GitHub connector, verify Git blob identities, run all LAB-085 tests (including asymmetric custody), LAB-084/083/082/080 regressions, unsafe seeds, and compileall. Perform a fresh full patch audit. Merge only if all acceptance gates are clean.
 
 ## Backlog
 
-- #161 / LAB-085 — recovery-authority lifecycle/rotation and asymmetric custody — IN_PROGRESS.
+- #161 / LAB-085 — recovery-authority lifecycle + asymmetric custody — IN_PROGRESS.
+- #163 / LAB-086 — asymmetric break-glass proof migration/public-only historical recovery — READY after LAB-085.
 - PostgreSQL-specific performance/locking validation — deferred until representative runtime.
 - Open-model serving efficiency — deferred pending representative hardware/runtime.
