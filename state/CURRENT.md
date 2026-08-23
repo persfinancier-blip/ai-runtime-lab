@@ -12,52 +12,61 @@ LAB-086 — migrate historical break-glass verification from durable symmetric/H
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Active branch: `lab/086-asymmetric-break-glass-history`.
 - Active draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current PR #165 HEAD: `9e1169eb1a00f7dafbdbd4558959e8b0983ae230`.
+- Current PR #165 HEAD: `a7d403439a31a3ddc8894f9839b0456b7251684b` at last inspection.
 - PR #165 is open, mergeable and intentionally draft.
 
 ## Last completed step
 
-LAB-086 moved beyond the standalone reference store and published the first integration slice against the real LAB-084/LAB-085 SQLite authority.
+LAB-086 now has the intended real-schema migration shape published on PR #165.
 
-`experiments/asymmetric_break_glass_history/migration_guard.py` now derives the legacy-prefix commitment from the actual `provider_rotation_recovery_transitions` plus corresponding `provider_rotation_recovery_custody_proofs` rows. The cutoff is signed by the exact historically-bound current LAB-085 Ed25519 recovery authority; no caller-supplied legacy digest is trusted.
+`migration_guard.py` derives the exact legacy HMAC/custody prefix from the actual LAB-084/LAB-085 tables, threshold-signs the cutoff with the historically-bound current Ed25519 recovery authority, and installs a persistent SQL trigger blocking any new `provider_rotation_recovery_transitions` row after migration.
 
-The migration guard uses one outer `BEGIN IMMEDIATE` writer-excluding interval while it re-runs the inherited LAB-085 recovery lifecycle verifier, public-custody verifier, custody bindings and break-glass custody checks, then authenticates the cutoff. A persistent SQLite trigger blocks insertion into `provider_rotation_recovery_transitions` once the authenticated cutoff exists, so even an old LAB-085 worker cannot append a new HMAC break-glass row after migration.
+`experiments/asymmetric_break_glass_history/suffix.py` now adds post-cutoff Ed25519-only break-glass edges directly to the existing `provider_rotation_authorities` / `provider_rotation_authority_head`. The successor root, public proof and root-head CAS are committed in one `BEGIN IMMEDIATE` transaction. The verifier requires exactly one proof type per root-history edge: normal threshold rotation, legacy HMAC recovery, or post-cutoff asymmetric recovery.
 
-New real-schema regressions were published in `tests/test_migration_guard.py` for valid legacy migration/restart, insufficient threshold, legacy-history tamper, old-writer SQL blocking and the pre-cutoff compatibility path.
+Historical recovery-generation authorization reuses LAB-085 lifecycle windows. Old public keys remain usable to verify old proof rows, but a recovery generation cannot authorize a new break-glass edge outside its activation window.
 
-## Audit findings corrected this run
+New real-schema suffix regressions cover restart, explicit blocking of both HMAC recovery entry points, insufficient Ed25519 quorum, proof tamper, duplicate proof type and stale old Ed25519 signers after recovery-authority rotation.
 
-1. A Python pre-check followed by inherited HMAC recovery would have created migration-vs-recovery TOCTOU. The cutoff is now also enforced in SQL.
-2. The first published guard called LAB-085 `verify_durable()` while holding `BEGIN IMMEDIATE`, which could self-lock on a nested write transaction. It was replaced with inherited internal verification under the existing writer fence.
-3. The first correction did not re-run the complete public-custody transition verifier. The current code follows the LAB-085 final-verifier pattern: lifecycle verification + public-custody verification + exact cross-binding under one outer writer-excluding interval.
-4. The designed asymmetric suffix must enforce historical LAB-085 recovery-generation activation windows, so a valid old Ed25519 key cannot authorize a new break-glass edge after recovery-authority rotation.
+## Audit findings corrected in the latest run
+
+1. The first LAB-086 supported surface could establish the cutoff without rerunning the full pre-migration LAB-085 mixed-root verifier. `payload()` / `establish()` now route the exact LAB-086 surface through its pre-boundary branch, which delegates to the authoritative LAB-085 mixed-history verifier under the same write fence.
+2. Recovery-generation activation did not need a second event-clock subsystem. LAB-085 already derives activation/deactivation cutoffs from the root version that co-authorized each recovery-authority transition. Since every break-glass advances root version, this gives an unambiguous historical authorization window.
+3. The post-cutoff verifier now rejects stale recovery generations, requires exact recovery/public custody binding, re-verifies Ed25519 quorum bytes, and counts exactly one root-edge proof type.
 
 ## Evidence produced
 
-- Existing standalone LAB-086 reference evidence remains: corrected 12/12, unsafe auto-promotion seed failed as expected, compileall passed.
-- New real-schema files published on PR #165:
-  - `experiments/asymmetric_break_glass_history/migration_guard.py` — current blob `17c19859f06d8b9bbea21e93b783fbfd0f784baa`.
-  - `experiments/asymmetric_break_glass_history/tests/test_migration_guard.py`.
-- Integration commits this run include `672abbb69cb12267ad17f7a8e9c9588d940e351c`, `f9c35fef1501e4f162f05ae536dcf470a1553a20`, `da99a6389b917a26d9568892bc4687aebdb08ee2`, and current HEAD `9e1169eb1a00f7dafbdbd4558959e8b0983ae230`.
-- PR #165 patch was re-inspected after the integration changes; no merge is claimed.
+- Earlier standalone LAB-086 reference evidence remains: corrected 12/12, unsafe legacy auto-promotion seed failed as expected, compileall passed.
+- Current real-schema draft files include:
+  - `migration_guard.py` — hardened cutoff and SQL legacy-HMAC fence;
+  - `suffix.py` — Ed25519-only real root-history suffix;
+  - `tests/test_migration_guard.py`;
+  - `tests/test_suffix.py` including recovery-generation rotation regression.
+- PR #165 currently has nine new LAB-086 paths and no path overlap with newer `main` changes; last compare showed the branch diverged only because `main` advanced separately.
+- Direct shell `git ls-remote` / checkout was probed again in this runtime and fails before execution with `Could not resolve host: github.com`; GitHub connector access remains healthy.
+- No exact-source test run is claimed for the current real-schema suffix/head.
 
 ## Known blockers / constraints
 
-- The new real-schema migration guard and its regressions are published but have **not** yet been executed as exact current PR-head source in this runtime. Do not reuse the earlier standalone 12/12 as evidence for these new bytes.
-- Direct shell GitHub networking still fails DNS resolution for `github.com`; GitHub connector operations are healthy. This is a capability constraint, not an owner blocker.
-- The real-schema asymmetric suffix is not published yet. Current work establishes and fences the migration boundary only.
-- New asymmetric recovery must update the existing `provider_rotation_authorities` / `provider_rotation_authority_head` and persist public proof rows in the same transaction; it must not create another root/recovery authority store.
-- Historical public recovery authorities may verify old proof rows only within their actual LAB-085 activation window; stale generations must not authorize new recovery.
+- The intended code is published, but the current PR head has **not** yet passed exact-source execution of the new migration guard + suffix against the merged dependency stack. Earlier 12/12 standalone evidence must not be reused for these bytes.
+- Direct shell GitHub networking remains unavailable due DNS; this is a runtime capability constraint, not an owner blocker.
+- The current PR is intentionally draft until LAB-086 plus LAB-085/084/083/082/080 regressions, unsafe seed and compileall are actually executed from exact published bytes.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 - No live HSM/KMS was exercised; Ed25519 signer objects remain a reference interface.
 
 ## Exact next action
 
-Continue Issue #163 / PR #165 by implementing the asymmetric suffix directly on the existing LAB-084/LAB-085 authority tables. Add a content-bound Ed25519 proof row for each post-cutoff break-glass successor, verify the current public recovery generation before commit, enforce the historical recovery-generation activation/deactivation window during restart, count exactly one proof type per root-history edge, and update the existing root head in the same `BEGIN IMMEDIATE` transaction. Keep the SQL trigger blocking all new HMAC recovery rows after cutoff.
+Re-fetch PR #165 and confirm the head has not moved from the last audited state. Reconstruct exact published bytes through the GitHub connector (or use direct checkout only if networking is newly available), verify Git blob identities, and execute:
 
-Then reconstruct exact PR-head bytes through the GitHub connector and execute: LAB-086 standalone + migration guard + asymmetric suffix tests, LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed and compileall. Perform a fresh full remote patch audit before marking PR #165 ready or merging.
+1. LAB-086 standalone reference tests;
+2. LAB-086 real migration-guard tests;
+3. LAB-086 asymmetric suffix tests;
+4. LAB-085, LAB-084, LAB-083, LAB-082 and LAB-080 regression suites;
+5. unsafe legacy auto-promotion seed;
+6. `compileall` for the affected experiment tree.
+
+If any test fails, fix and repeat. If the exact-source gate is clean, perform a fresh full remote patch audit. Only then mark PR #165 ready, merge it, close Issue #163 DONE, and select the next highest-value unblocked correctness bottleneck.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; real authenticated cutoff integrated, asymmetric real-schema suffix next.
+- #163 / LAB-086 — IN_PROGRESS; intended real-schema implementation published, exact-source regression/audit gate remains.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
