@@ -14,6 +14,29 @@ class CustodyBreakGlassError(RuntimeError):
     pass
 
 
+def custody_enablement_payload(
+    root: RotationAuthority,
+    symmetric_recovery,
+    public_recovery: PublicRecoveryAuthority,
+) -> dict:
+    """Canonical immutable cutoff for enabling public-custody break-glass proofs."""
+    root.validate()
+    symmetric_recovery.validate()
+    public_recovery.validate()
+    return {
+        "kind": "provider-recovery-custody-break-glass-enablement",
+        "start_rotation_authority_id": root.authority_id,
+        "start_rotation_version": root.version,
+        "start_rotation_generation": root.generation,
+        "symmetric_authority_id": symmetric_recovery.authority_id,
+        "symmetric_version": symmetric_recovery.version,
+        "symmetric_generation": symmetric_recovery.generation,
+        "public_authority_id": public_recovery.authority_id,
+        "public_version": public_recovery.version,
+        "public_generation": public_recovery.generation,
+    }
+
+
 def custody_break_glass_payload(
     old_rotation: RotationAuthority,
     new_rotation: RotationAuthority,
