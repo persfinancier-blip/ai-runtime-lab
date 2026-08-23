@@ -12,50 +12,44 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed PR HEAD: `1039e9268a666409d0f072a31ae758a51deef069`.
-- PR is open/draft/mergeable; do not merge until the full exact-source gate below is observed.
+- Previous observed PR HEAD was `1039e9268a666409d0f072a31ae758a51deef069`; branch advanced in this run with regression commit `436459b01744cbdf14bfc9302a7fbee168cea303`.
+- Do not merge until the new alternate-surface blocker is fixed and the full exact-source gate passes.
 
 ## Last completed step
 
-The previous stale post-cutoff LAB-085 public-custody writer blocker has been corrected in the candidate without hiding the old primitive.
+A fresh current-head audit found an authority bypass not covered by the prior stale LAB-085 custody-writer fence. `final_supported.SupportedFencedAsymmetricBreakGlassLedger` correctly installs proof-first SQL fencing, but `suffix.SupportedAsymmetricBreakGlassLedger` remains directly importable/constructible and still exposes its older mutation-first `rotate_public_recovery_authority()` method. A caller can therefore use the still-named supported suffix surface directly after cutoff and avoid installation of the final fence.
 
-A new final supported surface, `experiments/asymmetric_break_glass_history/final_supported.py`, wraps the real LAB-086 ledger and installs cutoff-conditional SQLite fences on public recovery authority/transition/head mutation. After the migration boundary exists, the old LAB-085 `AsymmetricRecoveryCustody.rotate()` path cannot commit a successor unless an exact LAB-086 root-coauthorization proof already binds the proposed successor to the currently active public predecessor and current normal/root `(id, version, generation)`.
-
-The final supported rotation path is proof-first inside one `BEGIN IMMEDIATE`: validate old/new public Ed25519 thresholds + current root threshold, persist/check the exact `provider_asymmetric_recovery_public_root_proofs` row, call the existing custody `rotate_locked()` primitive, verify resulting history, then commit. Any failure rolls back proof + authority + transition + head together.
-
-`tests/test_stale_public_writer_regression.py` now targets the final fenced surface and contains both the stale underlying-writer rejection and the legitimate proof-first supported rotation success path.
+An executable regression was added at `experiments/asymmetric_break_glass_history/tests/test_unfenced_supported_surface_regression.py`. It constructs the suffix surface directly, establishes the migration cutoff, and requires direct public-recovery rotation to fail closed. This is expected to fail on the current implementation from source inspection.
 
 ## Evidence produced
 
-- Final fenced surface blob: `23bc6bdc614ff3158e05f4d22cbac0e426d8197b`.
-- Updated stale-writer regression blob: `381b1c4a1c82f819e83b520eb628ca004d0efcbb`.
-- Durable research/evidence note: `research/2026-08-23-lab086-stale-public-writer-fence.md`.
-- An actually executed deterministic SQLite probe using the same trigger predicates observed:
-  - stale writer without root proof -> `IntegrityError`; rollback preserved the old public head and authority count;
-  - exact root proof first -> successor authority + transition + head committed with exactly one proof row.
-- Earlier exact standalone LAB-086 reference suite remains 12/12 passed on the unchanged reference layer; unsafe legacy auto-promotion failed as expected.
-- Earlier exact `migration_guard.py` source compiled successfully.
-- Direct shell GitHub DNS remains unavailable; GitHub connector is healthy and remains the supported source/control-plane path.
-- Current branch/main compare: diverged, ahead 42 / behind 9; all 14 LAB-086 paths are additions relative to the merge base. Re-check before any integration.
+- Regression commit: `436459b01744cbdf14bfc9302a7fbee168cea303`.
+- Issue #163 comment records the bypass and required fix.
+- Current exact source inspection confirmed:
+  - `final_supported.py` installs the proof-first public authority/transition/head fence;
+  - `suffix.py` still contains a separate mutation-first `rotate_public_recovery_authority()` implementation;
+  - migration-guard triggers currently fence legacy symmetric/HMAC writes, not this direct public-custody rotation path.
+- Shell GitHub transport was probed again and remains unavailable; GitHub connector is healthy. No test execution is claimed for the new regression.
+- Earlier evidence remains valid only for the earlier source states: standalone LAB-086 12/12, unsafe legacy auto-promotion expected failure, and deterministic SQLite proof-first fence probe.
 
 ## Known blockers / constraints
 
-- The stale-writer design/implementation blocker is fixed in the current candidate.
-- The current HEAD has not yet passed the required repository-wide exact-source regression stack after the fence change. The deterministic SQL probe is not a substitute for this gate.
+- NEW merge blocker: alternate directly usable `SupportedAsymmetricBreakGlassLedger` can bypass the final post-cutoff public-rotation fence.
+- Full current-head exact-source regression stack has not run after the fence/regression changes.
 - Logical SQLite-state scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
-- `suffix.SupportedAsymmetricBreakGlassLedger` is now an underlying implementation primitive; the final supported authority boundary is `final_supported.SupportedFencedAsymmetricBreakGlassLedger`. The database fence still blocks stale low-level custody mutation when the final surface owns the store.
 
 ## Exact next action
 
-1. Re-fetch PR #165 and require HEAD `1039e9268a666409d0f072a31ae758a51deef069` or restart the gate if it moved.
-2. Reconstruct exact current-head executable bytes through the GitHub connector, including the new final surface and updated stale-writer regression.
-3. Execute current-head LAB-086 tests: stale-writer/final-supported rotation, migration guard, suffix, public-history boundary, scrubbed legacy-prefix + asymmetric-suffix restart, protocol and unsafe seed; run compileall.
-4. Execute merged LAB-085/084/083/082/080 regression suites against the same reconstructed source tree.
-5. Fix every failure. Then perform a fresh full PR patch audit, with special attention to trigger/proof ordering, exact predecessor/root binding, orphan proof behavior, restart, and whether any alternate supported entry point can mutate public recovery state without the fence.
-6. Re-check branch/main divergence and integrate only after a clean gate. If normal merge is unavailable and the final audited change remains file-scoped/conflict-free, the AGENTS.md Contents API fallback may be used after an explicit conflict check.
+1. Fix the alternate supported-surface bypass. Preferred minimal shape: make `suffix.SupportedAsymmetricBreakGlassLedger.rotate_public_recovery_authority()` fail closed after cutoff and require `final_supported.SupportedFencedAsymmetricBreakGlassLedger` for consequential public recovery rotation; alternatively install the exact same durable proof-first fence at migration boundary if that preserves all acceptance invariants.
+2. Make `test_unfenced_supported_surface_regression.py` pass and update any older suffix tests that intentionally exercised the now-unsupported consequential method to use the final supported surface.
+3. Re-fetch PR #165 and reconstruct exact current-head executable bytes through the GitHub connector.
+4. Execute all LAB-086 tests (including stale LAB-085 writer and new direct-suffix bypass), unsafe seed, and compileall.
+5. Execute merged LAB-085/084/083/082/080 regressions against the same source tree.
+6. Fix every failure, then perform a fresh full PR patch audit focused on every alternate mutation entry point, trigger/proof ordering, predecessor/root binding, orphan proofs and restart.
+7. Re-check branch/main divergence and integrate only after a clean gate. Use only normal merge or the AGENTS.md conflict-checked Contents API fallback for a small audited file-scoped change if normal merge is unavailable.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; implementation blocker fixed, exact current-head regression/audit gate remains.
+- #163 / LAB-086 — IN_PROGRESS; alternate supported-surface authority bypass is the current blocker.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
