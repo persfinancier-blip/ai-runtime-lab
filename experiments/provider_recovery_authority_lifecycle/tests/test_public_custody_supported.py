@@ -2,6 +2,7 @@ import hashlib
 import sqlite3
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -191,6 +192,43 @@ class PublicCustodySupportedTests(unittest.TestCase):
             q.commit(); q.close()
             with self.assertRaises(CustodyBindingError):
                 ledger.verify_durable()
+
+    def test_intermediate_verification_holds_one_write_excluding_interval(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            _, ledger, _, _, _, _, _, _, _, _ = self.make_ledger(path)
+            entered_public_phase = threading.Event()
+            writer_done = threading.Event()
+            writer_observed_during_public_phase = []
+            original_public_verify = ledger.public_recovery_custody.verify_durable
+
+            def wrapped_public_verify():
+                entered_public_phase.set()
+                time.sleep(0.15)
+                writer_observed_during_public_phase.append(writer_done.is_set())
+                return original_public_verify()
+
+            ledger.public_recovery_custody.verify_durable = wrapped_public_verify
+
+            def writer():
+                entered_public_phase.wait(2)
+                q = sqlite3.connect(path, timeout=5)
+                try:
+                    q.execute("BEGIN IMMEDIATE")
+                    q.execute(
+                        "UPDATE provider_recovery_lifecycle_authorities SET version=version"
+                    )
+                    q.commit()
+                finally:
+                    q.close()
+                writer_done.set()
+
+            thread = threading.Thread(target=writer)
+            thread.start()
+            self.assertTrue(ledger.verify_durable())
+            thread.join(5)
+            self.assertFalse(any(writer_observed_during_public_phase))
+            self.assertTrue(writer_done.is_set())
 
     def test_root_recovery_races_custody_rotation_and_exactly_one_successor_wins(self):
         with tempfile.TemporaryDirectory() as td:

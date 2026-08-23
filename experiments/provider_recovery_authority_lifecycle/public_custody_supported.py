@@ -275,19 +275,26 @@ class SupportedPublicRecoveryAuthorityLifecycleLedger(SupportedRecoveryAuthority
     def verify_durable(self):
         if getattr(self, "_lab085_custody_initializing", False):
             return SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self)
-        SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self)
-        if not hasattr(self, "public_recovery_custody"):
-            return True
-        self.public_recovery_custody.verify_durable()
-        q = self._con()
+        guard = self._con()
         try:
-            q.execute("BEGIN")
-            self._verify_custody_bindings_locked(q)
-            q.commit()
+            # The supported custody surface is authoritative only if the
+            # symmetric lifecycle, public verification history, and exact
+            # cross-history bindings are observed under one write-excluding
+            # interval. Separate read snapshots permit a concurrent writer to
+            # mutate a proof after its verifier has returned but before the
+            # final binding-only check.
+            guard.execute("BEGIN IMMEDIATE")
+            SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self)
+            if not hasattr(self, "public_recovery_custody"):
+                guard.commit()
+                return True
+            self.public_recovery_custody.verify_durable()
+            self._verify_custody_bindings_locked(guard)
+            guard.commit()
             return True
         except:
-            if q.in_transaction:
-                q.rollback()
+            if guard.in_transaction:
+                guard.rollback()
             raise
         finally:
-            q.close()
+            guard.close()
