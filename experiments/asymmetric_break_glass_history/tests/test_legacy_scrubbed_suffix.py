@@ -79,8 +79,26 @@ class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
                 ).fetchall(),
                 [("[]",)],
             )
+            self.assertTrue(
+                all(
+                    value == "{}"
+                    for (value,) in q.execute(
+                        "SELECT keys_json FROM provider_rotation_recovery_authorities"
+                    ).fetchall()
+                )
+            )
+            self.assertTrue(
+                all(
+                    value == "{}"
+                    for (value,) in q.execute(
+                        "SELECT keys_json FROM provider_recovery_lifecycle_authorities"
+                    ).fetchall()
+                )
+            )
             q.close()
 
+            # Post-cutoff restart deliberately receives no RecoveryAuthority. The
+            # only recovery verification material left is Ed25519 public state.
             migrated = SupportedAsymmetricBreakGlassLedger(
                 path,
                 legacy.attested,
@@ -88,7 +106,7 @@ class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
                 signer,
                 root1,
                 enable,
-                rec1.recovery,
+                None,
                 public1,
             )
             root3, _ = authority(3, 3, "asymmetric")
@@ -105,10 +123,12 @@ class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
                 signer,
                 root1,
                 enable,
-                rec1.recovery,
+                None,
                 public1,
             )
             self.assertTrue(restarted.verify_durable())
+            self.assertFalse(hasattr(restarted, "recovery"))
+            self.assertFalse(hasattr(restarted, "recovery_lifecycle"))
             self.assertEqual(
                 restarted.rotation_authority.current().authority_id,
                 root3.authority_id,
