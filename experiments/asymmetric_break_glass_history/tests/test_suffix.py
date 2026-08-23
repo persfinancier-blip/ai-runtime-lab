@@ -6,7 +6,7 @@ from pathlib import Path
 from experiments.asymmetric_break_glass_history.suffix import AsymmetricBreakGlassError,SupportedAsymmetricBreakGlassLedger
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
-from experiments.provider_threshold_rotation.protocol import ThresholdNotMet
+from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import CustodyThresholdNotMet
 from experiments.provider_recovery_authority_lifecycle.custody_break_glass import custody_enablement_payload
 from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody_supported import attested,authority,public_recovery,public_signatures,recovery,signatures
 
@@ -33,7 +33,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
     def test_asymmetric_recovery_requires_current_public_threshold(self):
         with tempfile.TemporaryDirectory() as td:
             ledger,_,_,_,_,_,public_signers,_=self.make_ledger(Path(td)/"db");self.migrate(ledger,public_signers);root2,_=authority(2,2,"threshold");payload=ledger.asymmetric_recovery_payload(root2)
-            with self.assertRaises(ThresholdNotMet):ledger.recover_rotation_authority_asymmetric(root2,public_signatures(public_signers,payload,1))
+            with self.assertRaises(CustodyThresholdNotMet):ledger.recover_rotation_authority_asymmetric(root2,public_signatures(public_signers,payload,1))
     def test_old_public_signers_cannot_authorize_after_recovery_rotation(self):
         with tempfile.TemporaryDirectory() as td:
             ledger,_,_,_,rec1_raw,_,old_public_signers,_=self.make_ledger(Path(td)/"db");self.migrate(ledger,old_public_signers)
@@ -41,7 +41,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
             symmetric_payload,public_payload=ledger.recovery_custody_rotation_payloads(rec2,public2)
             ledger.rotate_recovery_authority_with_custody(rec2,public2,signatures(rec1_raw,symmetric_payload,3),signatures(rec2_raw,symmetric_payload,3),signatures(root_raw,symmetric_payload,2),public_signatures(old_public_signers,public_payload,3),public_signatures(public2_signers,public_payload,3))
             root2,_=authority(2,2,"after-recovery-rotation");payload=ledger.asymmetric_recovery_payload(root2)
-            with self.assertRaises(ThresholdNotMet):ledger.recover_rotation_authority_asymmetric(root2,public_signatures(old_public_signers,payload,3))
+            with self.assertRaises(CustodyThresholdNotMet):ledger.recover_rotation_authority_asymmetric(root2,public_signatures(old_public_signers,payload,3))
             ledger.recover_rotation_authority_asymmetric(root2,public_signatures(public2_signers,payload,3));self.assertTrue(ledger.verify_durable())
     def test_asymmetric_proof_tamper_fails_restart(self):
         with tempfile.TemporaryDirectory() as td:
