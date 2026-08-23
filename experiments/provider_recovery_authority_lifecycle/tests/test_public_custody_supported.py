@@ -157,6 +157,13 @@ class PublicCustodySupportedTests(unittest.TestCase):
             with self.assertRaises(CustodyBindingError):
                 ledger.rotate_recovery_authority(None, (), (), ())
 
+    def test_hmac_only_break_glass_is_blocked_on_intermediate_supported_custody_surface(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            _, ledger, _, _, _, _, _, _, _, _ = self.make_ledger(path)
+            with self.assertRaises(CustodyBindingError):
+                ledger.recover_rotation_authority(None, ())
+
     def test_public_head_rollback_is_detected_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "db"
