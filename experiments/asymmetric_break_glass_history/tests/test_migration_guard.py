@@ -10,9 +10,14 @@ from experiments.asymmetric_break_glass_history.migration_guard import (
     _digest,
     migration_payload,
 )
+from experiments.asymmetric_break_glass_history.suffix import (
+    SupportedAsymmetricBreakGlassLedger,
+)
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
-from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import CustodyThresholdNotMet
+from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
+    CustodyThresholdNotMet,
+)
 from experiments.provider_recovery_authority_lifecycle.custody_break_glass import (
     custody_enablement_payload,
 )
@@ -63,7 +68,9 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
         )
         return ledger, signer, root, rec, rec_raw, public, public_signers, enable
 
-    def compatibility_recovery(self, ledger, root1, rec1, rec1_raw, public_signers):
+    def compatibility_recovery(
+        self, ledger, root1, rec1, rec1_raw, public_signers
+    ):
         root2, _ = authority(2, 2, "legacy")
         legacy = ledger.recovery.make_intent(root1, root2, rec1.recovery)
         custody = ledger.break_glass_custody_payload(root2)
@@ -77,13 +84,29 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
     def test_threshold_signed_cutoff_binds_real_legacy_history_and_restarts(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "db"
-            ledger, signer, root1, rec1, rec1_raw, public1, public_signers, enable = self.make_ledger(path)
-            self.compatibility_recovery(ledger, root1, rec1, rec1_raw, public_signers)
+            (
+                ledger,
+                signer,
+                root1,
+                rec1,
+                rec1_raw,
+                public1,
+                public_signers,
+                enable,
+            ) = self.make_ledger(path)
+            self.compatibility_recovery(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             payload = guard.payload()
-            boundary = guard.establish(public_signatures(public_signers, payload, 3))
+            boundary = guard.establish(
+                public_signatures(public_signers, payload, 3)
+            )
             self.assertEqual(len(boundary), 64)
-            restarted = SupportedRecoveryCustodyLedger(
+            # The old LAB-085 surface is no longer the supported restart boundary
+            # because its HMAC break-glass verifier intentionally requires proof
+            # bytes that migration has destroyed. Reopen through LAB-086 instead.
+            restarted = SupportedAsymmetricBreakGlassLedger(
                 path,
                 ledger.attested,
                 signer.public,
@@ -93,8 +116,44 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
                 rec1.recovery,
                 public1,
             )
-            result = AuthenticatedBreakGlassMigrationGuard(restarted).verify()
+            result = restarted.migration_guard.verify()
             self.assertEqual(result["boundary_digest"], boundary)
+
+    def test_establish_atomically_scrubs_legacy_hmac_proof_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, _, root1, rec1, rec1_raw, _, public_signers, _ = self.make_ledger(path)
+            self.compatibility_recovery(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            guard.establish(public_signatures(public_signers, guard.payload(), 3))
+            q = sqlite3.connect(path)
+            rows = q.execute(
+                "SELECT signatures_json FROM provider_rotation_recovery_transitions"
+            ).fetchall()
+            q.close()
+            self.assertEqual(rows, [("[]",)])
+            self.assertIsNotNone(guard.verify())
+
+    def test_scrubbed_hmac_proof_bytes_cannot_reappear(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, _, root1, rec1, rec1_raw, _, public_signers, _ = self.make_ledger(path)
+            self.compatibility_recovery(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            guard.establish(public_signatures(public_signers, guard.payload(), 3))
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE provider_rotation_recovery_transitions "
+                "SET signatures_json='[{\"signer_id\":\"attacker\",\"signature\":\"00\"}]'"
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(MigrationGuardError):
+                guard.verify()
 
     def test_cutoff_requires_current_public_threshold(self):
         with tempfile.TemporaryDirectory() as td:
@@ -107,11 +166,22 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
     def test_stale_historical_recovery_quorum_cannot_authorize_cutoff(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "db"
-            ledger, _, root1, rec1, rec1_raw, public1, old_public_signers, _ = self.make_ledger(path)
+            (
+                ledger,
+                _,
+                root1,
+                rec1,
+                rec1_raw,
+                public1,
+                old_public_signers,
+                _,
+            ) = self.make_ledger(path)
             _, root_raw = authority()
             rec2, rec2_raw = recovery(2, 2, "recovery-new")
             public2, public2_signers = public_recovery(2, 2, "public-new")
-            symmetric_payload, public_payload = ledger.recovery_custody_rotation_payloads(rec2, public2)
+            symmetric_payload, public_payload = (
+                ledger.recovery_custody_rotation_payloads(rec2, public2)
+            )
             ledger.rotate_recovery_authority_with_custody(
                 rec2,
                 public2,
@@ -157,18 +227,23 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             with self.assertRaises(MigrationGuardError):
                 guard.verify()
 
-    def test_legacy_history_tamper_after_cutoff_is_detected(self):
+    def test_legacy_semantic_history_tamper_after_cutoff_is_detected(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "db"
             ledger, _, root1, rec1, rec1_raw, _, public_signers, _ = self.make_ledger(path)
-            self.compatibility_recovery(ledger, root1, rec1, rec1_raw, public_signers)
+            self.compatibility_recovery(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             guard.establish(public_signatures(public_signers, guard.payload(), 3))
             q = sqlite3.connect(path)
-            q.execute("UPDATE provider_rotation_recovery_transitions SET signatures_json='[]'")
+            q.execute(
+                "UPDATE provider_rotation_recovery_transitions SET intent_digest=?",
+                ("0" * 64,),
+            )
             q.commit()
             q.close()
-            with self.assertRaises(Exception):
+            with self.assertRaises(LegacyHistoryChanged):
                 guard.verify()
 
     def test_old_lab085_writer_cannot_append_hmac_recovery_after_cutoff(self):
@@ -188,7 +263,9 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
                 )
             q = sqlite3.connect(path)
             self.assertEqual(
-                q.execute("SELECT COUNT(*) FROM provider_rotation_recovery_transitions").fetchone()[0],
+                q.execute(
+                    "SELECT COUNT(*) FROM provider_rotation_recovery_transitions"
+                ).fetchone()[0],
                 0,
             )
             q.close()
@@ -198,10 +275,14 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             path = Path(td) / "db"
             ledger, _, root1, rec1, rec1_raw, _, public_signers, _ = self.make_ledger(path)
             AuthenticatedBreakGlassMigrationGuard(ledger)
-            self.compatibility_recovery(ledger, root1, rec1, rec1_raw, public_signers)
+            self.compatibility_recovery(
+                ledger, root1, rec1, rec1_raw, public_signers
+            )
             q = sqlite3.connect(path)
             self.assertEqual(
-                q.execute("SELECT COUNT(*) FROM provider_rotation_recovery_transitions").fetchone()[0],
+                q.execute(
+                    "SELECT COUNT(*) FROM provider_rotation_recovery_transitions"
+                ).fetchone()[0],
                 1,
             )
             q.close()
