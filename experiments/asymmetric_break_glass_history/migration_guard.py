@@ -130,6 +130,96 @@ class AuthenticatedBreakGlassMigrationGuard:
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
             BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new compatibility recovery authorities'); END"""
         )
+        # The migration boundary is also the durable public-custody fence.  The
+        # final LAB-086 surface writes the exact current-root proof first in the
+        # same transaction; stale/mutation-first LAB-085/LAB-086 writers do not.
+        q.execute(
+            """CREATE TABLE IF NOT EXISTS provider_asymmetric_recovery_public_root_proofs(
+              new_public_authority_id TEXT PRIMARY KEY,old_public_authority_id TEXT NOT NULL,
+              root_authority_id TEXT NOT NULL,root_version INTEGER NOT NULL,root_generation INTEGER NOT NULL,
+              intent_digest TEXT NOT NULL,root_signatures_json TEXT NOT NULL)"""
+        )
+        q.execute(
+            """CREATE TRIGGER IF NOT EXISTS lab086_public_authority_requires_root_proof
+            BEFORE INSERT ON provider_recovery_public_authorities
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            ) AND NOT EXISTS(
+              SELECT 1
+              FROM provider_asymmetric_recovery_public_root_proofs p
+              JOIN provider_recovery_public_head h ON h.singleton=1
+              JOIN provider_rotation_authority_head r ON r.singleton=1
+              WHERE p.new_public_authority_id=NEW.authority_id
+                AND p.old_public_authority_id=h.authority_id
+                AND p.root_authority_id=r.authority_id
+                AND p.root_version=r.version
+                AND p.root_generation=r.generation
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 public recovery successor requires current-root proof first');
+            END"""
+        )
+        q.execute(
+            """CREATE TRIGGER IF NOT EXISTS lab086_public_authority_is_immutable
+            BEFORE UPDATE ON provider_recovery_public_authorities
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 public recovery authorities are immutable after cutoff');
+            END"""
+        )
+        q.execute(
+            """CREATE TRIGGER IF NOT EXISTS lab086_public_transition_requires_root_proof
+            BEFORE INSERT ON provider_recovery_public_transitions
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            ) AND NOT EXISTS(
+              SELECT 1
+              FROM provider_asymmetric_recovery_public_root_proofs p
+              JOIN provider_recovery_public_head h ON h.singleton=1
+              JOIN provider_rotation_authority_head r ON r.singleton=1
+              WHERE p.new_public_authority_id=NEW.new_authority_id
+                AND p.old_public_authority_id=NEW.old_authority_id
+                AND p.old_public_authority_id=h.authority_id
+                AND p.root_authority_id=NEW.root_authority_id
+                AND p.root_authority_id=r.authority_id
+                AND p.root_version=r.version
+                AND p.root_generation=r.generation
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 public recovery transition requires exact root proof first');
+            END"""
+        )
+        q.execute(
+            """CREATE TRIGGER IF NOT EXISTS lab086_public_transition_is_immutable
+            BEFORE UPDATE ON provider_recovery_public_transitions
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 public recovery transitions are immutable after cutoff');
+            END"""
+        )
+        q.execute(
+            """CREATE TRIGGER IF NOT EXISTS lab086_public_head_requires_root_proof
+            BEFORE UPDATE ON provider_recovery_public_head
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            ) AND NOT EXISTS(
+              SELECT 1
+              FROM provider_asymmetric_recovery_public_root_proofs p
+              JOIN provider_rotation_authority_head r ON r.singleton=1
+              WHERE p.new_public_authority_id=NEW.authority_id
+                AND p.old_public_authority_id=OLD.authority_id
+                AND p.root_authority_id=r.authority_id
+                AND p.root_version=r.version
+                AND p.root_generation=r.generation
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 public recovery head requires exact current-root proof');
+            END"""
+        )
 
     @staticmethod
     def _boundary_row_locked(q):
