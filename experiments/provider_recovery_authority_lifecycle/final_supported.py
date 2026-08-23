@@ -40,25 +40,25 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
         self.verify_durable()
 
     def _ensure_break_glass_schema_locked(self, q):
-        q.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS provider_recovery_custody_enablement(
+        q.execute(
+            """CREATE TABLE IF NOT EXISTS provider_recovery_custody_enablement(
               singleton INTEGER PRIMARY KEY CHECK(singleton=1),
               start_rotation_authority_id TEXT NOT NULL,
               start_rotation_version INTEGER NOT NULL,
               start_rotation_generation INTEGER NOT NULL,
               symmetric_authority_id TEXT NOT NULL,
               public_authority_id TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS provider_rotation_recovery_custody_proofs(
+            )"""
+        )
+        q.execute(
+            """CREATE TABLE IF NOT EXISTS provider_rotation_recovery_custody_proofs(
               new_rotation_authority_id TEXT PRIMARY KEY,
               public_authority_id TEXT NOT NULL,
               symmetric_authority_id TEXT NOT NULL,
               compatibility_intent_digest TEXT NOT NULL,
               custody_intent_digest TEXT NOT NULL,
               public_signatures_json TEXT NOT NULL
-            );
-            """
+            )"""
         )
         if q.execute("SELECT COUNT(*) FROM provider_recovery_custody_enablement").fetchone()[0] == 0:
             root = self.rotation_authority.current_locked(q)
