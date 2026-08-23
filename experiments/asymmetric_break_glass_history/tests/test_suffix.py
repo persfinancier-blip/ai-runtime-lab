@@ -3,6 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from experiments.asymmetric_break_glass_history.final_supported import (
+    SupportedFencedAsymmetricBreakGlassLedger,
+)
 from experiments.asymmetric_break_glass_history.suffix import (
     AsymmetricBreakGlassError,
     PublicRecoveryRotationError,
@@ -210,6 +213,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
                 _,
             ) = self.make_ledger(Path(td) / "db")
             self.migrate(ledger, old_public_signers)
+            ledger = SupportedFencedAsymmetricBreakGlassLedger.from_existing(ledger)
             public2, public2_signers = public_recovery(2, 2, "public-new")
             rotate_payload = ledger.public_recovery_rotation_payload(public2)
             ledger.rotate_public_recovery_authority(
