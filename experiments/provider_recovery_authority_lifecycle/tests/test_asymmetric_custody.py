@@ -83,6 +83,23 @@ class AsymmetricCustodyTests(unittest.TestCase):
             store.rotate(new, "root-1", noisy_old, noisy_new)
             self.assertTrue(store.verify_durable())
 
+    def test_invalid_known_signer_signature_cannot_suppress_later_valid_signature(self):
+        with tempfile.TemporaryDirectory() as td:
+            old, olds = authority(); new, news = authority(2, 2, "new")
+            store = AsymmetricRecoveryCustody(Path(td) / "db", old)
+            payload = custody_rotation_payload(old, new, "root-1")
+            valid_old = signatures(olds, payload)
+            valid_new = signatures(news, payload)
+            forged_old = PublicSignature(valid_old[0].signer_id, "00" * 64)
+            forged_new = PublicSignature(valid_new[0].signer_id, "00" * 64)
+            store.rotate(
+                new,
+                "root-1",
+                (forged_old, *valid_old),
+                (forged_new, *valid_new),
+            )
+            self.assertTrue(store.verify_durable())
+
     def test_tampered_public_transition_fails_restart(self):
         with tempfile.TemporaryDirectory() as td:
             old, olds = authority(); new, news = authority(2, 2, "new"); path = Path(td) / "db"
