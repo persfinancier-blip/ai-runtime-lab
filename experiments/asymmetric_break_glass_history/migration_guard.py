@@ -10,6 +10,9 @@ from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import
 from experiments.provider_recovery_authority_lifecycle.final_supported import (
     SupportedRecoveryCustodyLedger,
 )
+from experiments.provider_recovery_authority_lifecycle.supported import (
+    SupportedRecoveryAuthorityLifecycleLedger,
+)
 from experiments.provider_rotation_recovery.protocol import RecoveryAuthorityMismatch
 
 
@@ -102,29 +105,15 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
 
-    def _provider_transitions_locked(self, q):
-        enablement = self.ledger._load_enablement_locked(q)
-        rows = q.execute(
-            "SELECT t.provider_id,t.old_generation_id,t.new_generation_id,g.generation "
-            "FROM asymmetric_provider_transitions t "
-            "JOIN asymmetric_provider_generations g "
-            "ON g.generation_id=t.new_generation_id "
-            "WHERE g.generation>? ORDER BY g.generation",
-            (enablement.start_provider_generation,),
-        ).fetchall()
-        return [(row[0], row[1], row[2]) for row in rows]
-
     def _verify_inherited_locked(self, q):
-        """Re-run the inherited authority checks inside the caller's write lock.
+        """Re-run the final LAB-085 authority stack while `q` fences writers.
 
-        Calling ledger.verify_durable() from this transaction would attempt a
-        nested BEGIN IMMEDIATE on another SQLite connection. Instead use the
-        final LAB-085 internal verifiers while this single write-excluding
-        interval remains authoritative.
+        The lower verifiers use read-only SQLite connections. The outer
+        BEGIN IMMEDIATE prevents a concurrent writer from changing their inputs
+        between phases, while avoiding a nested write transaction/self-lock.
         """
-        self.ledger._verify_mixed_authority_history_locked(
-            q, self._provider_transitions_locked(q)
-        )
+        SupportedRecoveryAuthorityLifecycleLedger.verify_durable(self.ledger)
+        self.ledger.public_recovery_custody.verify_durable()
         self.ledger._verify_custody_bindings_locked(q)
         self.ledger._verify_break_glass_custody_locked(q)
         return True
