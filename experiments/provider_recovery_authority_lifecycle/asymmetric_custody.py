@@ -165,15 +165,15 @@ def accepted_public_signatures(authority: PublicRecoveryAuthority, payload: dict
             continue
         if item.signer_id in seen or item.signer_id in authority.revoked:
             continue
-        seen.add(item.signer_id)
         public_hex = authority.public_keys.get(item.signer_id)
         if public_hex is None:
             continue
         try:
             Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_hex)).verify(bytes.fromhex(item.signature), canon(payload))
-            accepted.append(item)
         except InvalidSignature:
             continue
+        seen.add(item.signer_id)
+        accepted.append(item)
     return tuple(accepted)
 
 
