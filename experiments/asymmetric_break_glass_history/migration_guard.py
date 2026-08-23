@@ -104,6 +104,10 @@ class AuthenticatedBreakGlassMigrationGuard:
             raise
         finally:q.close()
     def verify_locked(self,q):
+        # Historical public-custody continuity is part of the authority boundary,
+        # not just a restart-only audit.  The outer BEGIN IMMEDIATE prevents a
+        # concurrent writer from changing that history after this verification.
+        self.ledger.public_recovery_custody.verify_durable()
         row=q.execute("SELECT legacy_digest,cutoff_root_id,cutoff_root_version,cutoff_root_generation,symmetric_authority_id,public_authority_id,public_authority_version,public_authority_generation,boundary_digest,signatures_json FROM provider_asymmetric_break_glass_boundary WHERE singleton=1").fetchone()
         if row is None:return None
         legacy,rid,rv,rg,sid,pid,pv,pg,bd,sigs=row;root=self.ledger.rotation_authority._load_locked(q,rid)
