@@ -7,6 +7,7 @@ from .custody_break_glass import (
     accepted_custody_break_glass_signatures,
     custody_break_glass_digest,
     custody_break_glass_payload,
+    custody_enablement_payload,
 )
 from .public_custody_supported import SupportedPublicRecoveryAuthorityLifecycleLedger
 
@@ -21,7 +22,8 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
     blocked on this final surface.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, custody_enablement_signatures=None, **kwargs):
+        self._lab085_enablement_signatures = tuple(custody_enablement_signatures or ())
         self._lab085_final_initializing = True
         super().__init__(*args, **kwargs)
         q = self._con()
@@ -37,6 +39,7 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
         finally:
             q.close()
         self._lab085_final_initializing = False
+        self._lab085_enablement_signatures = ()
         self.verify_durable()
 
     def _ensure_break_glass_schema_locked(self, q):
@@ -60,6 +63,13 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
               public_signatures_json TEXT NOT NULL
             )"""
         )
+        q.execute(
+            """CREATE TABLE IF NOT EXISTS provider_recovery_custody_enablement_proof(
+              singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+              enablement_digest TEXT NOT NULL,
+              public_signatures_json TEXT NOT NULL
+            )"""
+        )
         if q.execute("SELECT COUNT(*) FROM provider_recovery_custody_enablement").fetchone()[0] == 0:
             root = self.rotation_authority.current_locked(q)
             symmetric = self.recovery_lifecycle.current_locked(q)
@@ -75,8 +85,9 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
                     public.authority_id,
                 ),
             )
+        self._verify_or_create_enablement_proof_locked(q)
 
-    def _load_break_glass_enablement_locked(self, q):
+    def _load_break_glass_enablement_components_locked(self, q):
         row = q.execute(
             "SELECT start_rotation_authority_id,start_rotation_version,start_rotation_generation,"
             "symmetric_authority_id,public_authority_id FROM provider_recovery_custody_enablement WHERE singleton=1"
@@ -96,6 +107,38 @@ class SupportedRecoveryCustodyLedger(SupportedPublicRecoveryAuthorityLifecycleLe
         if binding != (public.authority_id, symmetric.version, symmetric.generation):
             raise CustodyBreakGlassError("break-glass enablement custody binding mismatch")
         return root, symmetric, public
+
+    def _verify_or_create_enablement_proof_locked(self, q):
+        root, symmetric, public = self._load_break_glass_enablement_components_locked(q)
+        payload = custody_enablement_payload(root, symmetric, public)
+        expected_digest = custody_break_glass_digest(payload)
+        row = q.execute(
+            "SELECT enablement_digest,public_signatures_json FROM provider_recovery_custody_enablement_proof WHERE singleton=1"
+        ).fetchone()
+        if row is None:
+            if not self._lab085_enablement_signatures:
+                raise CustodyBreakGlassError("missing authenticated public-custody enablement proof")
+            accepted = accepted_public_signatures(
+                public, payload, self._lab085_enablement_signatures
+            )
+            verify_public_threshold(public, payload, accepted)
+            encoded = self.public_recovery_custody._encode_signatures(accepted)
+            q.execute(
+                "INSERT INTO provider_recovery_custody_enablement_proof VALUES(1,?,?)",
+                (expected_digest, encoded),
+            )
+            return root, symmetric, public
+        if row[0] != expected_digest:
+            raise CustodyBreakGlassError("public-custody enablement digest mismatch")
+        decoded = self.public_recovery_custody._decode_signatures(row[1])
+        accepted = accepted_public_signatures(public, payload, decoded)
+        verify_public_threshold(public, payload, accepted)
+        if self.public_recovery_custody._encode_signatures(accepted) != row[1]:
+            raise CustodyBreakGlassError("noncanonical public-custody enablement proof")
+        return root, symmetric, public
+
+    def _load_break_glass_enablement_locked(self, q):
+        return self._verify_or_create_enablement_proof_locked(q)
 
     def break_glass_custody_payload(self, new_authority):
         require_canonical_authority(new_authority)
