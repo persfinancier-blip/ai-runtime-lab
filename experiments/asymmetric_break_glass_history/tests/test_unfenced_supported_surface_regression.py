@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,10 +20,10 @@ class UnfencedSupportedSurfaceRegressionTests(unittest.TestCase):
     def test_direct_supported_suffix_cannot_rotate_public_recovery_after_cutoff(self):
         """The underlying LAB-086 class must not remain a weaker supported authority.
 
-        final_supported adds proof-first SQL fencing, but callers can still import
-        SupportedAsymmetricBreakGlassLedger directly.  After cutoff that direct
-        surface must fail closed rather than execute its older mutation-first
-        public-recovery rotation path.
+        The migration boundary itself installs the proof-first SQL fence.  A caller
+        that imports SupportedAsymmetricBreakGlassLedger directly must therefore
+        fail before any authority/transition/head mutation can commit, rather than
+        falling through to a later verifier error after corrupting durable state.
         """
         helper = AsymmetricSuffixIntegrationTests()
         with tempfile.TemporaryDirectory() as td:
@@ -40,6 +41,22 @@ class UnfencedSupportedSurfaceRegressionTests(unittest.TestCase):
             ) = helper.make_ledger(path)
             helper.migrate(ledger, old_public_signers)
 
+            q = sqlite3.connect(path)
+            before_head = q.execute(
+                "SELECT authority_id,version,generation "
+                "FROM provider_recovery_public_head WHERE singleton=1"
+            ).fetchone()
+            before_authorities = q.execute(
+                "SELECT COUNT(*) FROM provider_recovery_public_authorities"
+            ).fetchone()[0]
+            before_transitions = q.execute(
+                "SELECT COUNT(*) FROM provider_recovery_public_transitions"
+            ).fetchone()[0]
+            before_proofs = q.execute(
+                "SELECT COUNT(*) FROM provider_asymmetric_recovery_public_root_proofs"
+            ).fetchone()[0]
+            q.close()
+
             new_public, new_public_signers = public_recovery(2, 2, "direct-surface")
             payload = custody_rotation_payload(
                 ledger.public_recovery_custody.current(),
@@ -54,6 +71,36 @@ class UnfencedSupportedSurfaceRegressionTests(unittest.TestCase):
                     public_signatures(new_public_signers, payload, 3),
                     signatures(root_raw, payload, 2),
                 )
+
+            q = sqlite3.connect(path)
+            try:
+                self.assertEqual(
+                    q.execute(
+                        "SELECT authority_id,version,generation "
+                        "FROM provider_recovery_public_head WHERE singleton=1"
+                    ).fetchone(),
+                    before_head,
+                )
+                self.assertEqual(
+                    q.execute(
+                        "SELECT COUNT(*) FROM provider_recovery_public_authorities"
+                    ).fetchone()[0],
+                    before_authorities,
+                )
+                self.assertEqual(
+                    q.execute(
+                        "SELECT COUNT(*) FROM provider_recovery_public_transitions"
+                    ).fetchone()[0],
+                    before_transitions,
+                )
+                self.assertEqual(
+                    q.execute(
+                        "SELECT COUNT(*) FROM provider_asymmetric_recovery_public_root_proofs"
+                    ).fetchone()[0],
+                    before_proofs,
+                )
+            finally:
+                q.close()
 
 
 if __name__ == "__main__":
