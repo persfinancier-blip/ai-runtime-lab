@@ -11,37 +11,43 @@ LAB-084 — prove separately authenticated break-glass recovery for the LAB-083 
 - Completed: LAB-001 through LAB-083.
 - Active: Issue #159 / LAB-084 — IN_PROGRESS.
 - Branch: `lab/084-provider-rotation-recovery`.
-- Draft PR: #160, created this run.
+- Draft PR: #160.
+- Current PR HEAD: `a8ae32c910f85c8ad003176c0a5c93dd069e56b9`.
+- GitHub currently reports PR #160 mergeable; it remains draft pending exact-source execution.
 - Follow-up: #161 / LAB-085 — recovery-authority lifecycle/rotation and asymmetric custody — READY after LAB-084.
 
 ## Last completed step
 
-Built and published the recovery-aware supported LAB-083 surface. `SupportedRecoveryThresholdProviderLedger` now serializes normal authority rotation and break-glass recovery against unresolved LAB-080 PREPARED work under `BEGIN IMMEDIATE`. Its restart verifier accepts mixed authority history only when every adjacent authority edge has exactly one proof type (normal old+new quorum XOR recovery quorum), requires exact authority name/version/generation continuity, rejects extra/orphan proof counts, and re-verifies historical provider threshold proofs under the exact historical authority.
+Added the missing concurrency/restart failure-injection surface directly to PR #160 as `experiments/provider_rotation_recovery/tests/test_concurrency.py`.
 
-A fresh audit found and fixed two defects before handoff: (1) the first mixed verifier did not globally reject extra/orphan authority proof rows or explicitly require contiguous authority version/generation; (2) on restart after a recovery edge, Python dynamic dispatch caused LAB-083's constructor to invoke the new verifier before the recovery controller existed, falling back to the normal-only verifier. LAB-084 now has an explicit non-escaping initialization window followed by mandatory full mixed verification before constructor return.
+The new tests cover: (1) normal authority rotation racing break-glass recovery, requiring exactly one authority successor/proof edge; (2) provider rotation racing recovery, requiring SQL serialization such that any provider proof that commits under the predecessor authority remains historical evidence and cannot become a post-recovery use of the stale quorum; and (3) deletion of a committed recovery proof row causing restart verification to fail closed.
 
-Focused supported integration regressions were added for recovery+restart, stale pre-recovery quorum rejection, PREPARED blocking of both normal rotation and recovery, and duplicate normal+recovery proof corruption. README was updated to distinguish the supported surface from the lower-level reference controller.
+The new patch was inspected remotely. PR #160 changed from temporarily non-mergeable while GitHub recomputed status to mergeable after the commit. No merge was attempted because current supported/concurrency bytes have not yet been executed exact-source.
 
-Recovery-authority lifecycle was intentionally split into #161 / LAB-085 so LAB-084 keeps a reviewable pinned-recovery-generation trust boundary rather than mixing a second lifecycle problem into this PR.
+Direct shell GitHub access was probed again and still fails before checkout with `Could not resolve host: github.com`. This is an execution-surface limitation, not a repository/content blocker.
 
 ## Evidence produced
 
-- Draft PR #160, current branch contains the original 9/9 reference slice plus the new supported integration surface/tests.
+- PR #160 current HEAD: `a8ae32c910f85c8ad003176c0a5c93dd069e56b9`.
+- New commit: `a8ae32c910f85c8ad003176c0a5c93dd069e56b9` (`LAB-084 add authority concurrency and restart proof regressions`).
+- New test file remote patch audited: `experiments/provider_rotation_recovery/tests/test_concurrency.py`.
 - Earlier LAB-084 reference suite: 9/9 passed; unsafe normal-quorum-self-recovery failed as expected.
-- New supported files were audited in this run but **not yet claimed as exact-source executed**; full execution remains a merge gate.
-- New follow-up #161 captures recovery-authority rotation, rollback protection, historical verification, and asymmetric/HSM-KMS custody.
+- New supported/concurrency files are **not yet claimed as exact-source executed**.
+- Issue #159 updated with the new gate/evidence.
 
 ## Known blockers / constraints
 
 - No owner/product blocker.
-- Exact-source execution of current PR #160 has not yet been completed in this runtime.
-- Recovery authority is deliberately pinned to bootstrap generation in LAB-084; lifecycle/rotation is #161.
-- Current quorum keys remain local reference mechanisms, not HSM/KMS custody or distributed consensus.
+- Exact-source execution of current PR #160 remains the only substantive merge gate.
+- Direct shell GitHub checkout is unavailable in this runtime due DNS resolution failure; use GitHub connector reconstruction rather than fabricating a clone/test result.
+- Branch is currently behind `main` by unrelated commits but all LAB-084 changed paths are new; do not use that fact to skip regression execution.
+- Recovery authority remains deliberately pinned to bootstrap generation in LAB-084; lifecycle/rotation is #161.
+- Current quorum keys are reference mechanisms, not HSM/KMS custody or distributed consensus.
 - If both normal threshold authority and recovery quorum are simultaneously lost/compromised, fail closed; no recursive self-recovery.
 
 ## Exact next action
 
-Resume PR #160. Reconstruct exact executable PR-head bytes and merged LAB-083/082/080 dependencies through the GitHub connector into a local test workspace; verify Git blob identities; run LAB-084 `test_protocol` + `test_supported_integration`, LAB-083/082/080 regressions, unsafe seed, and compileall. Add and execute explicit concurrency regressions for normal-authority-rotation↔recovery and provider-rotation↔recovery plus restart missing/corrupted proof cases. Perform a fresh full patch audit. If no blocker remains, mark PR #160 ready, squash-merge, close #159 DONE, then start #161 / LAB-085.
+Resume PR #160 at HEAD `a8ae32c910f85c8ad003176c0a5c93dd069e56b9`. Reconstruct exact executable PR-head bytes plus merged LAB-083/082/080 dependencies through the GitHub connector into a local workspace and verify Git blob identities. Run LAB-084 `test_protocol`, `test_supported_integration`, and `test_concurrency`, LAB-083/082/080 regressions, the unsafe seed, and compileall. If any concurrency assumption fails, fix the implementation/test and rerun. Then perform a fresh full patch audit. If clean, mark PR #160 ready, squash-merge, close #159 DONE, and start #161 / LAB-085.
 
 ## Backlog
 
