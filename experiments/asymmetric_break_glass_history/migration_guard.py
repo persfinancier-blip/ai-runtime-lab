@@ -105,27 +105,46 @@ class AuthenticatedBreakGlassMigrationGuard:
             """CREATE TABLE IF NOT EXISTS provider_asymmetric_break_glass_legacy_projection(
               singleton INTEGER PRIMARY KEY CHECK(singleton=1),projection_json TEXT NOT NULL)"""
         )
+        # Security triggers are executable policy, not cache. A durable database
+        # may have been initialized by an older LAB-086 build using the same trigger
+        # names with weaker predicates. CREATE TRIGGER IF NOT EXISTS would silently
+        # preserve those obsolete definitions. Replace every owned trigger while the
+        # caller holds BEGIN IMMEDIATE so upgrade and restart install the exact
+        # current policy atomically before any writer can proceed.
+        for trigger_name in (
+            "provider_asymmetric_break_glass_no_legacy_hmac",
+            "provider_asymmetric_break_glass_no_symmetric_lifecycle",
+            "provider_asymmetric_break_glass_no_symmetric_authority",
+            "provider_asymmetric_break_glass_no_compat_authority",
+            "lab086_public_authority_requires_root_proof",
+            "lab086_public_authority_is_immutable",
+            "lab086_public_transition_requires_root_proof",
+            "lab086_public_transition_is_immutable",
+            "lab086_public_head_requires_root_proof",
+        ):
+            q.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+
         # Old LAB-085 writers must fail inside their transaction after migration.
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS provider_asymmetric_break_glass_no_legacy_hmac
+            """CREATE TRIGGER provider_asymmetric_break_glass_no_legacy_hmac
             BEFORE INSERT ON provider_rotation_recovery_transitions
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
             BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new HMAC break-glass rows'); END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS provider_asymmetric_break_glass_no_symmetric_lifecycle
+            """CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_lifecycle
             BEFORE INSERT ON provider_recovery_lifecycle_transitions
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
             BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery lifecycle rows'); END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS provider_asymmetric_break_glass_no_symmetric_authority
+            """CREATE TRIGGER provider_asymmetric_break_glass_no_symmetric_authority
             BEFORE INSERT ON provider_recovery_lifecycle_authorities
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
             BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new symmetric recovery authorities'); END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS provider_asymmetric_break_glass_no_compat_authority
+            """CREATE TRIGGER provider_asymmetric_break_glass_no_compat_authority
             BEFORE INSERT ON provider_rotation_recovery_authorities
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
             BEGIN SELECT RAISE(ABORT,'LAB-086 migration forbids new compatibility recovery authorities'); END"""
@@ -140,7 +159,7 @@ class AuthenticatedBreakGlassMigrationGuard:
               intent_digest TEXT NOT NULL,root_signatures_json TEXT NOT NULL)"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS lab086_public_authority_requires_root_proof
+            """CREATE TRIGGER lab086_public_authority_requires_root_proof
             BEFORE INSERT ON provider_recovery_public_authorities
             WHEN EXISTS(
               SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
@@ -160,7 +179,7 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS lab086_public_authority_is_immutable
+            """CREATE TRIGGER lab086_public_authority_is_immutable
             BEFORE UPDATE ON provider_recovery_public_authorities
             WHEN EXISTS(
               SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
@@ -170,7 +189,7 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS lab086_public_transition_requires_root_proof
+            """CREATE TRIGGER lab086_public_transition_requires_root_proof
             BEFORE INSERT ON provider_recovery_public_transitions
             WHEN EXISTS(
               SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
@@ -192,7 +211,7 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS lab086_public_transition_is_immutable
+            """CREATE TRIGGER lab086_public_transition_is_immutable
             BEFORE UPDATE ON provider_recovery_public_transitions
             WHEN EXISTS(
               SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
@@ -202,7 +221,7 @@ class AuthenticatedBreakGlassMigrationGuard:
             END"""
         )
         q.execute(
-            """CREATE TRIGGER IF NOT EXISTS lab086_public_head_requires_root_proof
+            """CREATE TRIGGER lab086_public_head_requires_root_proof
             BEFORE UPDATE ON provider_recovery_public_head
             WHEN EXISTS(
               SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
