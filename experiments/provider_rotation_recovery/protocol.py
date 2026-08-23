@@ -420,6 +420,14 @@ class DurableRecoveryController:
             old.generation,
         ):
             raise RecoveryProofSubstitution("recovery predecessor mismatch")
+        current_recovery = self.current_recovery_locked(q)
+        if (row[3], row[4]) != (
+            current_recovery.authority_id,
+            current_recovery.generation,
+        ):
+            raise RecoveryAuthorityMismatch(
+                "recovery transition does not bind authoritative recovery head"
+            )
         recovery = self._load_recovery_locked(q, row[3])
         if recovery.generation != row[4]:
             raise RecoveryProofSubstitution("recovery generation mismatch")
