@@ -12,32 +12,36 @@ LAB-086 — migrate historical break-glass verification from durable symmetric/H
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Active branch: `lab/086-asymmetric-break-glass-history`.
 - Active draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current PR #165 HEAD: `95799089beab8e2a67786e543de8bc2dcf016a47`.
+- Current PR #165 HEAD after this run: `5187375f67de134d22ac559eb4831d11e1b53bc7` at last observation; re-fetch before any test/merge gate because the branch may move after this handoff.
 - PR #165 is open, mergeable and intentionally draft.
 
 ## Last completed step
 
-A fresh authority audit found a new cutoff-specific bypass in the current real-schema design. `migration_guard.verify_locked()` proved that the stored symmetric/public recovery authorities were historically bound, but it did not prove that this recovery generation was active at the cutoff root version. A retired recovery quorum could therefore re-sign a structurally valid migration boundary even though LAB-085 intends old public keys to be verification-only after recovery-authority rotation.
+This run resumed the exact-source gate and reconstructed the exact standalone LAB-086 `protocol.py`, `test_protocol.py`, and unsafe seed. Their local `git hash-object` values matched the published branch blobs (`cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`, `b423cf2d78bc75686b0e4e7dea5ea310ca5721ea`, `d92640ba77f7b1b592faf00f7afcea03cf3fbc4a`). The standalone corrected suite passed 12/12, the unsafe auto-promotion seed failed as expected, and compileall passed.
 
-The branch now fixes this by resolving the existing LAB-085 recovery lifecycle activation/deactivation window for the boundary authority and requiring the exact cutoff root version to fall inside it. No second clock/authority mechanism was introduced.
+A fresh cross-layer authority audit then found another real fail-open in the real-schema boundary. `migration_guard.verify_locked()` checked public/symmetric historical binding but did not re-run the cryptographic Ed25519 recovery-custody transition verifier. A live DB mutation of an older `provider_recovery_public_transitions` signature set could therefore leave structural binding intact and allow a new migration cutoff to be prepared before a later full restart audit noticed the broken public trust chain.
 
-A regression, `test_stale_historical_recovery_quorum_cannot_authorize_cutoff`, rotates the recovery/public authority and then manually inserts an otherwise correctly signed cutoff using the retired generation. Restart/verification must reject it.
+The branch now fixes this by making `verify_locked()` re-run `public_recovery_custody.verify_durable()` while the caller's outer `BEGIN IMMEDIATE` holds the writer-excluding boundary. A new exact real-schema regression, `test_cutoff_payload_rejects_corrupted_public_custody_rotation_history`, rotates the recovery/public authority, corrupts the persisted old public signatures, and requires cutoff preparation to fail.
 
 ## Evidence produced
 
-- Security fix commit: `9ab79e04d4f5085e812cf7ea2776f1383046e479`.
-- Regression/current PR HEAD: `95799089beab8e2a67786e543de8bc2dcf016a47`.
-- Exact published `migration_guard.py` blob: `c1273de2c83fb806572e3467c8437bdf29155a4c`.
-- Exact published `test_migration_guard.py` blob: `26ecc1ba95101d592c573f4098d3f27c4d39df36`.
-- Fresh remote patch audit of both changed files found no additional blocker in the new lifecycle-window check.
-- The exact `migration_guard.py` bytes were reconstructed locally; `git hash-object` matched `c1273de2c83fb806572e3467c8437bdf29155a4c` and `py_compile` passed.
-- Focused execution of the exact method with interface-compatible lifecycle fixtures passed active, stale-at-deactivation, before-activation, later-active, and unknown-generation cases. This is supporting evidence only, not the full merge gate.
-- Earlier standalone LAB-086 evidence remains 12/12 corrected tests + expected unsafe failure + compileall, but predates the current real-schema head and must not be reused as merge evidence.
-- Direct runtime networking was probed again: DNS to `github.com`, `api.github.com`, public DNS servers and direct 1.1.1.1 connectivity are unavailable. GitHub connector access remains healthy. This is a runtime capability constraint, not an owner blocker.
+- Exact standalone LAB-086 gate executed in this run: 12/12 corrected tests passed.
+- Unsafe legacy auto-promotion seed failed as expected (`UnsafeLegacyAutoPromotion().promote(...)` returned true, so the negative assertion failed).
+- Standalone LAB-086 compileall passed.
+- Exact local Git blob matches:
+  - `protocol.py` -> `cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`;
+  - `test_protocol.py` -> `b423cf2d78bc75686b0e4e7dea5ea310ca5721ea`;
+  - unsafe seed -> `d92640ba77f7b1b592faf00f7afcea03cf3fbc4a`.
+- New public-history authority fix commit: `9593d05706fd17d9ceba6c1d0602fc87c8dced60`; published `migration_guard.py` blob after fix: `7286667eb25c42184fec4d11ee69236944b38a75`.
+- New regression commit / observed PR HEAD: `5187375f67de134d22ac559eb4831d11e1b53bc7`.
+- Fresh remote patch audit of the new fix and regression found no additional blocker in those two changed files.
+- Direct shell GitHub access was probed in this run and still fails before checkout with `Could not resolve host: github.com`; GitHub connector remains healthy. This is a runtime capability constraint, not an owner blocker.
 
 ## Known blockers / constraints
 
-- The current PR head has not yet passed the complete exact-source LAB-086 + LAB-085/084/083/082/080 regression stack after the new cutoff-window fix.
+- The new public-history fix changed the PR head after the 12/12 standalone exact-source run; that run remains valid only for the unchanged standalone files, not for the current real-schema migration/suffix gate.
+- The current PR head has not yet passed the complete exact-source migration-guard + suffix + LAB-085/084/083/082/080 regression stack after the new fix.
+- The new public-history regression has been published but has not yet been executed against the exact reconstructed merged dependency stack.
 - Direct shell GitHub networking is unavailable; exact reconstruction must continue through the GitHub connector unless network capability changes.
 - PR #165 remains draft until exact-source regressions, unsafe seed, compileall and a fresh final full patch audit are actually observed.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
@@ -45,19 +49,19 @@ A regression, `test_stale_historical_recovery_quorum_cannot_authorize_cutoff`, r
 
 ## Exact next action
 
-1. Re-fetch PR #165 and require unchanged HEAD `95799089beab8e2a67786e543de8bc2dcf016a47`; if it moved, restart the gate from the new HEAD.
-2. Continue connector reconstruction of the exact merged dependency stack and verify every executable/test file with `git hash-object`.
+1. Re-fetch PR #165 and require a stable current HEAD; if it moved, restart the gate from that HEAD.
+2. Continue connector reconstruction of the exact merged dependency stack, beginning with LAB-085 `provider_recovery_authority_lifecycle`, LAB-084 `provider_rotation_recovery`, LAB-083 `provider_threshold_rotation`, LAB-082 `asymmetric_provider_history`, and LAB-080 `shared_anchor_intent_ledger`; verify every executable/test file with `git hash-object`.
 3. Execute exact-source:
-   - LAB-086 standalone reference tests;
-   - LAB-086 migration-guard tests including stale historical recovery cutoff rejection;
+   - LAB-086 standalone reference tests (12/12 already observed for unchanged blobs; re-run if those blobs move);
+   - LAB-086 migration-guard tests including stale historical recovery cutoff rejection and the new corrupted-public-history regression;
    - LAB-086 asymmetric suffix tests;
    - LAB-085, LAB-084, LAB-083, LAB-082 and LAB-080 regression suites;
    - unsafe legacy auto-promotion seed;
-   - `compileall` for the affected experiment tree.
+   - compileall for the affected experiment tree.
 4. Fix any failure and repeat.
 5. Perform a fresh full remote patch audit. Only after a clean gate mark PR #165 ready, merge it, close Issue #163 DONE and choose the next highest-value unblocked correctness bottleneck.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; stale-cutoff authority bypass fixed, exact current-head regression/audit gate remains.
+- #163 / LAB-086 — IN_PROGRESS; stale-cutoff bypass and public-custody-history fail-open fixed, current-head exact real-schema regression/audit gate remains.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
