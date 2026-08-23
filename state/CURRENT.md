@@ -13,50 +13,38 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
 - Current observed PR HEAD: `bde0aa90a8e0180cb9f8f3237bdb7c88a8bfb0e6`.
-- Latest compare against `main` (`2c539953c56610eb39bf1548f74d1a67a07defb2`): branch `ahead 38 / behind 6`, all 11 LAB-086 paths are new files. GitHub currently reports mergeability false after the main-state commits; treat this as divergence to re-check after the test gate, not as an owner blocker.
+- PR remained open/draft/mergeable during this run.
 
 ## Last completed step
 
-Fresh authority audit showed the prior LAB-086 draft was not honestly public-only: deleting MAC strings still left actual recovery HMAC key maps durable, and lifecycle/window verification still reconstructed symmetric recovery authorities.
+The exact standalone branch source was reconstructed through the GitHub connector because direct shell GitHub DNS remains unavailable. `protocol.py` blob `cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41` executed 12/12 corrected tests; the unsafe legacy auto-promotion seed failed as expected. Exact `migration_guard.py` blob `605f40490a431226164e7ab3966d8aa1a1d1dc8d` was reconstructed and compiled.
 
-The draft branch now implements a stronger candidate boundary:
+A fresh cross-layer audit then found a new merge blocker: after the LAB-086 cutoff, an old LAB-085 `AsymmetricRecoveryCustody.rotate()` caller can still commit a new public recovery authority/transition/head using only old-public + new-public Ed25519 quorum. It does not require LAB-086 current-root co-authorization and does not create `provider_asymmetric_recovery_public_root_proofs`. LAB-086 detects the missing root proof later, but the invalid durable authority state has already committed, creating persistent fail-closed DoS and violating the advertised post-cutoff rotation boundary.
 
-1. fully verify LAB-085 compatibility history immediately before cutoff;
-2. construct a canonical non-secret projection of verified recovery/lifecycle identities, legacy recovery edges, custody evidence and verified recovery windows;
-3. threshold-sign the exact projection/cutoff with the current Ed25519 recovery quorum;
-4. persist projection + cutoff and atomically scrub recovery HMAC key maps/proof fields in one `BEGIN IMMEDIATE`;
-5. post-cutoff restart does not construct LAB-084/LAB-085 symmetric recovery controllers and accepts `recovery_authority=None`;
-6. legacy root edges verify from the signed projection; new root edges use Ed25519 threshold proofs;
-7. post-cutoff recovery-authority rotation is old-public + new-public Ed25519 thresholds plus current normal/root threshold co-authorization over one canonical transition;
-8. SQL guards block old LAB-085 writers from extending symmetric recovery history after cutoff.
-
-Logical scrub targets:
-- `provider_rotation_recovery_authorities.keys_json -> {}`;
-- `provider_recovery_lifecycle_authorities.keys_json -> {}`;
-- legacy break-glass `signatures_json -> []`;
-- recovery-lifecycle old/new/root HMAC signature fields -> `[]`.
-
-A focused local model passed the core invariant: `verify HMAC prefix -> sign non-secret projection -> scrub keys/proofs -> verify without HMAC -> semantic tamper detected`. This is design evidence only, not exact repository regression evidence.
+Issue #163 now records the exact counterexample and required correction.
 
 ## Evidence / constraints
 
-- Earlier exact standalone LAB-086 reference suite: 12/12 passed; unsafe auto-promotion seed failed as expected; compileall passed. Those unchanged standalone blobs predate the current real-schema rewrite.
-- New/updated branch tests cover restart without recovery HMAC authority, symmetric-material reintroduction, scrubbed legacy prefix + Ed25519 suffix, public-only recovery rotation/root co-authorization and stale-public-signer rejection. They have not yet been executed as exact current-head source.
-- Direct shell GitHub access remains unavailable (`Could not resolve host: github.com`; direct-IP probe also failed). GitHub connector is healthy, so exact source must be reconstructed file-scoped unless network capability changes.
-- Logical SQLite-state scrubbing is not forensic erasure; WAL/filesystem remnants are outside the claim.
+- Exact standalone LAB-086 reference suite on current PR head: 12/12 passed.
+- Unsafe legacy auto-promotion seed: failed as expected.
+- Exact `migration_guard.py`: `py_compile` passed.
+- Direct shell GitHub access: still unavailable (`Could not resolve host: github.com`). GitHub connector remains healthy and is the supported exact-source path.
+- The real-schema migration/suffix stack is not merge-ready until the stale public-custody writer is fenced and the complete gate is rerun.
+- Logical SQLite-state scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
 
 ## Exact next action
 
-1. Re-fetch PR #165 and require a stable HEAD; restart the gate if it moved.
-2. Reconstruct exact current-head LAB-086 executable/test files plus merged LAB-085/084/083/082/080 dependencies through the GitHub connector; verify local bytes with `git hash-object`.
-3. Execute exact LAB-086 migration/suffix tests, including atomic key/proof scrub, `recovery_authority=None` restart, reintroduced symmetric-material rejection, scrubbed legacy prefix + Ed25519 suffix, public-only recovery-authority rotation with root co-authorization, stale signer and proof-tamper cases, and pre-cutoff public-custody corruption rejection.
-4. Run LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed and compileall.
-5. Fix every failure and repeat; then perform a fresh full remote patch audit.
-6. Re-check branch/main divergence. If normal merge is unavailable but the gate is clean and the 11 paths remain new/conflict-free, the documented small/file-scoped Contents API fallback is allowed; do not use refs/trees/force or bypass any safety gate.
-7. Only after a clean gate: update evidence, integrate, close Issue #163 DONE and choose the next highest-value unblocked bottleneck.
+1. Re-fetch PR #165 and require the recorded HEAD or restart the gate if it moved.
+2. Fix the stale public-custody writer bypass at the SQL authority boundary:
+   - ensure the LAB-086 public-root-proof table exists at migration time;
+   - add cutoff-conditional SQL guards so post-cutoff inserts/updates in `provider_recovery_public_authorities`, `provider_recovery_public_transitions`, and `provider_recovery_public_head` require the exact LAB-086 root-proof predecessor/successor binding;
+   - reorder `rotate_public_recovery_authority()` to validate old/new public quorum and current-root quorum, persist/check the root-proof row first, then call `public_recovery_custody.rotate_locked()` in the same `BEGIN IMMEDIATE`; any failure must roll back both proof and rotation.
+3. Add a real regression that calls the stale underlying `public_recovery_custody.rotate()` after cutoff and proves no new public authority, transition, or head is committed.
+4. Reconstruct exact updated branch bytes through the connector and run LAB-086 migration/suffix/mixed-prefix tests plus LAB-085/084/083/082/080 regressions, unsafe seed and compileall.
+5. Fix every failure, perform a fresh full patch audit, then re-check branch/main divergence and integrate only after a clean gate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; public-only candidate published, exact current-head regression/audit gate remains.
+- #163 / LAB-086 — IN_PROGRESS; stale post-cutoff LAB-085 public-custody writer fencing/root-proof ordering is the current blocker.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
