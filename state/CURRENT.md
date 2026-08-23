@@ -17,42 +17,36 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-The current PR-head was re-audited after the stale-trigger upgrade fix. The final migration boundary now treats SQLite trigger definitions as executable policy: `_ensure_schema_locked()` drops and recreates every LAB-086-owned trigger under the caller's `BEGIN IMMEDIATE`. The public-recovery underlying suffix remains mutation-first, but after cutoff its first authority/transition/head mutation is SQL-fenced unless the exact current-root proof was already persisted by the final proof-first surface.
+A fresh audit of exact PR-head `migration_guard.py`, `suffix.py`, and `final_supported.py` found a new merge-blocker in the post-cutoff public-recovery SQL fence. The authority/transition/head triggers currently authorize mutation from the existence and metadata fields of `provider_asymmetric_recovery_public_root_proofs`; the trigger cannot cryptographically verify the stored root signatures or intent digest. A forged/corrupted/orphan proof row with matching predecessor/successor/current-root metadata can therefore satisfy the fence and allow a stale mutation-first LAB-085/LAB-086 writer to commit state; only a later durable verifier rejects it. That is persistent fail-closed DoS and violates the fence objective.
 
-This run reconstructed exact current-branch `protocol.py`, `migration_guard.py`, `test_protocol.py`, and `test_stale_trigger_upgrade_regression.py` through the GitHub connector and verified their Git blob identities locally. The standalone protocol suite and the exact stale-trigger regression were actually executed. No new fail-open was found in the fresh migration-guard/suffix/final-surface audit.
+The finding is recorded on Issue #163. PR #165 remains draft.
 
 ## Evidence produced
 
-- Exact `protocol.py` Git blob: `cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`; local `git hash-object` matched.
-- Exact `test_protocol.py` Git blob: `b423cf2d78bc75686b0e4e7dea5ea310ca5721ea`; local `git hash-object` matched.
-- Current exact standalone LAB-086 suite: **12/12 passed**.
-- Exact unsafe legacy-promotion seed still **fails as expected** because the unsafe baseline auto-promotes a legacy HMAC proof.
-- Exact `migration_guard.py` Git blob: `dd95f2604b9986002578592b91fb8e255f359b0a`; local `git hash-object` matched.
-- Exact stale-trigger regression Git blob: `e136dd636e4d9c0483595f3f4051c1c07080c5ea`; local `git hash-object` matched.
-- Exact stale-trigger upgrade regression: **1/1 passed**. For this focused test only, unrelated imported dependency classes were import-only stubs; the executed migration-guard file and regression file themselves were exact published bytes, and the exercised `_ensure_schema_locked()` path does not call those stubs.
-- Focused compileall over the reconstructed exact protocol/migration-guard/regression files passed.
-- Fresh branch/main comparison: `diverged`, ahead 50 / behind 13. All 17 PR paths are additions; there is still no path overlap with `main`.
-- Direct shell GitHub transport remains unavailable; the GitHub connector is healthy and was used as the auditable source path.
+- Exact current PR metadata observed: HEAD `96c436f4571dc5149cf127b23334245fd18a1f59`, open/draft/mergeable, 17 changed files.
+- Audited current `migration_guard.py`: cutoff installs SQL triggers that test `provider_asymmetric_recovery_public_root_proofs` metadata but do not authenticate `root_signatures_json` in SQL.
+- Audited current `suffix.py`: the underlying mutation-first public recovery rotation remains directly callable; its own cryptographic root verification occurs before it writes a proof, but a stale LAB-085 writer does not perform LAB-086 root coauthorization.
+- Audited current `final_supported.py`: the intended path validates root quorum and writes the proof first, but the durable proof row is also accepted by stale writers solely through trigger predicates.
+- Prior exact standalone LAB-086 suite remains 12/12 and stale-trigger regression 1/1; those do not cover the newly identified forged-proof-row authorization case.
+- Direct shell GitHub transport was not required in this run; GitHub connector remained healthy as source/control plane.
 
 ## Known blockers / constraints
 
-- Stale public-writer/direct-suffix fence bypasses remain fixed in the candidate.
-- Stale same-name trigger upgrade bypass is now exact-regression-tested and fixed.
-- Remaining merge gate: the exact current-head real-schema LAB-086 integration tests and merged LAB-085/084/083/082/080 regressions still must be executed together after the trigger-upgrade fix.
-- The focused exact trigger test uses import-only dependency stubs and therefore is not a substitute for the real cross-layer stack.
+- New merge blocker: durable proof-row existence is currently a forgeable/corruptible capability for stale public-recovery writers.
+- Full merged LAB-085/084/083/082/080 regression gate still remains after this blocker is fixed.
 - Logical SQLite scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
 
 ## Exact next action
 
-1. Continue reconstructing the exact merged dependency closure through the GitHub connector, replacing the focused import stubs with the real LAB-085/084/083/082/080 modules.
-2. Execute all current-head real-schema LAB-086 tests: migration guard, public-history boundary, scrubbed legacy prefix, suffix, stale LAB-085 writer, direct-suffix bypass, stale-trigger upgrade, plus the already-clean protocol suite and unsafe seed.
-3. Execute merged LAB-085/084/083/082/080 regressions against that same source tree and compileall.
-4. Fix every failure and repeat until clean.
-5. Perform a final complete PR audit focused on alternate mutation entry points, trigger upgrade/replacement, proof-first ordering, fake/orphan proofs, predecessor/root binding, restart and rotation races.
-6. Re-check divergence. Integrate only after the clean gate; prefer normal ready/squash merge and use the AGENTS.md conflict-checked Contents API fallback only if the normal merge path is unavailable and the audited file-scoped change remains conflict-independent.
+1. Reproduce the forged-proof-row case as an executable regression: after cutoff insert a structurally matching `provider_asymmetric_recovery_public_root_proofs` row with invalid root signatures, invoke the stale LAB-085/public suffix mutation path, and assert zero authority/transition/head mutation.
+2. Change the fence so proof-row existence is not itself mutation authority. Preferred design: stale/underlying public writers are unconditionally denied after cutoff; the final supported writer, after cryptographic old/new/root quorum verification under one `BEGIN IMMEDIATE`, uses a transaction-scoped controlled mutation path and reinstalls/verifies the deny policy before commit. Do not introduce a durable boolean/token that can itself be forged into authority.
+3. Make the new regression green and verify the legitimate final public-recovery rotation remains atomic and restart-verifiable.
+4. Reconstruct/execute the exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions, unsafe seed, and compileall.
+5. Perform a final audit focused on alternate mutation entry points, forged/orphan proofs, trigger replacement/upgrade, proof ordering, predecessor/root binding, restart and rotation races.
+6. Re-check divergence and integrate only after a clean gate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; current candidate has exact standalone + exact stale-trigger evidence, but the real merged-stack gate remains.
+- #163 / LAB-086 — IN_PROGRESS; forged-proof SQL-fence blocker must be fixed before the full merged-stack gate and merge.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
