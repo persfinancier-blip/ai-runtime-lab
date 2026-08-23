@@ -9,17 +9,13 @@ from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import
     CustodySubstitution,
     PublicRecoveryAuthority,
     RecoverySigner,
+    PublicSignature,
     custody_rotation_payload,
 )
 
 
 def authority(version=1, generation=1, prefix="recovery"):
-    signers = [
-        RecoverySigner.from_seed(
-            bytes([version, generation, i]) + bytes(f"{prefix}-{i}", "utf-8")[:1] + b"x" * 28
-        )
-        for i in range(4)
-    ]
+    signers = [RecoverySigner.from_seed(bytes([version, generation, i]) + bytes(f"{prefix}-{i}", "utf-8")[:1] + b"x" * 28) for i in range(4)]
     public = PublicRecoveryAuthority(
         "provider-rotation-recovery",
         version,
@@ -76,6 +72,16 @@ class AsymmetricCustodyTests(unittest.TestCase):
                 store.rotate(new, "root-1", signatures(olds, payload, 2), signatures(news, payload, 3))
             with self.assertRaises(CustodyThresholdNotMet):
                 store.rotate(new, "root-1", signatures(olds, payload, 3), signatures(news, payload, 2))
+
+    def test_malformed_extra_signature_cannot_denial_of_service_valid_quorum(self):
+        with tempfile.TemporaryDirectory() as td:
+            old, olds = authority(); new, news = authority(2, 2, "new")
+            store = AsymmetricRecoveryCustody(Path(td) / "db", old)
+            payload = custody_rotation_payload(old, new, "root-1")
+            noisy_old = signatures(olds, payload) + (PublicSignature("junk", "not-hex"),)
+            noisy_new = (PublicSignature("junk", "not-hex"),) + signatures(news, payload)
+            store.rotate(new, "root-1", noisy_old, noisy_new)
+            self.assertTrue(store.verify_durable())
 
     def test_tampered_public_transition_fails_restart(self):
         with tempfile.TemporaryDirectory() as td:
