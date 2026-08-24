@@ -30,6 +30,15 @@ class RootHeadFenceTests(unittest.TestCase):
         q.commit()
         return q
 
+    def assert_root1(self, q):
+        self.assertEqual(
+            q.execute(
+                "SELECT authority_id,version,generation FROM provider_rotation_authority_head"
+            ).fetchone(),
+            ("root-1", 1, 1),
+        )
+        self.assertTrue(assert_public_mutation_fence_locked(q))
+
     def test_direct_root_head_update_is_denied_after_cutoff(self):
         q = self.make_db()
         with self.assertRaises(sqlite3.IntegrityError):
@@ -38,13 +47,26 @@ class RootHeadFenceTests(unittest.TestCase):
                 "SET authority_id='attacker',version=2,generation=2 WHERE singleton=1"
             )
         q.rollback()
-        self.assertEqual(
+        self.assert_root1(q)
+
+    def test_insert_or_replace_cannot_bypass_root_head_update_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
             q.execute(
-                "SELECT authority_id,version,generation FROM provider_rotation_authority_head"
-            ).fetchone(),
-            ("root-1", 1, 1),
-        )
-        self.assertTrue(assert_public_mutation_fence_locked(q))
+                "INSERT OR REPLACE INTO provider_rotation_authority_head "
+                "VALUES(1,'attacker',2,2)"
+            )
+        q.rollback()
+        self.assert_root1(q)
+
+    def test_direct_root_head_delete_is_denied_after_cutoff(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "DELETE FROM provider_rotation_authority_head WHERE singleton=1"
+            )
+        q.rollback()
+        self.assert_root1(q)
 
     def test_final_writer_can_remove_and_restore_root_head_fence_transactionally(self):
         q = self.make_db()
