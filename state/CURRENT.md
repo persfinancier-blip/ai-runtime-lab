@@ -12,46 +12,44 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed PR HEAD: `99df30f0b8cae05354b1576ec3d67fb5410080a7`.
+- Current observed PR HEAD: `21d762c473d3525eb85762dfc782a7c58321b3cb`.
 - PR remains draft/mergeable; full current-head merged-stack regression gate has not passed.
 
 ## Last completed step
 
-A focused SQL-boundary audit found and fixed two additional post-cutoff mutation bypasses in the public-recovery fence.
+Extended the post-cutoff SQLite mutation-fence audit beyond the prior DELETE and `INSERT OR REPLACE` cases. Added regressions for authority UPSERT `ON CONFLICT DO UPDATE`, transition UPSERT `ON CONFLICT DO UPDATE`, head UPSERT `ON CONFLICT DO UPDATE`, and `UPDATE OR REPLACE` on the singleton head. The focused transition fixture was also corrected to match the production LAB-085 schema by making `new_authority_id` the PRIMARY KEY before the UPSERT result was treated as evidence.
 
-First, authority/transition/head DELETE operations were not fenced, so an alternate/stale writer could durably remove authenticated public-recovery state and only be caught by later verification. DELETE triggers now protect all three objects.
-
-Second, the prior candidate still allowed `INSERT OR REPLACE` on the singleton public head because the head fence covered UPDATE/DELETE but not INSERT. This bypass was actually executed and replaced `old` with `attacker`. A dedicated `BEFORE INSERT` head trigger now blocks that SQLite conflict-resolution path as well.
+The exact current `strict_fence.py` and exact newly published test bytes were then executed together. All additional SQLite conflict-resolution paths are denied by the existing unconditional post-cutoff triggers; no new bypass was found in this focused pass.
 
 ## Evidence produced
 
-- Branch commits: `8c7df036817c0e46b47fabc8493424338e2ca3fa` (DELETE fence), `87bda84f189ec335989d65369f052dfbf06a0e30` (DELETE regression), `a17449185b9007f1702a02bff674d37e9778e221` (head INSERT fence), `99df30f0b8cae05354b1576ec3d67fb5410080a7` (REPLACE regression).
+- Branch commit: `21d762c473d3525eb85762dfc782a7c58321b3cb` (`LAB-086 cover SQLite conflict-algorithm fence paths`).
 - Exact published `strict_fence.py` blob: `eb9f3d60f9bda56de9d71aa3aa406a7d6a99ae78`.
-- Exact published `test_strict_fence.py` blob: `9149115cb5f67ce31f35c7a5c31abd876ec01cd8`.
-- Both published blobs matched local `git hash-object` on the bytes actually executed.
-- Exact focused strict-fence suite: **6/6 passed**.
-- Covered: forged proof row rejection; DELETE denial for authority/transition/head; `INSERT OR REPLACE` head bypass denial; controlled write-locked mutation; rollback restoring the fence; replacement of obsolete weak trigger definitions.
-- Focused compileall passed.
-- The pre-fix `INSERT OR REPLACE` bypass was directly reproduced: the unfixed candidate changed the head from `old` to `attacker`.
-- Issue #163 has both audit findings/evidence; PR #165 remains draft.
-- Direct shell Internet/GitHub transport is unavailable in this runtime; GitHub connector is healthy and is the supported source/control-plane path.
+- Exact published updated `test_strict_fence.py` blob: `4b651db3638c8b9f2341d52b512f075c4b3c31d2`.
+- Local `git hash-object` matched both published blobs.
+- Exact current strict-fence suite: **10/10 passed**.
+- Newly covered and rejected: authority UPSERT/DO UPDATE, transition UPSERT/DO UPDATE, head UPSERT/DO UPDATE, and `UPDATE OR REPLACE` head mutation.
+- Existing covered cases remain: forged proof row, destructive DELETEs, head `INSERT OR REPLACE`, controlled write-locked mutation, rollback fence restoration, and obsolete-trigger replacement.
+- Full branch/main compare before this update showed all LAB-086 paths as additions with no path overlap; branch remains substantially diverged and must be rechecked before integration.
+- Exact dependency reconstruction for the merged-stack gate is in progress through the GitHub connector because direct shell GitHub transport remains unavailable in this runtime.
 
 ## Known blockers / constraints
 
-- Forged-proof, destructive-DELETE, and head-REPLACE fence blockers are fixed in the candidate.
-- Remaining merge gate: exact current-head LAB-086 integration tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure.
+- Forged-proof, destructive-DELETE, head-REPLACE, and audited UPSERT/conflict-algorithm fence paths are fixed/covered in the candidate.
+- Remaining merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure.
 - Logical SQLite scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
+- Direct shell Internet/GitHub transport is unavailable in the current runtime; GitHub connector remains healthy and is the supported source/control-plane path.
 
 ## Exact next action
 
-1. Reconstruct exact PR HEAD `99df30f0b8cae05354b1576ec3d67fb5410080a7` dependency closure through the GitHub connector and verify Git blob identities.
-2. Execute all current LAB-086 real-schema tests, especially forged-proof, stale LAB-085 writer, direct suffix bypass, destructive DELETE, head `INSERT OR REPLACE`, final-supported legitimate rotation, cutoff/restart, scrubbed-prefix/asymmetric-suffix, trigger-upgrade, and temporary-fence rollback cases.
-3. Execute merged LAB-085/084/083/082/080 regressions, the unsafe legacy-promotion seed, and compileall.
-4. Perform a fresh full audit focused on every alternate mutation entry point, transaction-scoped fence removal, SQLite conflict algorithms, forged/orphan/substituted proofs, predecessor/root binding, restart, and rotation races; fix and re-run any defect found.
+1. Continue reconstructing the exact current PR HEAD `21d762c473d3525eb85762dfc782a7c58321b3cb` dependency closure through the GitHub connector, verifying every executable file with its Git blob identity.
+2. Execute all current LAB-086 real-schema tests: migration guard, public-only suffix/restart, scrubbed-prefix + asymmetric suffix, forged-proof and stale-writer regressions, direct-suffix denial, strict fence/trigger upgrade, final-supported rotation, and temporary-fence rollback.
+3. Execute merged LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed, and compileall from the same reconstructed closure.
+4. Perform a fresh full audit focused on alternate mutation entry points, transaction-scoped fence removal, all SQLite conflict algorithms, forged/orphan/substituted proofs, predecessor/root binding, restart snapshots, and rotation races; fix and re-run every defect.
 5. Re-check branch/main divergence. Keep PR #165 draft until the full gate is clean; only then mark ready and integrate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; forged-proof + DELETE + REPLACE blockers fixed, full merged-stack exact-source gate remains.
+- #163 / LAB-086 — IN_PROGRESS; focused fence is now 10/10 with production-shaped conflict-algorithm regressions; full merged-stack exact-source gate remains.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
