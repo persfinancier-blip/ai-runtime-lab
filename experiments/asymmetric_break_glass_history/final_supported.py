@@ -17,11 +17,12 @@ class SupportedFencedAsymmetricBreakGlassLedger:
     they are never accepted as mutation capability.
 
     Every consequential writer follows one pattern under ``BEGIN IMMEDIATE``:
-    verify the committed lower LAB-080/082 history while the writer slot is held,
-    verify complete LAB-086 history, verify its own authorization, temporarily
-    remove the deny fence inside the same transaction, mutate, restore/assert the
-    fence, re-verify the affected current history, then commit. A rollback/crash
-    rolls the temporary schema change back with the data changes.
+    verify the committed lower LAB-080/082 and Ed25519 public-recovery histories
+    while the writer slot is held, verify complete LAB-086 history, verify its own
+    authorization, temporarily remove the deny fence inside the same transaction,
+    mutate, restore/assert the fence, re-verify the affected current history, then
+    commit. A rollback/crash rolls the temporary schema change back with the data
+    changes.
     """
 
     def __init__(self, *args, **kwargs):
@@ -45,11 +46,14 @@ class SupportedFencedAsymmetricBreakGlassLedger:
     @staticmethod
     def _verify_lower_committed_history(ledger):
         # The caller already owns BEGIN IMMEDIATE on the authoritative database,
-        # so no other writer can change the committed lower history while this
-        # read verifier runs on its own connection.  This closes the gap where a
-        # new root/public/provider successor could previously commit over corrupt
-        # LAB-080/082 durable state that only a later restart would notice.
-        return SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
+        # so no other writer can change committed lower/public history while these
+        # read verifiers run on their own connections.  Both layers are required:
+        # LAB-086's root/public-window verifier authenticates root coauthorization,
+        # while AsymmetricRecoveryCustody.verify_durable authenticates the actual
+        # Ed25519 old/new recovery-transition signatures and orphan count.
+        out = SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
+        ledger.public_recovery_custody.verify_durable()
+        return out
 
     @staticmethod
     def _ensure_root_proof_table_locked(q):
@@ -299,8 +303,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
         try:
             q.execute('BEGIN IMMEDIATE')
             self._install_fence_locked(q)
-            SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
-            ledger.public_recovery_custody.verify_durable()
+            self._verify_lower_committed_history(ledger)
             ledger._verify_lab086_locked(q)
             assert_public_mutation_fence_locked(q)
             q.commit()
