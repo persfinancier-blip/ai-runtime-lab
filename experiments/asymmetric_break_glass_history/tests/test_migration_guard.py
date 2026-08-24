@@ -13,6 +13,7 @@ from experiments.asymmetric_break_glass_history.suffix import (
 )
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
+from experiments.provider_threshold_rotation.protocol import Signature, ThresholdNotMet, mac
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
     CustodyThresholdNotMet,
 )
@@ -30,6 +31,15 @@ from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody
     recovery,
     signatures,
 )
+
+
+def migration_root_signatures(ledger, payload, count=None):
+    root = ledger.rotation_authority.current()
+    count = root.threshold if count is None else count
+    return tuple(
+        Signature(signer_id, mac(bytes.fromhex(key_hex), payload))
+        for signer_id, key_hex in list(root.keys.items())[:count]
+    )
 
 
 class MigrationGuardIntegrationTests(unittest.TestCase):
@@ -91,7 +101,10 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
 
     def establish(self, guard, public_signers):
         payload = guard.payload()
-        return guard.establish(public_signatures(public_signers, payload, 3))
+        return guard.establish(
+            public_signatures(public_signers, payload, 3),
+            migration_root_signatures(guard.ledger, payload),
+        )
 
     def test_threshold_signed_cutoff_restarts_without_recovery_hmac_material(self):
         with tempfile.TemporaryDirectory() as td:
@@ -204,7 +217,22 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             payload = guard.payload()
             with self.assertRaises(CustodyThresholdNotMet):
-                guard.establish(public_signatures(public_signers, payload, 1))
+                guard.establish(
+                    public_signatures(public_signers, payload, 1),
+                    migration_root_signatures(ledger, payload),
+                )
+
+    def test_cutoff_requires_current_root_threshold(self):
+        with tempfile.TemporaryDirectory() as td:
+            ledger, *rest = self.make_ledger(Path(td) / "db")
+            public_signers = rest[-2]
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            payload = guard.payload()
+            with self.assertRaises(ThresholdNotMet):
+                guard.establish(
+                    public_signatures(public_signers, payload, 3),
+                    migration_root_signatures(ledger, payload, 1),
+                )
 
     def test_stale_historical_public_quorum_cannot_authorize_cutoff(self):
         with tempfile.TemporaryDirectory() as td:
@@ -237,7 +265,43 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             payload = guard.payload()
             with self.assertRaises(CustodyThresholdNotMet):
-                guard.establish(public_signatures(old_public_signers, payload, 3))
+                guard.establish(
+                    public_signatures(old_public_signers, payload, 3),
+                    migration_root_signatures(ledger, payload),
+                )
+
+    def test_root_coauthorization_is_reverified_after_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, *rest = self.make_ledger(path)
+            public_signers = rest[-2]
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            self.establish(guard, public_signers)
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE provider_asymmetric_break_glass_root_proof SET root_signatures_json='[]'"
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(ThresholdNotMet):
+                guard.verify()
+
+    def test_boundary_rebinding_cannot_reuse_old_root_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "db"
+            ledger, *rest = self.make_ledger(path)
+            public_signers = rest[-2]
+            guard = AuthenticatedBreakGlassMigrationGuard(ledger)
+            self.establish(guard, public_signers)
+            q = sqlite3.connect(path)
+            q.execute(
+                "UPDATE provider_asymmetric_break_glass_boundary SET boundary_digest=?",
+                ("0" * 64,),
+            )
+            q.commit()
+            q.close()
+            with self.assertRaises(MigrationGuardError):
+                guard.verify()
 
     def test_legacy_semantic_history_tamper_after_cutoff_is_detected(self):
         with tempfile.TemporaryDirectory() as td:
