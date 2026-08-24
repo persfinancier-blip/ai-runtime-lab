@@ -1,31 +1,26 @@
 from __future__ import annotations
+from experiments.anchor_attestation.protocol import AttestedCatchup
+from experiments.asymmetric_provider_history.protocol import GenerationSigner, InvalidTransition, TransitionProof
 from experiments.asymmetric_provider_history.supported import SupportedAsymmetricHistoricalSharedAnchorLedger
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import PublicRecoveryAuthority, accepted_public_signatures, custody_rotation_payload, sha as custody_sha, verify_public_threshold
+from experiments.provider_threshold_rotation.strict import require_canonical_authority
 from .migration_guard import MigrationGuardError
 from .strict_fence import assert_public_mutation_fence_locked, install_public_mutation_fence_locked, remove_public_mutation_fence_locked
 from .suffix import PublicRecoveryRotationError, SupportedAsymmetricBreakGlassLedger, _accepted_root_signatures
 
 class SupportedFencedAsymmetricBreakGlassLedger:
-    """Final LAB-086 surface with transaction-scoped public-recovery mutation.
+    """Final LAB-086 surface with transaction-scoped consequential mutation.
 
-    After the authenticated cutoff, underlying LAB-085/LAB-086 writers are denied
-    by unconditional SQLite triggers. Durable root-proof rows are evidence only;
-    they are never accepted as mutation capability.
+    After the authenticated cutoff, underlying LAB-085/LAB-086 public-recovery
+    writers are denied by unconditional SQLite triggers. Durable root-proof rows
+    are evidence only; they are never accepted as mutation capability.
 
-    The only supported public-recovery rotation path is:
-
-      BEGIN IMMEDIATE
-      -> verify boundary + complete LAB-086 history + old/new public quorum + current root quorum
-      -> persist/validate exact historical proof
-      -> transactionally remove deny triggers
-      -> mutate authority/transition/head
-      -> reinstall + verify deny triggers
-      -> re-verify complete LAB-086 history
-      -> COMMIT
-
-    Because SQLite schema DDL participates in the transaction, any exception or
-    crash before commit rolls the temporary trigger removal back together with the
-    data changes. No durable boolean/token is introduced as authority.
+    Root-authority and provider-generation rotations are also reimplemented here
+    rather than delegated through ``__getattr__``.  Those lower LAB-083 writers
+    are cryptographically correct for their own layer, but they do not know about
+    LAB-086 history.  Every consequential writer therefore verifies the complete
+    LAB-086 history immediately before and after its mutation in the same
+    ``BEGIN IMMEDIATE`` transaction.
     """
 
     def __init__(self, *args, **kwargs):
@@ -68,6 +63,88 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             raise
         finally:
             q.close()
+
+    def rotate_rotation_authority(self, new_authority, old_signatures, new_signatures):
+        """Normal root rotation guarded by the complete LAB-086 history."""
+        require_canonical_authority(new_authority)
+        ledger = self._ledger
+        q = ledger._con()
+        try:
+            q.execute('BEGIN IMMEDIATE')
+            ledger._reject_prepared_locked(q)
+            ledger._ensure_asymmetric_schema_locked(q)
+            self._install_fence_locked(q)
+            ledger._verify_lab086_locked(q)
+            out = ledger.rotation_authority.rotate_authority_locked(
+                q, new_authority, tuple(old_signatures), tuple(new_signatures)
+            )
+            ledger._verify_lab086_locked(q)
+            assert_public_mutation_fence_locked(q)
+            q.commit()
+            return out
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+
+    def rotate_provider(
+        self,
+        new_signer: GenerationSigner,
+        continuity_proof: TransitionProof,
+        new_attested: AttestedCatchup,
+        threshold_signatures,
+    ):
+        """Provider-generation rotation guarded by the complete LAB-086 history."""
+        if type(new_signer) is not GenerationSigner:
+            raise TypeError('exact LAB-082 GenerationSigner required')
+        if type(new_attested) is not AttestedCatchup:
+            raise TypeError('exact LAB-036 AttestedCatchup required')
+        ledger = self._ledger
+        new = new_signer.public
+        expected = new_attested.verifier.expected
+        if (expected.provider_id, expected.generation) != (new.provider_id, new.generation):
+            raise InvalidTransition('new LAB-036 provider does not match Ed25519 generation')
+        challenge = new_attested.challenge()
+        observed = new_attested.authenticated_read(
+            challenge=challenge,
+            request_id=f'threshold-provider-rotation-read:{new.generation}',
+        )
+        q = ledger._con()
+        try:
+            q.execute('BEGIN IMMEDIATE')
+            ledger._reject_prepared_locked(q)
+            ledger._ensure_asymmetric_schema_locked(q)
+            self._install_fence_locked(q)
+            ledger._verify_lab086_locked(q)
+            reserved = q.execute(
+                'SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1'
+            ).fetchone()[0]
+            if observed.position != reserved:
+                raise InvalidTransition('new provider position does not match durable ledger tail')
+            old = ledger.provider_history._current_locked(q)
+            ledger.rotation_authority.authorize_provider_rotation_locked(
+                q,
+                provider_id=old.provider_id,
+                old_generation_id=old.generation_id,
+                new_generation_id=new.generation_id,
+                signatures=tuple(threshold_signatures),
+            )
+            ledger.provider_history._rotate_locked(q, new, continuity_proof)
+            ledger._verify_lab086_locked(q)
+            assert_public_mutation_fence_locked(q)
+            q.commit()
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+        ledger.attested = new_attested
+        ledger.signer = new_signer
+        ledger._require_runtime_matches_durable_head()
+        return new
 
     def rotate_public_recovery_authority(self, new_public, old_public_signatures, new_public_signatures, root_signatures):
         if type(new_public) is not PublicRecoveryAuthority:
