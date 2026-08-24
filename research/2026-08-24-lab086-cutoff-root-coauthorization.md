@@ -37,12 +37,20 @@ This makes a stale public-recovery quorum insufficient by itself to rewrite migr
 
 Published `migration_guard.py` Git blob after this change: `332995323d8d74fcc0f377d0e74bb0f30b8735c1`.
 
-Exact locally authored bytes matched that blob. Focused execution against those bytes observed 4/4 checks passing:
+Exact locally authored bytes matched that blob. Focused execution against those bytes observed 4/4 signature/payload checks passing:
 
 - valid root threshold accepted;
 - below-threshold root signatures rejected;
 - an invalid signature using a known signer ID does not suppress a later valid signature from that signer;
 - changing the public authority identity changes the canonical cutoff payload and root MAC.
+
+A second focused durable harness executed the same exact `migration_guard.py` bytes with production-shaped SQLite table names and minimal import-only lower-layer doubles. It observed 3/3 cutoff/root-proof checks passing:
+
+- dual public+root threshold establishment persisted an exact root proof and immediately re-verified;
+- normal restart verification returned the same boundary digest;
+- deleting the durable root proof caused fail-closed verification rather than accepting the public signature alone.
+
+The first attempt at that harness failed before testing the target path because its fake `provider_rotation_authorities` table lacked production `version` metadata; the fixture was corrected and the retry above passed. No result is claimed from the failed attempt.
 
 `py_compile` returned success for the exact authored `migration_guard.py` bytes. This focused evidence does **not** replace the remaining full LAB-086 + LAB-085/084/083/082/080 merged-stack gate.
 
