@@ -3,23 +3,25 @@ from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.asymmetric_provider_history.protocol import GenerationSigner, InvalidTransition, TransitionProof
 from experiments.asymmetric_provider_history.supported import SupportedAsymmetricHistoricalSharedAnchorLedger
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import PublicRecoveryAuthority, accepted_public_signatures, custody_rotation_payload, sha as custody_sha, verify_public_threshold
+from experiments.provider_threshold_rotation.protocol import StaleAuthority
 from experiments.provider_threshold_rotation.strict import require_canonical_authority
-from .migration_guard import MigrationGuardError
+from .migration_guard import MigrationGuardError, _digest
 from .strict_fence import assert_public_mutation_fence_locked, install_public_mutation_fence_locked, remove_public_mutation_fence_locked
-from .suffix import PublicRecoveryRotationError, SupportedAsymmetricBreakGlassLedger, _accepted_root_signatures
+from .suffix import AsymmetricBreakGlassError, PublicRecoveryRotationError, SupportedAsymmetricBreakGlassLedger, _accepted_root_signatures, asymmetric_break_glass_payload
 
 class SupportedFencedAsymmetricBreakGlassLedger:
     """Final LAB-086 surface with transaction-scoped consequential mutation.
 
-    After the authenticated cutoff, lower LAB-082/083/085 mutation entry points
-    are denied by SQLite triggers. Durable proof rows are evidence only; they are
-    never accepted as mutation capability.
+    After the authenticated cutoff, lower LAB-082/083/085/LAB-086 mutation entry
+    points are denied by SQLite triggers. Durable proof rows are evidence only;
+    they are never accepted as mutation capability.
 
     Every consequential writer follows one pattern under ``BEGIN IMMEDIATE``:
+    verify the committed lower LAB-080/082 history while the writer slot is held,
     verify complete LAB-086 history, verify its own authorization, temporarily
     remove the deny fence inside the same transaction, mutate, restore/assert the
-    fence, re-verify complete LAB-086 history, then commit. A rollback/crash rolls
-    the temporary schema change back with the data changes.
+    fence, re-verify the affected current history, then commit. A rollback/crash
+    rolls the temporary schema change back with the data changes.
     """
 
     def __init__(self, *args, **kwargs):
@@ -39,6 +41,15 @@ class SupportedFencedAsymmetricBreakGlassLedger:
 
     def __getattr__(self, name):
         return getattr(self._ledger, name)
+
+    @staticmethod
+    def _verify_lower_committed_history(ledger):
+        # The caller already owns BEGIN IMMEDIATE on the authoritative database,
+        # so no other writer can change the committed lower history while this
+        # read verifier runs on its own connection.  This closes the gap where a
+        # new root/public/provider successor could previously commit over corrupt
+        # LAB-080/082 durable state that only a later restart would notice.
+        return SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
 
     @staticmethod
     def _ensure_root_proof_table_locked(q):
@@ -72,6 +83,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             ledger._reject_prepared_locked(q)
             ledger._ensure_asymmetric_schema_locked(q)
             self._install_fence_locked(q)
+            self._verify_lower_committed_history(ledger)
             ledger._verify_lab086_locked(q)
             remove_public_mutation_fence_locked(q)
             try:
@@ -118,6 +130,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             ledger._reject_prepared_locked(q)
             ledger._ensure_asymmetric_schema_locked(q)
             self._install_fence_locked(q)
+            self._verify_lower_committed_history(ledger)
             ledger._verify_lab086_locked(q)
             reserved = q.execute(
                 'SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1'
@@ -138,6 +151,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             finally:
                 install_public_mutation_fence_locked(q)
             assert_public_mutation_fence_locked(q)
+            ledger.provider_history._verify_durable_locked(q)
             ledger._verify_lab086_locked(q)
             q.commit()
         except:
@@ -161,6 +175,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             ledger._reject_prepared_locked(q)
             ledger._ensure_asymmetric_schema_locked(q)
             self._install_fence_locked(q)
+            self._verify_lower_committed_history(ledger)
             boundary = ledger.migration_guard.verify_locked(q)
             if boundary is None:
                 raise MigrationGuardError('authenticated migration boundary required')
@@ -191,6 +206,86 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             ledger._verify_lab086_locked(q)
             q.commit()
             return {'old_public_authority_id': old.authority_id, 'new_public_authority_id': new_public.authority_id, 'root_authority_id': root.authority_id, 'root_signers': tuple(sorted((s.signer_id for s in root_valid)))}
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+
+    def recover_rotation_authority_asymmetric(self, new_authority, public_signatures):
+        require_canonical_authority(new_authority)
+        ledger = self._ledger
+        q = ledger._con()
+        try:
+            q.execute('BEGIN IMMEDIATE')
+            ledger._reject_prepared_locked(q)
+            ledger._ensure_asymmetric_schema_locked(q)
+            self._install_fence_locked(q)
+            self._verify_lower_committed_history(ledger)
+            ledger._verify_lab086_locked(q)
+            boundary = ledger.migration_guard.verify_locked(q)
+            if boundary is None:
+                raise MigrationGuardError('authenticated migration boundary required')
+            old = ledger.rotation_authority.current_locked(q)
+            public = ledger.public_recovery_custody.current_locked(q)
+            ledger._require_successor(old, new_authority)
+            payload = asymmetric_break_glass_payload(
+                boundary_digest=boundary['boundary_digest'],
+                old_root=old,
+                new_root=new_authority,
+                public_authority=public,
+            )
+            accepted = accepted_public_signatures(
+                public, payload, tuple(public_signatures)
+            )
+            verify_public_threshold(public, payload, accepted)
+            encoded = ledger.public_recovery_custody._encode_signatures(accepted)
+            intent = _digest(payload)
+            remove_public_mutation_fence_locked(q)
+            try:
+                ledger.rotation_authority._insert_authority_locked(q, new_authority)
+                changed = q.execute(
+                    'UPDATE provider_rotation_authority_head SET authority_id=?,version=?,generation=? '
+                    'WHERE singleton=1 AND authority_id=? AND version=? AND generation=?',
+                    (
+                        new_authority.authority_id,
+                        new_authority.version,
+                        new_authority.generation,
+                        old.authority_id,
+                        old.version,
+                        old.generation,
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise StaleAuthority('root head changed during asymmetric recovery')
+                q.execute(
+                    'INSERT INTO provider_asymmetric_break_glass_proofs VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (
+                        new_authority.authority_id,
+                        old.authority_id,
+                        old.version,
+                        old.generation,
+                        public.authority_id,
+                        public.version,
+                        public.generation,
+                        boundary['boundary_digest'],
+                        intent,
+                        encoded,
+                    ),
+                )
+            finally:
+                install_public_mutation_fence_locked(q)
+            assert_public_mutation_fence_locked(q)
+            ledger._verify_lab086_locked(q)
+            q.commit()
+            return {
+                'old_rotation_authority_id': old.authority_id,
+                'new_rotation_authority_id': new_authority.authority_id,
+                'public_recovery_authority_id': public.authority_id,
+                'public_recovery_signers': tuple(sorted(s.signer_id for s in accepted)),
+                'intent_digest': intent,
+            }
         except:
             if q.in_transaction:
                 q.rollback()
