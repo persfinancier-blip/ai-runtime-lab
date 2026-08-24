@@ -15,12 +15,12 @@ class SupportedFencedAsymmetricBreakGlassLedger:
     The only supported public-recovery rotation path is:
 
       BEGIN IMMEDIATE
-      -> verify boundary + old/new public quorum + current root quorum
+      -> verify boundary + complete LAB-086 history + old/new public quorum + current root quorum
       -> persist/validate exact historical proof
       -> transactionally remove deny triggers
       -> mutate authority/transition/head
       -> reinstall + verify deny triggers
-      -> verify resulting history
+      -> re-verify complete LAB-086 history
       -> COMMIT
 
     Because SQLite schema DDL participates in the transaction, any exception or
@@ -82,6 +82,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             boundary = ledger.migration_guard.verify_locked(q)
             if boundary is None:
                 raise MigrationGuardError('authenticated migration boundary required')
+            ledger._verify_lab086_locked(q)
             old = ledger.public_recovery_custody.current_locked(q)
             root = ledger.rotation_authority.current_locked(q)
             new_public.validate()
@@ -105,7 +106,7 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             finally:
                 install_public_mutation_fence_locked(q)
             assert_public_mutation_fence_locked(q)
-            ledger._verify_public_recovery_rotations_locked(q, boundary)
+            ledger._verify_lab086_locked(q)
             q.commit()
             return {'old_public_authority_id': old.authority_id, 'new_public_authority_id': new_public.authority_id, 'root_authority_id': root.authority_id, 'root_signers': tuple(sorted((s.signer_id for s in root_valid)))}
         except:
@@ -119,11 +120,6 @@ class SupportedFencedAsymmetricBreakGlassLedger:
         ledger = self._ledger
         q = ledger._con()
         try:
-            # Hold one write-excluding guard across every authoritative layer.
-            # Calling ledger.verify_durable() first and opening this transaction
-            # afterwards creates a mixed-snapshot window in which lower durable
-            # history can change after it was verified.  LAB-085 already uses this
-            # pattern; LAB-086 must preserve the same serialization boundary.
             q.execute('BEGIN IMMEDIATE')
             self._install_fence_locked(q)
             SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
