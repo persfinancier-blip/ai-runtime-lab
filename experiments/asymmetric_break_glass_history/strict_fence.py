@@ -14,7 +14,7 @@ PUBLIC_MUTATION_TRIGGER_NAMES = (
 
 # Lower LAB-083/LAB-082 writers are valid before the LAB-086 cutoff, but after
 # migration they must not create a new consequential successor without the final
-# LAB-086 pre/post full-history verification.  Fence their canonical write points
+# LAB-086 pre/post full-history verification. Fence their canonical write points
 # at SQL level so direct use of the lower controller/supported surface rolls back.
 INHERITED_MUTATION_TRIGGERS = {
     "provider_rotation_authority_transitions": "lab086_normal_root_transition_requires_final_writer",
@@ -22,13 +22,15 @@ INHERITED_MUTATION_TRIGGERS = {
     "asymmetric_provider_transitions": "lab086_provider_transition_requires_final_writer",
 }
 
-# Asymmetric break-glass recovery updates the root head before inserting its proof.
-# Deny that head mutation after cutoff so a retained direct LAB-086 suffix object
-# cannot bypass the final supported writer.  The final writer temporarily removes
-# this fence only after full lower + LAB-086 history verification succeeds.
-INHERITED_UPDATE_MUTATION_TRIGGERS = {
-    "provider_rotation_authority_head": "lab086_root_head_requires_final_writer",
-}
+# The authoritative root-head row needs all three DML operations fenced. SQLite
+# INSERT OR REPLACE is not an UPDATE and can otherwise replace the singleton row;
+# DELETE can remove it outright. Final writers temporarily remove all three only
+# after full pre-verification in the same BEGIN IMMEDIATE transaction.
+ROOT_HEAD_MUTATION_TRIGGER_NAMES = (
+    "lab086_root_head_insert_requires_final_writer",
+    "lab086_root_head_requires_final_writer",
+    "lab086_root_head_delete_requires_final_writer",
+)
 
 # Historical names from earlier LAB-086 candidates. They must be removed because
 # their proof-row predicates treated unauthenticated durable data as capability.
@@ -52,7 +54,7 @@ def remove_public_mutation_fence_locked(q):
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *INHERITED_MUTATION_TRIGGERS.values(),
-        *INHERITED_UPDATE_MUTATION_TRIGGERS.values(),
+        *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
@@ -68,9 +70,10 @@ def install_public_mutation_fence_locked(q):
     pre-transaction fence.
 
     The inherited-writer triggers fence the canonical write points used by lower
-    normal-root/provider rotation code and the root-head update used by asymmetric
-    break-glass recovery. If a stale/direct writer attempts any of those operations,
-    the transaction aborts and preceding writes in that transaction roll back.
+    normal-root/provider rotation code. The root-head singleton is fenced on
+    INSERT/UPDATE/DELETE so conflict algorithms such as INSERT OR REPLACE cannot
+    bypass the update guard. If a stale/direct writer attempts any of those
+    operations, the transaction aborts and preceding writes roll back.
     Tables are discovered dynamically so the isolated strict-fence fixture remains
     usable; on the real LAB-086 schema they are required by
     ``assert_public_mutation_fence_locked``.
@@ -203,6 +206,16 @@ def install_public_mutation_fence_locked(q):
         )
     if "provider_rotation_authority_head" in tables:
         q.execute(
+            """CREATE TRIGGER lab086_root_head_insert_requires_final_writer
+            BEFORE INSERT ON provider_rotation_authority_head
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 root head insertion requires final supported writer');
+            END"""
+        )
+        q.execute(
             """CREATE TRIGGER lab086_root_head_requires_final_writer
             BEFORE UPDATE ON provider_rotation_authority_head
             WHEN EXISTS(
@@ -210,6 +223,16 @@ def install_public_mutation_fence_locked(q):
             )
             BEGIN
               SELECT RAISE(ABORT,'LAB-086 root head mutation requires final supported writer');
+            END"""
+        )
+        q.execute(
+            """CREATE TRIGGER lab086_root_head_delete_requires_final_writer
+            BEFORE DELETE ON provider_rotation_authority_head
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 root head deletion requires final supported writer');
             END"""
         )
 
@@ -228,13 +251,9 @@ def assert_public_mutation_fence_locked(q):
         for table, trigger in INHERITED_MUTATION_TRIGGERS.items()
         if table in tables
     }
-    inherited_update_required = {
-        trigger
-        for table, trigger in INHERITED_UPDATE_MUTATION_TRIGGERS.items()
-        if table in tables
-    }
     missing |= inherited_required - names
-    missing |= inherited_update_required - names
+    if "provider_rotation_authority_head" in tables:
+        missing |= set(ROOT_HEAD_MUTATION_TRIGGER_NAMES) - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
