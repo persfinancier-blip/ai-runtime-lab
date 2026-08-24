@@ -13,46 +13,50 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
 - Current observed PR HEAD: `376d1ed454c60d869605769473d903da2bb51f6f`.
-- PR is open/draft/mergeable; full current-head merged-stack exact-source regression gate has not passed.
+- PR is open/draft; full current-head merged-stack exact-source regression gate has not passed.
 
 ## Last completed step
 
-Started the one-shot merged-stack gate by reconstructing the exact LAB-080 dependency layer from the byte-stable LAB-086 merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`. Reconstructed `anchor_attestation/protocol.py`, `shared_anchor_intent_ledger/protocol.py`, `shared_anchor_intent_ledger/supported.py`, and all three corrected LAB-080 test files. Every reconstructed executable/test file was checked with local `git hash-object` against its GitHub blob before execution.
+Continued the one-shot exact-source merged-stack gate in a single connector-reconstructed workspace. The already proven LAB-036/LAB-080 implementation layer was reconstructed again as dependencies, then exact LAB-082 `asymmetric_provider_history/{protocol,integration,supported}.py` and all three corrected LAB-082 tests were reconstructed from the byte-stable merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`.
 
-The exact LAB-080 corrected regression set then ran from that same reconstructed workspace: 18/18 PASS. `python -m compileall` over the reconstructed LAB-036/LAB-080 packages also passed. This advances the combined LAB-086 merge gate rather than relying on another isolated harness.
+Every LAB-082 executable/test file was checked with local `git hash-object` against its GitHub blob before execution. The cumulative corrected LAB-082 regression set then ran on top of that same LAB-036/LAB-080 workspace: 28/28 PASS. `python -m compileall` over LAB-036/LAB-080/LAB-082 also passed.
 
-During the run PR #165 advanced from `4b786939...` to `376d1ed454c60d869605769473d903da2bb51f6f`. The new commit only changes `tests/test_unfenced_supported_surface_regression.py` to obtain the historical public-custody head via the audited locked lookup rather than a nonexistent/unsupported convenience call; lower LAB-080/082/083/084/085 executable code remains at the same merge-base bytes.
+A fresh source audit of current LAB-086 `migration_guard.py`, `strict_fence.py`, `suffix.py`, `final_supported.py` and LAB-085 public custody code did not establish a new fail-open in the intended stale/alternate supported-writer model. The remaining evidence gap is now LAB-083→086, not LAB-080/082.
 
 ## Evidence produced / reconfirmed
 
-- Exact LAB-036 `experiments/anchor_attestation/protocol.py` blob `15d8b7cf8ff093490ccb75679030d3a0fe41e401` matched local bytes.
-- Exact LAB-080 `shared_anchor_intent_ledger/protocol.py` blob `68834409363c93eee4e9a9a7b9ec076098af0acf` matched local bytes.
-- Exact LAB-080 `shared_anchor_intent_ledger/supported.py` blob `22a05c04831f65c1d7fe9077df3bb780c4008e09` matched local bytes.
-- Exact LAB-080 corrected test blobs matched: `d2d127fb67147dda2c5f6786731c0a3310a067e6`, `aa9b0f3784f97b14b59b128a2e7686e94848d377`, `763ee7f6958ed6fda1adde402452fedde5046ea1`.
-- Exact LAB-080 corrected regression run: 18/18 PASS.
-- Compileall for reconstructed LAB-036/LAB-080 packages: PASS.
-- Current PR #165 HEAD `376d1ed454c60d869605769473d903da2bb51f6f`; latest commit is test-only and does not invalidate the completed LAB-080 layer evidence.
-- Previous current-implementation evidence remains relevant: exact standalone LAB-086 12/12 PASS; focused final single-snapshot regression 1/1 PASS; unchanged v4 migration/root-coauthorization and strict-fence evidence remain recorded in PR/Issue #163.
+- Prior exact LAB-080 corrected regression run: 18/18 PASS.
+- Exact LAB-082 implementation blobs matched local bytes:
+  - `protocol.py` `a2fc3456233930d94aaaca5fe57b1debd50cbdab`
+  - `integration.py` `23ae688c22a1b74bde49ac506544778b2659bad6`
+  - `supported.py` `d61bcd544c001de7108de42aafdc54069d0029bf`
+- Exact LAB-082 corrected test blobs matched:
+  - `test_protocol.py` `f737f71559e90e9a748fc3bd3d3e0cf90872a898`
+  - `test_integration.py` `b659bca2a6c05999a13c6e6c84131039f337ee5d`
+  - `test_supported.py` `cf5fd028f27b312aba98d8d74c300c8858e97a4a`
+- Exact cumulative LAB-082 corrected regression run: 28/28 PASS.
+- Compileall for reconstructed LAB-036/LAB-080/LAB-082 packages: PASS.
+- Current PR #165 HEAD last observed as `376d1ed454c60d869605769473d903da2bb51f6f`; fetch current-head LAB-086 bytes again before final counting because the branch may advance independently.
+- Previous current-implementation evidence remains relevant: exact standalone LAB-086 12/12 PASS; strict-fence/conflict-algorithm focused evidence and v4 cutoff/root-coauthorization evidence remain recorded in PR/Issue #163.
 
 ## Known blockers / constraints
 
-- Remaining LAB-086 merge gate: continue the same exact-source reconstructed closure through LAB-082, LAB-083, LAB-084, LAB-085 and current-head LAB-086 real-schema tests; then unsafe seed + compileall + final audit.
+- Remaining LAB-086 merge gate: continue the same exact-source reconstructed closure through LAB-083, LAB-084, LAB-085 and current-head LAB-086 real-schema tests; then unsafe seed + compileall + final audit.
 - File-by-file connector reconstruction is slower because shell GitHub transport is unavailable, but it is working and is not an owner blocker.
-- PR #165 changed during this run only in a LAB-086 test file; fetch current-head LAB-086 test bytes before counting the final LAB-086 run.
 - LAB-086 SQL fences protect against stale/alternate supported mutation paths, not arbitrary same-privilege raw SQLite DDL. That broader trust boundary is LAB-087 / #166.
 - Logical SQL scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
 
 ## Exact next action
 
-1. Continue from the existing exact reconstructed workspace: reconstruct LAB-082 `asymmetric_provider_history/{protocol,integration,supported}.py` plus its corrected tests at merge-base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`; verify every file by Git blob identity and run the LAB-082 corrected suite on top of the already passing LAB-080 closure.
-2. Repeat cumulatively for LAB-083 provider-threshold rotation, LAB-084 provider-rotation recovery, and LAB-085 provider-recovery-authority lifecycle, always keeping the same exact lower dependency workspace.
-3. Fetch the current PR HEAD `376d1ed454c60d869605769473d903da2bb51f6f` LAB-086 executable/tests, verify blob identities, and execute all real-schema migration/fence/suffix/final-supported tests including the updated direct-surface regression and final single-snapshot regression.
+1. Continue from the same exact reconstructed dependency model by reconstructing LAB-083 provider-threshold-rotation implementation/support/tests at merge-base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`; verify every executable/test file by Git blob identity and run its corrected suite on top of the already proven LAB-080/082 layers.
+2. Repeat cumulatively for LAB-084 provider-rotation recovery and LAB-085 provider-recovery-authority lifecycle.
+3. Fetch the then-current PR #165 HEAD LAB-086 executable/tests, verify blob identities, and execute all real-schema migration/fence/suffix/final-supported tests including direct-surface, forged-proof, strict-fence conflict algorithms, cutoff/root coauthorization, scrubbed-prefix/asymmetric-suffix, restart and rotation-race cases.
 4. Run unsafe legacy-promotion seed and `python -m compileall` over the complete reconstructed closure.
 5. Perform a fresh full audit focused on final single-snapshot verification, cutoff/root/public proof substitution, alternate supported mutation entry points, transaction-scoped fence removal/restoration, predecessor/root binding, restart snapshots and rotation races. Re-check branch/main divergence and integrate only after the full gate is clean.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; cumulative merged-stack gate has now completed exact LAB-080 18/18 + compileall; LAB-082→086 remain.
+- #163 / LAB-086 — IN_PROGRESS; cumulative exact merged-stack gate now has LAB-080 18/18 + LAB-082 28/28 + compileall; LAB-083→086 remain.
 - #166 / LAB-087 — READY; establish/enforce the SQLite schema-control trust boundary behind post-cutoff authority fences.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
