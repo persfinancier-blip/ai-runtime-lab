@@ -11,16 +11,15 @@ from .suffix import PublicRecoveryRotationError, SupportedAsymmetricBreakGlassLe
 class SupportedFencedAsymmetricBreakGlassLedger:
     """Final LAB-086 surface with transaction-scoped consequential mutation.
 
-    After the authenticated cutoff, underlying LAB-085/LAB-086 public-recovery
-    writers are denied by unconditional SQLite triggers. Durable root-proof rows
-    are evidence only; they are never accepted as mutation capability.
+    After the authenticated cutoff, lower LAB-082/083/085 mutation entry points
+    are denied by SQLite triggers. Durable proof rows are evidence only; they are
+    never accepted as mutation capability.
 
-    Root-authority and provider-generation rotations are also reimplemented here
-    rather than delegated through ``__getattr__``.  Those lower LAB-083 writers
-    are cryptographically correct for their own layer, but they do not know about
-    LAB-086 history.  Every consequential writer therefore verifies the complete
-    LAB-086 history immediately before and after its mutation in the same
-    ``BEGIN IMMEDIATE`` transaction.
+    Every consequential writer follows one pattern under ``BEGIN IMMEDIATE``:
+    verify complete LAB-086 history, verify its own authorization, temporarily
+    remove the deny fence inside the same transaction, mutate, restore/assert the
+    fence, re-verify complete LAB-086 history, then commit. A rollback/crash rolls
+    the temporary schema change back with the data changes.
     """
 
     def __init__(self, *args, **kwargs):
@@ -65,7 +64,6 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             q.close()
 
     def rotate_rotation_authority(self, new_authority, old_signatures, new_signatures):
-        """Normal root rotation guarded by the complete LAB-086 history."""
         require_canonical_authority(new_authority)
         ledger = self._ledger
         q = ledger._con()
@@ -75,11 +73,15 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             ledger._ensure_asymmetric_schema_locked(q)
             self._install_fence_locked(q)
             ledger._verify_lab086_locked(q)
-            out = ledger.rotation_authority.rotate_authority_locked(
-                q, new_authority, tuple(old_signatures), tuple(new_signatures)
-            )
-            ledger._verify_lab086_locked(q)
+            remove_public_mutation_fence_locked(q)
+            try:
+                out = ledger.rotation_authority.rotate_authority_locked(
+                    q, new_authority, tuple(old_signatures), tuple(new_signatures)
+                )
+            finally:
+                install_public_mutation_fence_locked(q)
             assert_public_mutation_fence_locked(q)
+            ledger._verify_lab086_locked(q)
             q.commit()
             return out
         except:
@@ -96,7 +98,6 @@ class SupportedFencedAsymmetricBreakGlassLedger:
         new_attested: AttestedCatchup,
         threshold_signatures,
     ):
-        """Provider-generation rotation guarded by the complete LAB-086 history."""
         if type(new_signer) is not GenerationSigner:
             raise TypeError('exact LAB-082 GenerationSigner required')
         if type(new_attested) is not AttestedCatchup:
@@ -124,16 +125,20 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             if observed.position != reserved:
                 raise InvalidTransition('new provider position does not match durable ledger tail')
             old = ledger.provider_history._current_locked(q)
-            ledger.rotation_authority.authorize_provider_rotation_locked(
-                q,
-                provider_id=old.provider_id,
-                old_generation_id=old.generation_id,
-                new_generation_id=new.generation_id,
-                signatures=tuple(threshold_signatures),
-            )
-            ledger.provider_history._rotate_locked(q, new, continuity_proof)
-            ledger._verify_lab086_locked(q)
+            remove_public_mutation_fence_locked(q)
+            try:
+                ledger.rotation_authority.authorize_provider_rotation_locked(
+                    q,
+                    provider_id=old.provider_id,
+                    old_generation_id=old.generation_id,
+                    new_generation_id=new.generation_id,
+                    signatures=tuple(threshold_signatures),
+                )
+                ledger.provider_history._rotate_locked(q, new, continuity_proof)
+            finally:
+                install_public_mutation_fence_locked(q)
             assert_public_mutation_fence_locked(q)
+            ledger._verify_lab086_locked(q)
             q.commit()
         except:
             if q.in_transaction:
