@@ -23,7 +23,7 @@ LAB-084: reconstructed the exact lower supported dependency closure (`anchor_att
 
 LAB-085 core: reconstructed exact `provider_recovery_authority_lifecycle/protocol.py` from connector chunks and matched Git blob `c59723c018da6ce49ff19073697d859d5a9be709`. Exact `tests/test_protocol.py` matched `de9f2232051df89553e0f76b7bb7f8637c287698` and executed **12/12 PASS**. Exact unsafe self-swap seed matched `c5eb95ad40d824c1a1f5d050a2ec0a485799420c` and failed as expected because the unsafe baseline lets the old recovery quorum self-replace. Compileall for reconstructed LAB-085 core passed.
 
-Current PR #165 was rechecked and is still draft at HEAD `62dc131c888f36a48eab3b750235518d60597eac`.
+Current PR #165 was rechecked and is still draft at HEAD `62dc131c888f36a48eab3b750235518d60597eac`. A source-level transaction audit then re-read the new full-history public-recovery rotation guard in `final_supported.py` and compared its verification composition with exact lower LAB-082/LAB-085 implementations. The final verifier holds an outer `BEGIN IMMEDIATE` while lower verifiers use independent read transactions. An executed SQLite harness confirmed that an independent reader can complete while the outer transaction is held, while a competing `BEGIN IMMEDIATE` writer fails with `OperationalError: database is locked`. No new mixed-writer snapshot bypass was established in this pass; this is supporting lock-semantics evidence, not a substitute for the remaining exact merged-stack tests.
 
 ## Evidence produced / reconfirmed
 
@@ -49,7 +49,11 @@ Current PR #165 was rechecked and is still draft at HEAD `62dc131c888f36a48eab3b
   - `public_custody_supported.py` `4c338c75f1c61420438fcfe462955bd1a7ed9c92`
   - `final_supported.py` `3baf405499c5d996cd5b4f08d8a710c121247daf`
 - LAB-085 remaining corrected tests identified: `test_asymmetric_custody.py`, `test_custody_break_glass.py`, `test_supported_integration.py`, `test_public_custody_supported.py`, `test_final_supported.py`.
-- Issue #163 has durable comments recording the completed LAB-084 gate and LAB-085 core evidence.
+- Current PR #165 full-history guard evidence inspected in this pass:
+  - `asymmetric_break_glass_history/final_supported.py` `066b4a09652b4c331c693ce9a5275d84fe303036`.
+  - `test_public_rotation_history_guard.py` `3586b909aa9bd52b4d0c58f393a698a7a592e10d`.
+  - Executed SQLite lock probe: outer `BEGIN IMMEDIATE` + independent read succeeds; competing writer receives `database is locked`, supporting one write-excluding verification interval across multi-connection read verifiers.
+- Issue #163 has durable comments recording the completed LAB-084 gate, LAB-085 core evidence, and the current transaction-semantics audit.
 - Python emitted unrelated artifact-tool spreadsheet warmup warnings during startup; unittest/compileall return codes/results above were observed directly and are the evidence counted.
 
 ## Known blockers / constraints
