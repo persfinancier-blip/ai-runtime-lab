@@ -22,6 +22,14 @@ INHERITED_MUTATION_TRIGGERS = {
     "asymmetric_provider_transitions": "lab086_provider_transition_requires_final_writer",
 }
 
+# Asymmetric break-glass recovery updates the root head before inserting its proof.
+# Deny that head mutation after cutoff so a retained direct LAB-086 suffix object
+# cannot bypass the final supported writer.  The final writer temporarily removes
+# this fence only after full lower + LAB-086 history verification succeeds.
+INHERITED_UPDATE_MUTATION_TRIGGERS = {
+    "provider_rotation_authority_head": "lab086_root_head_requires_final_writer",
+}
+
 # Historical names from earlier LAB-086 candidates. They must be removed because
 # their proof-row predicates treated unauthenticated durable data as capability.
 OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES = (
@@ -44,6 +52,7 @@ def remove_public_mutation_fence_locked(q):
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *INHERITED_MUTATION_TRIGGERS.values(),
+        *INHERITED_UPDATE_MUTATION_TRIGGERS.values(),
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
@@ -58,12 +67,13 @@ def install_public_mutation_fence_locked(q):
     checks have passed. SQLite DDL is transactional, so rollback/crash restores the
     pre-transaction fence.
 
-    The three inherited-writer triggers fence the canonical insert points used by
-    lower normal-root/provider rotation code. If an insert is attempted directly,
-    the transaction aborts and preceding inserts in that same transaction roll
-    back. Tables are discovered dynamically so the isolated strict-fence fixture
-    remains usable; on the real LAB-086 schema all three tables exist and are
-    required by ``assert_public_mutation_fence_locked``.
+    The inherited-writer triggers fence the canonical write points used by lower
+    normal-root/provider rotation code and the root-head update used by asymmetric
+    break-glass recovery. If a stale/direct writer attempts any of those operations,
+    the transaction aborts and preceding writes in that transaction roll back.
+    Tables are discovered dynamically so the isolated strict-fence fixture remains
+    usable; on the real LAB-086 schema they are required by
+    ``assert_public_mutation_fence_locked``.
     """
     remove_public_mutation_fence_locked(q)
     q.execute(
@@ -191,6 +201,17 @@ def install_public_mutation_fence_locked(q):
               SELECT RAISE(ABORT,'LAB-086 provider transition requires final supported writer');
             END"""
         )
+    if "provider_rotation_authority_head" in tables:
+        q.execute(
+            """CREATE TRIGGER lab086_root_head_requires_final_writer
+            BEFORE UPDATE ON provider_rotation_authority_head
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 root head mutation requires final supported writer');
+            END"""
+        )
 
 
 def assert_public_mutation_fence_locked(q):
@@ -207,7 +228,13 @@ def assert_public_mutation_fence_locked(q):
         for table, trigger in INHERITED_MUTATION_TRIGGERS.items()
         if table in tables
     }
+    inherited_update_required = {
+        trigger
+        for table, trigger in INHERITED_UPDATE_MUTATION_TRIGGERS.items()
+        if table in tables
+    }
     missing |= inherited_required - names
+    missing |= inherited_update_required - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
