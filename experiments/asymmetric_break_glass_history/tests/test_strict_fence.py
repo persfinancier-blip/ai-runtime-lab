@@ -81,6 +81,18 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
             "old",
         )
 
+    def test_insert_or_replace_cannot_bypass_head_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "INSERT OR REPLACE INTO provider_recovery_public_head VALUES(1,'attacker')"
+            )
+        q.rollback()
+        self.assertEqual(
+            q.execute("SELECT authority_id FROM provider_recovery_public_head WHERE singleton=1").fetchone()[0],
+            "old",
+        )
+
     def test_write_locked_controlled_mutation_reinstalls_fence_before_commit(self):
         q = self.make_db()
         q.execute("BEGIN IMMEDIATE")
