@@ -12,51 +12,66 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed branch/PR HEAD: `d467c050cfcf8101650124f96c41aca33b35c017`.
-- PR remains draft; full current-head merged-stack exact-source regression gate has not passed.
+- Current observed PR HEAD: `d467c050cfcf8101650124f96c41aca33b35c017`.
+- PR is open/draft/mergeable; full current-head LAB-086 real-schema gate has not passed.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, `state/CURRENT.md` and `prompts/SELF_RESUME.md`, re-probed direct GitHub shell transport (still unavailable because DNS cannot resolve `github.com`), and continued through the GitHub connector.
+Closed the remaining exact LAB-085 public-custody/final regression slice in one connector-reconstructed workspace. Direct shell GitHub transport was reprobed and still fails DNS; GitHub connector reconstruction was used instead.
 
-Re-checked the current branch rather than trusting stale PR metadata. Current branch/PR HEAD is `d467c050cfcf8101650124f96c41aca33b35c017`. Fresh compare against current main is diverged `ahead 96 / behind 45`; all 32 PR paths remain additions with no current path-level overlap. PR mergeability is currently false because of branch divergence and the full gate remains incomplete.
+Every executable/test file needed for this slice was reconstructed from current `main` and checked with local `git hash-object` against its GitHub blob before execution. Newly executed tests:
 
-Closed LAB-089 / Issue #168 as `not_planned` after verifying that its premise is impossible through the supported LAB-086 consequential writer. `recover_rotation_authority_asymmetric()` calls `_require_successor(old,new)`, requiring the normal/root version and generation to advance exactly one. A focused executable reproduction rejected `(v7,g7)->(v7,g7)` and accepted only `(v7,g7)->(v8,g8)`. Therefore the proposed sequence `asymmetric recovery under P1 while root remains vN -> later P1->P2 rotation also under vN` cannot occur on the supported path; no new ordering protocol is justified by that counterexample.
+`python -m unittest experiments.provider_recovery_authority_lifecycle.tests.test_public_custody_supported experiments.provider_recovery_authority_lifecycle.tests.test_final_supported -v`
 
-A fresh source audit of current `final_supported.py`, `strict_fence.py` and the inherited-writer regression surface found no new privilege-escalation blocker in this run. Current final writers still follow the intended pattern: full lower/LAB-086 verification, transaction-scoped fence removal, mutation, fence reinstall/assertion, and post-mutation verification before commit.
+Result: **11/11 PASS**. `python -m compileall -q` over reconstructed LAB-036/080/082/083/084/085 dependencies also passed.
+
+Re-fetched PR #165 after the run; current HEAD remains `d467c050cfcf8101650124f96c41aca33b35c017`. Began exact current-head LAB-086 reconstruction and recorded current implementation blobs. No new privilege-escalation blocker was established in the accompanying source audit.
 
 ## Evidence produced / reconfirmed
 
-- Current branch/PR HEAD: `d467c050cfcf8101650124f96c41aca33b35c017`.
-- Current compare vs main: ahead 96 / behind 45; 32 changed paths, all additions.
-- LAB-089/#168 closed `not_planned`; issue comment records the exact supported-writer invariant and focused executable reproduction.
-- Focused successor invariant execution: `(v7,g7)->(v7,g7)` rejected; `(v7,g7)->(v8,g8)` accepted.
-- Exact current-head isolated SQL-fence slice remains **17/17 PASS** with compileall PASS from the preceding run.
-- Cumulative exact lower-stack evidence remains: LAB-080 18/18 PASS, LAB-082 28/28 PASS, LAB-083 24/24 PASS, LAB-084 17/17 PASS, LAB-085 core 12/12 PASS, LAB-085 asymmetric-custody 8/8 PASS; lower unsafe baselines failed as expected.
-- Exact standalone LAB-086 corrected suite previously passed 12/12; unsafe legacy-auto-promotion seed failed as intended.
-- Current branch contains the latest inherited-history INSERT/UPDATE/DELETE immutability and root-head INSERT/UPDATE/DELETE fence fixes recorded in Issue #163 and PR #165.
+- Newly closed exact LAB-085 tests:
+  - `test_public_custody_supported.py` blob `1cd74f1e90cfa4baa943f2025fa107ceb81d324d`.
+  - `test_final_supported.py` blob `43eda5cc1e67a35cd2c1fa77f6323393f118dcd7`.
+  - Combined result: **11/11 PASS**.
+- Exact LAB-085 implementation bytes used included:
+  - `protocol.py` `c59723c018da6ce49ff19073697d859d5a9be709`.
+  - `supported.py` `df4f17152cddefb66dc7f4e7f76f3112d3ab4733`.
+  - `asymmetric_custody.py` `771e2ae8cde15ce06297a9cf4a94c4b3f0d81dd4`.
+  - `public_custody_supported.py` `4c338c75f1c61420438fcfe462955bd1a7ed9c92`.
+  - `custody_break_glass.py` `f49139d80d13a3716817b79f0733cc0bc5d5bcac`.
+  - `final_supported.py` `3baf405499c5d996cd5b4f08d8a710c121247daf`.
+- Exact direct dependencies reconstructed and hash-verified in the same workspace included LAB-036, LAB-080, LAB-082, LAB-083 and LAB-084 implementation files.
+- Compileall over reconstructed LAB-036/080/082/083/084/085 closure: PASS.
+- Cumulative lower-stack exact evidence is now complete for the gate: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, LAB-085 asymmetric-custody 8/8, plus the newly executed LAB-085 public/final 11/11; lower unsafe baselines failed as expected.
+- Current PR #165 implementation manifest at HEAD `d467c050...`:
+  - `final_supported.py` `9f0198d2db85d08ec64f614d6288323c1d642383`.
+  - `migration_guard.py` `332995323d8d74fcc0f377d0e74bb0f30b8735c1`.
+  - `protocol.py` `cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`.
+  - `strict_fence.py` `62a9b602edb8692894cad3874ba6d5c211129aa5`.
+  - `suffix.py` `bb9f8e55fb03424ac19c152ae2d8aceaf2e1c078`.
+- Exact standalone LAB-086 12/12 and prior focused fence evidence remain valid for unchanged files, but are not substitutes for the current full real-schema gate.
+- LAB-089/#168 is already closed `not_planned`; do not treat it as active backlog.
 
 ## Known blockers / constraints
 
-- Remaining LAB-086 merge gate: exact LAB-085 `test_public_custody_supported.py` and `test_final_supported.py` plus their direct dependencies must still be executed in one connector-reconstructed workspace, followed by the entire current-head LAB-086 real-schema test suite, unsafe seed, compileall and final audit.
-- Direct shell GitHub transport is unavailable in this runtime; connector reconstruction works and is not an owner-level blocker.
-- LAB-083/LAB-084 signer-noise issue #167 remains fail-closed DoS/robustness and separate from LAB-086 unless downstream tests invalidate the candidate.
-- LAB-089/#168 is closed as an invalid premise; do not add ordering-protocol complexity unless a real supported-writer execution later demonstrates a different ambiguity.
-- LAB-086 SQLite fences cover stale/alternate supported mutation paths and the audited DML boundary, not arbitrary same-privilege raw SQLite DDL/schema control. That broader trust boundary is LAB-087 / #166.
-- Logical SQL scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim. Whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
+- Remaining LAB-086 merge gate is now only current-head LAB-086 real-schema tests, unsafe legacy-promotion seed, full compileall, and final security/branch-divergence audit.
+- Direct shell GitHub transport is unavailable; connector reconstruction works and is not an owner-level blocker.
+- LAB-083/LAB-084 signer-noise issue #167 remains fail-closed DoS/robustness and separate from LAB-086 unless a downstream test invalidates the candidate.
+- LAB-086 SQLite fences cover stale/alternate supported mutation paths and audited DML, not arbitrary same-privilege raw SQLite DDL/schema control; that broader boundary is LAB-087/#166.
+- Logical SQL scrubbing is not forensic erasure. Whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Reconstruct exact main LAB-085 `public_custody_supported.py`, `final_supported.py`, `test_public_custody_supported.py`, `test_final_supported.py` and direct dependencies into one connector-sourced workspace; verify executable/test bytes against GitHub blob identities and execute those remaining LAB-085 tests.
-2. Re-fetch PR #165 HEAD before execution, reconstruct all current LAB-086 implementation/tests, and run the complete real-schema suite: migration v4 root coauthorization/restart, scrubbed-prefix/asymmetric-suffix, forged-proof/stale-writer/direct-surface, inherited-history DML fences, strict conflict algorithms, root-head REPLACE/DELETE, final verification snapshot, inherited writer history guard and rotation races.
-3. Run unsafe legacy-promotion seed and full `python -m compileall` over the reconstructed closure.
-4. Perform one fresh full security audit of every consequential/restart mutation path plus branch/main conflict check. Fix every failure before changing PR #165 out of draft.
-5. If the full gate is clean, mark PR #165 ready and integrate by normal merge if available; otherwise use only the documented audited file-scoped Contents API fallback after re-checking exact target state/conflicts.
+1. Finish connector reconstruction of current PR #165 HEAD `d467c050cfcf8101650124f96c41aca33b35c017` LAB-086 implementation/tests on top of the already reconstructed exact lower stack; verify each executable/test file by Git blob identity.
+2. Execute the complete LAB-086 real-schema suite, including migration v4 root coauthorization/restart, scrubbed-prefix/asymmetric-suffix, forged-proof/stale-writer/direct-surface cases, inherited-history INSERT/UPDATE/DELETE fences, strict conflict algorithms, root-head INSERT/REPLACE/UPDATE/DELETE, final verification snapshot, full lower/public history guards, and rotation races.
+3. Execute unsafe legacy-promotion expected-failure seed and full compileall over the complete closure.
+4. Perform a fresh full security audit of every consequential/restart writer plus branch/main divergence. Fix every failure before changing PR #165 out of draft.
+5. If the gate is clean, mark PR #165 ready and integrate by normal merge when available; otherwise use only the documented audited file-scoped Contents API fallback after exact conflict checking.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; full current-head merged-stack gate remains.
-- #166 / LAB-087 — READY; SQLite schema-control trust boundary behind LAB-086 fences.
-- #167 / LAB-088 — READY; signer-noise robustness in LAB-083/LAB-084 threshold collectors.
-- #168 / LAB-089 — CLOSED `not_planned`; proposed same-root asymmetric-recovery sequence is impossible on the supported writer because root must advance exactly one.
+- #163 / LAB-086 — IN_PROGRESS; lower-stack exact gate complete, current-head LAB-086 full real-schema gate remains.
+- #166 / LAB-087 — READY; SQLite schema-control trust boundary.
+- #167 / LAB-088 — READY; threshold signer-noise robustness.
+- #168 / LAB-089 — CLOSED `not_planned`.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
