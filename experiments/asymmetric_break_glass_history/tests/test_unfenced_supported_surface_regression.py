@@ -58,8 +58,13 @@ class UnfencedSupportedSurfaceRegressionTests(unittest.TestCase):
             q.close()
 
             new_public, new_public_signers = public_recovery(2, 2, "direct-surface")
+            custody_q = ledger.public_recovery_custody._con()
+            try:
+                old_public = ledger.public_recovery_custody.current_locked(custody_q)
+            finally:
+                custody_q.close()
             payload = custody_rotation_payload(
-                ledger.public_recovery_custody.current(),
+                old_public,
                 new_public,
                 ledger.rotation_authority.current().authority_id,
             )
