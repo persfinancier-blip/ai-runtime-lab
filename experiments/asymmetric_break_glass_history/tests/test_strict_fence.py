@@ -21,6 +21,7 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
             INSERT INTO provider_recovery_public_authorities VALUES('old');
             CREATE TABLE provider_recovery_public_transitions(
               new_authority_id TEXT,old_authority_id TEXT,root_authority_id TEXT);
+            INSERT INTO provider_recovery_public_transitions VALUES('old','bootstrap','root');
             CREATE TABLE provider_recovery_public_head(
               singleton INTEGER PRIMARY KEY,authority_id TEXT);
             INSERT INTO provider_recovery_public_head VALUES(1,'old');
@@ -54,6 +55,30 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
         self.assertEqual(
             q.execute("SELECT COUNT(*) FROM provider_recovery_public_authorities").fetchone()[0],
             1,
+        )
+
+    def test_post_cutoff_delete_paths_are_denied(self):
+        q = self.make_db()
+        statements = (
+            "DELETE FROM provider_recovery_public_authorities WHERE authority_id='old'",
+            "DELETE FROM provider_recovery_public_transitions WHERE new_authority_id='old'",
+            "DELETE FROM provider_recovery_public_head WHERE singleton=1",
+        )
+        for statement in statements:
+            with self.assertRaises(sqlite3.IntegrityError):
+                q.execute(statement)
+            q.rollback()
+        self.assertEqual(
+            q.execute("SELECT COUNT(*) FROM provider_recovery_public_authorities").fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            q.execute("SELECT COUNT(*) FROM provider_recovery_public_transitions").fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            q.execute("SELECT authority_id FROM provider_recovery_public_head WHERE singleton=1").fetchone()[0],
+            "old",
         )
 
     def test_write_locked_controlled_mutation_reinstalls_fence_before_commit(self):
