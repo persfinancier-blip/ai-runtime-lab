@@ -11,6 +11,7 @@ from experiments.asymmetric_break_glass_history.suffix import (
 )
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
+from experiments.provider_threshold_rotation.protocol import Signature, mac
 from experiments.provider_recovery_authority_lifecycle.custody_break_glass import (
     custody_enablement_payload,
 )
@@ -25,6 +26,13 @@ from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody
     recovery,
     signatures,
 )
+
+
+def root_signatures(root, payload):
+    return tuple(
+        Signature(signer_id, mac(bytes.fromhex(key_hex), payload))
+        for signer_id, key_hex in list(root.keys.items())[: root.threshold]
+    )
 
 
 class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
@@ -70,7 +78,11 @@ class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
                 signatures(rec1_raw, legacy_intent.payload, 3),
             )
             guard = AuthenticatedBreakGlassMigrationGuard(legacy)
-            guard.establish(public_signatures(public_signers, guard.payload(), 3))
+            payload = guard.payload()
+            guard.establish(
+                public_signatures(public_signers, payload, 3),
+                root_signatures(legacy.rotation_authority.current(), payload),
+            )
 
             q = sqlite3.connect(path)
             self.assertEqual(
