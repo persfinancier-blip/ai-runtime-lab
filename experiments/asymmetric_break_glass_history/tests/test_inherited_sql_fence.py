@@ -43,6 +43,47 @@ class InheritedWriterSqlFenceTests(unittest.TestCase):
         self.assertEqual(q.execute("SELECT COUNT(*) FROM provider_rotation_threshold_proofs").fetchone()[0], 0)
         self.assertEqual(q.execute("SELECT COUNT(*) FROM asymmetric_provider_transitions").fetchone()[0], 0)
 
+    def test_existing_inherited_history_is_immutable_and_not_deletable_after_cutoff(self):
+        q = self.make_db()
+        q.execute("BEGIN IMMEDIATE")
+        remove_public_mutation_fence_locked(q)
+        q.execute("INSERT INTO provider_rotation_authority_transitions VALUES('root-2')")
+        q.execute("INSERT INTO provider_rotation_threshold_proofs VALUES('provider-2')")
+        q.execute("INSERT INTO asymmetric_provider_transitions VALUES('provider-2')")
+        install_public_mutation_fence_locked(q)
+        q.commit()
+
+        cases = (
+            (
+                "provider_rotation_authority_transitions",
+                "new_authority_id",
+                "root-2",
+                "root-attacker",
+            ),
+            (
+                "provider_rotation_threshold_proofs",
+                "new_provider_generation_id",
+                "provider-2",
+                "provider-attacker",
+            ),
+            (
+                "asymmetric_provider_transitions",
+                "new_generation_id",
+                "provider-2",
+                "provider-attacker",
+            ),
+        )
+        for table, column, original, attacker in cases:
+            with self.assertRaises(sqlite3.IntegrityError):
+                q.execute(f"UPDATE {table} SET {column}=? WHERE {column}=?", (attacker, original))
+            q.rollback()
+            self.assertEqual(q.execute(f"SELECT {column} FROM {table}").fetchone()[0], original)
+            with self.assertRaises(sqlite3.IntegrityError):
+                q.execute(f"DELETE FROM {table} WHERE {column}=?", (original,))
+            q.rollback()
+            self.assertEqual(q.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 1)
+        self.assertTrue(assert_public_mutation_fence_locked(q))
+
     def test_transaction_scoped_final_writer_can_remove_and_restore_all_fences(self):
         q = self.make_db()
         q.execute("BEGIN IMMEDIATE")
