@@ -13,49 +13,45 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
 - Current observed PR HEAD: `adb16d43a0d0567da54f6d532957a7a9d99c9552`.
-- PR remains draft/mergeable; the full current-head merged-stack regression gate has not passed.
+- PR remains draft; full current-head merged-stack regression gate has not passed.
 
 ## Last completed step
 
-Fresh current-head audit found a durable cutoff-authority gap. `migration_guard.verify_locked()` authenticated the saved migration cutoff with whichever historical Ed25519 public-recovery authority the durable boundary named. The existing stale-public-quorum regression protected fresh `establish()` because establishment always loads the current public head, but it did not independently protect a later durable boundary/projection rebind by a compromised historical public quorum.
+Reconstructed the exact current-HEAD standalone LAB-086 protocol/test/unsafe-seed bytes through the GitHub connector, verified their Git blob identities locally, and executed them directly. The corrected standalone suite passed 12/12. The unsafe legacy auto-promotion seed failed exactly as intended because the unsafe implementation promotes a legacy HMAC proof into asymmetric authority.
 
-A first root-version activation-window idea was implemented and focused-tested, then deliberately removed: public recovery can legitimately rotate later at the same normal-root version, so root-version windows alone cannot unambiguously establish which public quorum authorized the original cutoff.
-
-The stronger current candidate requires two independent threshold authorizations over the exact same canonical migration payload: the current Ed25519 public-recovery quorum and the current normal/root quorum. `migration_payload` is v4 and explicitly requires root coauthorization. `establish(public_signatures, root_signatures)` verifies both under one `BEGIN IMMEDIATE`, persists a singleton `provider_asymmetric_break_glass_root_proof` atomically with projection/boundary persistence and HMAC scrubbing, and restart/durable verification re-verifies the exact historical root signatures and exact boundary digest. Missing/orphan/substituted/noncanonical root proof fails closed. All known LAB-086 migration test call sites were updated to supply root quorum evidence.
+A fresh PR patch/compare audit was also performed. PR #165 is currently diverged from main (ahead 71 / behind 23); all 22 PR paths remain additions with no path overlap against current main. The current v4 migration/root-coauthorization implementation and SQL-fence surfaces were re-inspected; no new blocker was established in this run, but the full merged dependency closure has not yet been executed together.
 
 ## Evidence produced
 
-- Current published `migration_guard.py` Git blob: `332995323d8d74fcc0f377d0e74bb0f30b8735c1` (commit `92e196d2b9949fcf631167ca9908db0ceabb39e6`). Local authored bytes matched this blob exactly.
-- Focused exact root-coauthorization execution: 4/4 passed — valid root threshold accepted; below-threshold rejected; an invalid signature using a known signer ID cannot suppress a later valid signature; changing public authority identity changes the canonical payload/root MAC.
-- Focused durable harness over the exact migration-guard bytes with production-shaped SQLite table names and import-only lower-layer doubles: 3/3 passed — dual-quorum establishment persisted/reverified the root proof; restart-style verification returned the same boundary digest; deleting the root proof failed closed. The first harness attempt had an invalid fake schema and is not counted.
-- Exact `migration_guard.py` `py_compile` returned success. Python emitted an unrelated artifact-tool spreadsheet warmup timeout warning after startup; compile result remained rc=0.
-- Updated migration integration test blob: `a3f539c9a7a4558fb86ba8b14288a57599280de5`.
-- Updated suffix integration test blob: `351982fcd75f2c34d0ab6e8cbb5a966b40b76476`.
-- Updated scrubbed-prefix integration test blob: `4a4628fa53537c24a18e29cac515ccd5e7046713`.
-- Durable design note: `research/2026-08-24-lab086-cutoff-root-coauthorization.md`.
-- Temporary `cutoff_activation.py` / focused tests were removed because that mechanism is not used as authority.
-- Earlier current-branch focused evidence still stands for unchanged SQL-fence paths: exact strict-fence suite 10/10 passed before this cutoff change; DELETE/REPLACE/UPSERT, forged-proof and stale-writer paths were covered.
-- Fresh compare after the new cutoff code but before the final research-note commit was ahead 69 / behind 22; all 21 LAB-086 code/test/research paths remained additions with no `main` path overlap. Re-check before integration.
-- Direct shell Internet/GitHub transport remains unavailable (`Could not resolve host`); GitHub connector is healthy and remains the supported source/control-plane path.
+- Exact current-HEAD `experiments/asymmetric_break_glass_history/protocol.py` Git blob: `cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`; locally reconstructed bytes matched exactly.
+- Exact current-HEAD `tests/test_protocol.py` Git blob: `b423cf2d78bc75686b0e4e7dea5ea310ca5721ea`; locally reconstructed bytes matched exactly.
+- Exact unsafe seed Git blob: `d92640ba77f7b1b592faf00f7afcea03cf3fbc4a`; locally reconstructed bytes matched exactly.
+- Exact standalone corrected suite: 12/12 PASS.
+- Exact unsafe legacy-auto-promotion seed: FAILED as expected (`UnsafeLegacyAutoPromotion.promote(...)` returned True while the expected-failure test requires False).
+- Python emitted unrelated artifact-tool spreadsheet warmup warnings during process startup; the unittest results above were still observed and are the evidence counted.
+- Current published `migration_guard.py` Git blob remains `332995323d8d74fcc0f377d0e74bb0f30b8735c1` with v4 cutoff + current-root coauthorization.
+- Earlier focused evidence still stands for unchanged SQL-fence paths: exact strict-fence suite 10/10 passed before the v4 cutoff change; DELETE/REPLACE/UPSERT, forged-proof and stale-writer paths were covered.
+- Fresh compare: ahead 71 / behind 23; all 22 PR files are additions with no current-main path overlap.
+- Direct shell Internet/GitHub transport is not required for this run's evidence; GitHub connector remained healthy and was the durable source/control-plane path.
 
 ## Known blockers / constraints
 
-- Remaining LAB-086 merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure after the new v4 cutoff/root-proof change.
-- The new root coauthorization must receive a fresh full patch/restart audit; focused 4/4 + 3/3 evidence is not a substitute for the merged-stack gate.
+- Remaining LAB-086 merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure after migration payload v4/root coauthorization.
+- The 12/12 standalone result is exact current-head evidence, but it is not a substitute for the real-schema merged-stack gate.
 - LAB-086 trigger fences protect against stale/alternate supported mutation paths; they are not protection from an arbitrary same-privilege raw SQLite DDL writer. That broader boundary is LAB-087 / #166.
 - Logical SQLite scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
 
 ## Exact next action
 
-1. Reconstruct the exact current PR HEAD `adb16d43a0d0567da54f6d532957a7a9d99c9552` LAB-086 implementation/tests into the already identified merged LAB-080/082/083/084/085 dependency closure, verifying executable files by Git blob identity.
+1. Finish connector reconstruction of the exact current PR HEAD `adb16d43a0d0567da54f6d532957a7a9d99c9552` dependency closure required by LAB-086 real-schema tests: LAB-085 provider-recovery-authority-lifecycle, LAB-084/083 threshold/recovery layers, LAB-082 asymmetric provider history, LAB-080 shared-anchor ledger, and their direct dependencies/tests. Verify executable files by Git blob identity.
 2. Execute all current LAB-086 real-schema tests, prioritizing migration v4 root coauthorization/restart, missing/tampered/orphan root proof, stale-public cutoff rebinding, scrubbed-prefix + asymmetric suffix, forged-proof/stale-writer/direct-suffix, strict-fence conflict algorithms, trigger upgrade, final-supported rotation, and temporary-fence rollback.
-3. Execute merged LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed, and compileall from the same closure.
+3. Execute merged LAB-085/084/083/082/080 regressions from the same closure, then unsafe seed and compileall.
 4. Perform a fresh full audit focused on cutoff/public/root proof substitution, same-root public rotations, alternate supported mutation entry points, transaction-scoped fence removal, predecessor/root binding, restart snapshots, and rotation races. Keep arbitrary raw SQLite DDL authority explicitly out of the LAB-086 claim and tracked in #166.
 5. Re-check branch/main divergence. Keep PR #165 draft until the full gate is clean; only then mark ready and integrate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; new cutoff root-coauthorization is implemented with focused evidence, full merged-stack exact-source gate remains.
+- #163 / LAB-086 — IN_PROGRESS; exact current-head standalone 12/12 now reconfirmed, full merged-stack exact-source gate remains.
 - #166 / LAB-087 — READY; establish/enforce the SQLite schema-control trust boundary behind post-cutoff authority fences.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
