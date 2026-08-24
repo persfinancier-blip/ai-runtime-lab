@@ -1,4 +1,5 @@
 from __future__ import annotations
+from experiments.asymmetric_provider_history.supported import SupportedAsymmetricHistoricalSharedAnchorLedger
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import PublicRecoveryAuthority, accepted_public_signatures, custody_rotation_payload, sha as custody_sha, verify_public_threshold
 from .migration_guard import MigrationGuardError
 from .strict_fence import assert_public_mutation_fence_locked, install_public_mutation_fence_locked, remove_public_mutation_fence_locked
@@ -115,14 +116,19 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             q.close()
 
     def verify_durable(self):
-        self._ledger.verify_durable()
-        q = self._ledger._con()
+        ledger = self._ledger
+        q = ledger._con()
         try:
+            # Hold one write-excluding guard across every authoritative layer.
+            # Calling ledger.verify_durable() first and opening this transaction
+            # afterwards creates a mixed-snapshot window in which lower durable
+            # history can change after it was verified.  LAB-085 already uses this
+            # pattern; LAB-086 must preserve the same serialization boundary.
             q.execute('BEGIN IMMEDIATE')
             self._install_fence_locked(q)
-            boundary = self._ledger.migration_guard.verify_locked(q)
-            if boundary is not None:
-                self._ledger._verify_public_recovery_rotations_locked(q, boundary)
+            SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)
+            ledger.public_recovery_custody.verify_durable()
+            ledger._verify_lab086_locked(q)
             assert_public_mutation_fence_locked(q)
             q.commit()
             return True
