@@ -12,51 +12,47 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed PR HEAD: `adb16d43a0d0567da54f6d532957a7a9d99c9552`.
-- PR remains draft; the one-shot exact current-head merged-stack regression gate has not passed.
+- Current observed PR HEAD: `4b78693910658156bfacd7460e5d6cb1edf61500`.
+- PR is open/draft/mergeable; full current-head merged-stack exact-source regression gate has not passed.
 
 ## Last completed step
 
-Performed a fresh source/patch audit of the current LAB-086 v4 cutoff/root-coauthorization path and the inherited LAB-085 public-custody surfaces. Re-read the current `migration_guard.py`, `strict_fence.py`, `suffix.py`, `final_supported.py`, plus LAB-085 `supported.py`, `asymmetric_custody.py` and `final_supported.py`. No new fail-open was established under the intended stale/alternate supported-writer model.
+A fresh cross-layer audit found and fixed a mixed-SQL-snapshot regression in the final LAB-086 supported verifier. The previous `SupportedFencedAsymmetricBreakGlassLedger.verify_durable()` completed `ledger.verify_durable()` first, released that write-excluding verification interval, and only then opened a second `BEGIN IMMEDIATE` for LAB-086 boundary/fence checks. Lower durable state could therefore change after being verified but before the final surface returned success. This regressed the single-serialization-boundary pattern already established in LAB-085.
 
-Established an important validation invariant by comparing the LAB-085 concurrency-fix merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509` to current `main`: the only changed path is `state/CURRENT.md`. Therefore executable LAB-080/082/083/084/085 code is byte-stable from the LAB-086 branch base to current main. The remaining exact-source gate can reconstruct one stable lower-stack dependency closure rather than reconcile changing implementation versions.
-
-The GitHub connector remains the supported source/control-plane path. Direct shell GitHub DNS is unavailable in this runtime, and no shell-checkout evidence is claimed. The connector does not expose a repository source-archive download action, so exact execution must continue via file-by-file connector reconstruction plus Git blob verification.
-
-Issue #163 was refreshed to match the actual current v4 architecture: migration cutoff requires both current Ed25519 recovery quorum and current root quorum; merely storing a proof row is not mutation capability; post-cutoff old/alternate supported writers remain unconditionally SQL-fenced; arbitrary same-privilege DDL remains explicitly delegated to LAB-087/#166.
+The final verifier now opens one `BEGIN IMMEDIATE` first, installs/asserts the public mutation fence, runs `SupportedAsymmetricHistoricalSharedAnchorLedger.verify_durable(ledger)` while that write guard is held, re-verifies public recovery history, runs `_verify_lab086_locked(q)` in the same guarded interval, reasserts the fence, then commits. A focused regression verifies both that the old split public `ledger.verify_durable()` path is not called and that a second SQLite writer cannot acquire `BEGIN IMMEDIATE` during either lower or LAB-086 verification.
 
 ## Evidence produced / reconfirmed
 
-- Exact current-HEAD standalone LAB-086 corrected suite remains 12/12 PASS.
-- Exact unsafe legacy-auto-promotion seed failed as expected.
-- Current `migration_guard.py` Git blob: `332995323d8d74fcc0f377d0e74bb0f30b8735c1`.
-- Current `final_supported.py` Git blob: `518297c1191c444478efabe8081ec5b1bf533952`.
-- LAB-085 `asymmetric_custody.py` current-main Git blob: `771e2ae8cde15ce06297a9cf4a94c4b3f0d81dd4`.
-- Earlier focused strict-fence evidence still applies to unchanged fence paths: 10/10 PASS; DELETE/REPLACE/UPSERT, forged-proof, stale-writer and trigger-upgrade paths covered.
-- v4 cutoff/root-coauthorization focused checks remain 4/4; SQLite cutoff harness 3/3.
-- Fresh compare `d2c9781... → main`: only `state/CURRENT.md` changed; executable LAB-080/082/083/084/085 implementation is byte-stable.
-- Fresh current candidate audit found no new fail-open in v4 cutoff/root-proof binding, migration scrubbing, post-cutoff public rotation, or current final supported fence flow.
+- New PR HEAD: `4b78693910658156bfacd7460e5d6cb1edf61500`.
+- Exact published `final_supported.py` Git blob: `fa0dd30bf1b34b7e140c3244807e30bedf84ea28`; locally reconstructed bytes matched exactly.
+- Exact published `test_final_verification_snapshot.py` Git blob: `0426dcfe61bef665bcbc5c21b937d805f223da64`; locally reconstructed bytes matched exactly.
+- Focused final-verification serialization regression: 1/1 PASS.
+- The focused test observed `database is locked` for a competing `BEGIN IMMEDIATE` during both lower verification and LAB-086 locked verification.
+- A separate old-algorithm harness confirmed the previous final flow called a lower public verifier before acquiring the final transaction, demonstrating the split-verification structure being removed.
+- Exact current-head standalone LAB-086 protocol suite from the previous pass remains 12/12 PASS; unsafe legacy-auto-promotion seed failed as expected. These unchanged results do not substitute for the new full current-head gate.
+- `migration_guard.py` remains blob `332995323d8d74fcc0f377d0e74bb0f30b8735c1`; `strict_fence.py` remains blob `eb9f3d60f9bda56de9d71aa3aa406a7d6a99ae78`.
+- Fresh branch/main compare after the fix: ahead 74 / behind 25; all 23 PR paths are additions with no path overlap against main.
+- Direct shell GitHub DNS remains unavailable; GitHub connector is healthy and remains the supported durable source/control-plane path.
 
 ## Known blockers / constraints
 
-- Remaining LAB-086 merge gate: current-head LAB-086 real-schema tests plus LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed exact dependency closure after migration payload v4/root coauthorization.
-- The 12/12 standalone and focused results are exact evidence, but are not a substitute for that combined gate.
-- Shell GitHub transport is a per-run environment limitation, not an owner blocker; continue using the GitHub connector and file-by-file blob-verified reconstruction.
-- LAB-086 trigger fences protect against stale/alternate supported mutation paths; they do not protect against an arbitrary same-privilege raw SQLite DDL writer. That trust boundary is LAB-087 / #166.
+- Remaining LAB-086 merge gate: exact current-head real-schema LAB-086 tests plus LAB-085/084/083/082/080 regressions still need to be executed together from one connector-reconstructed exact dependency closure after the v4 cutoff/root-coauthorization and the new final-verification snapshot fix.
+- The new 1/1 focused result and prior 12/12 standalone result are real evidence but are not substitutes for the combined gate.
+- File-by-file exact reconstruction is slower because shell GitHub transport is unavailable; this is a runtime limitation, not an owner blocker.
+- LAB-086 SQL fences protect against stale/alternate supported mutation paths, not arbitrary same-privilege raw SQLite DDL. That broader trust boundary is LAB-087 / #166.
 - Logical SQL scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
 
 ## Exact next action
 
-1. Reconfirm PR #165 HEAD is still `adb16d43a0d0567da54f6d532957a7a9d99c9552` before reconstruction.
-2. Reconstruct the current LAB-086 real-schema executable/test set file-by-file through the GitHub connector, starting with `test_migration_guard.py`, `test_suffix.py`, `test_legacy_scrubbed_suffix.py`, `test_public_history_boundary.py`, stale/forged/direct-surface regressions, `test_strict_fence.py`, `strict_fence.py`, `migration_guard.py`, `suffix.py` and `final_supported.py`. For every reconstructed executable file, require local `git hash-object` == GitHub blob SHA.
-3. Pull only the imported LAB-085/084/083/082/080 dependency/test files required by those tests; the lower stack is now proven byte-stable to current main. Continue fetching missing imports until the exact closure imports cleanly.
-4. Execute all current LAB-086 real-schema tests from that closure, then LAB-085/084/083/082/080 regressions, unsafe seed and `python -m compileall`.
-5. Perform a fresh full PR patch audit focused on cutoff/root/public proof substitution, same-root public rotations, alternate supported mutation entry points, transaction-scoped fence removal/restoration, restart snapshots and rotation races. Re-check branch/main divergence.
-6. Keep PR #165 draft until the full gate is clean. If all exact-source tests and audit pass, mark ready and prefer normal squash merge; use file-scoped Contents API fallback only if the normal merge endpoint is unavailable/conflicted and a fresh path/conflict audit proves the audited additions can be safely applied without bypassing any gate.
+1. Continue connector reconstruction of the exact PR HEAD dependency closure. Verify every reconstructed executable file with local `git hash-object` against the GitHub blob before counting any test.
+2. Execute all current LAB-086 real-schema tests, now including `test_final_verification_snapshot.py`, migration v4/root coauthorization, scrubbed-prefix/asymmetric-suffix, public-history boundary, forged/stale/direct-surface fences, strict-fence conflict algorithms, trigger upgrade and final-supported rotation.
+3. Execute exact LAB-085/084/083/082/080 regressions from the same closure, then unsafe seed and `python -m compileall`.
+4. Perform a fresh full audit focused on final single-snapshot verification, cutoff/root/public proof substitution, alternate supported mutation entry points, transaction-scoped fence removal/restoration, predecessor/root binding, restart snapshots and rotation races.
+5. Re-check PR/head and branch/main divergence. Keep PR #165 draft until the full gate is clean; only then mark ready and prefer normal squash merge. Use file-scoped Contents API fallback only after a fresh conflict/path audit if normal merge is unavailable and no safety gate is bypassed.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; architecture survives fresh audit and lower-stack byte stability is proven; full merged-stack exact-source gate remains.
+- #163 / LAB-086 — IN_PROGRESS; new final mixed-snapshot verifier defect fixed with exact focused 1/1 evidence; full merged-stack gate remains.
 - #166 / LAB-087 — READY; establish/enforce the SQLite schema-control trust boundary behind post-cutoff authority fences.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
