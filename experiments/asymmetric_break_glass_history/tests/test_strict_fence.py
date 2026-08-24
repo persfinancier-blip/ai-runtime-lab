@@ -20,7 +20,7 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
               authority_id TEXT PRIMARY KEY);
             INSERT INTO provider_recovery_public_authorities VALUES('old');
             CREATE TABLE provider_recovery_public_transitions(
-              new_authority_id TEXT,old_authority_id TEXT,root_authority_id TEXT);
+              new_authority_id TEXT PRIMARY KEY,old_authority_id TEXT,root_authority_id TEXT);
             INSERT INTO provider_recovery_public_transitions VALUES('old','bootstrap','root');
             CREATE TABLE provider_recovery_public_head(
               singleton INTEGER PRIMARY KEY,authority_id TEXT);
@@ -86,6 +86,58 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             q.execute(
                 "INSERT OR REPLACE INTO provider_recovery_public_head VALUES(1,'attacker')"
+            )
+        q.rollback()
+        self.assertEqual(
+            q.execute("SELECT authority_id FROM provider_recovery_public_head WHERE singleton=1").fetchone()[0],
+            "old",
+        )
+
+    def test_upsert_authority_do_update_cannot_bypass_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "INSERT INTO provider_recovery_public_authorities VALUES('old') "
+                "ON CONFLICT(authority_id) DO UPDATE SET authority_id='attacker'"
+            )
+        q.rollback()
+        self.assertEqual(
+            q.execute("SELECT authority_id FROM provider_recovery_public_authorities").fetchone()[0],
+            "old",
+        )
+
+    def test_upsert_transition_do_update_cannot_bypass_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "INSERT INTO provider_recovery_public_transitions VALUES('old','x','x') "
+                "ON CONFLICT(new_authority_id) DO UPDATE SET old_authority_id='attacker'"
+            )
+        q.rollback()
+        self.assertEqual(
+            q.execute("SELECT old_authority_id FROM provider_recovery_public_transitions").fetchone()[0],
+            "bootstrap",
+        )
+
+    def test_upsert_head_do_update_cannot_bypass_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "INSERT INTO provider_recovery_public_head VALUES(1,'attacker') "
+                "ON CONFLICT(singleton) DO UPDATE SET authority_id='attacker'"
+            )
+        q.rollback()
+        self.assertEqual(
+            q.execute("SELECT authority_id FROM provider_recovery_public_head WHERE singleton=1").fetchone()[0],
+            "old",
+        )
+
+    def test_update_or_replace_cannot_bypass_head_fence(self):
+        q = self.make_db()
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "UPDATE OR REPLACE provider_recovery_public_head "
+                "SET authority_id='attacker' WHERE singleton=1"
             )
         q.rollback()
         self.assertEqual(
