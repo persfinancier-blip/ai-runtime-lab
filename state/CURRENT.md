@@ -21,6 +21,8 @@ Extended the post-cutoff SQLite mutation-fence audit beyond the prior DELETE and
 
 The exact current `strict_fence.py` and exact newly published test bytes were then executed together. All additional SQLite conflict-resolution paths are denied by the existing unconditional post-cutoff triggers; no new bypass was found in this focused pass.
 
+Connector reconstruction of the real merged dependency closure also progressed through LAB-080/082/083/084/085 implementation files. The recovered main files were checked by Git blob identity and the exact `SupportedRecoveryCustodyLedger` import succeeds. The current LAB-086 real-schema package/tests still need to be assembled into that same closure before the full gate can be claimed.
+
 ## Evidence produced
 
 - Branch commit: `21d762c473d3525eb85762dfc782a7c58321b3cb` (`LAB-086 cover SQLite conflict-algorithm fence paths`).
@@ -30,8 +32,9 @@ The exact current `strict_fence.py` and exact newly published test bytes were th
 - Exact current strict-fence suite: **10/10 passed**.
 - Newly covered and rejected: authority UPSERT/DO UPDATE, transition UPSERT/DO UPDATE, head UPSERT/DO UPDATE, and `UPDATE OR REPLACE` head mutation.
 - Existing covered cases remain: forged proof row, destructive DELETEs, head `INSERT OR REPLACE`, controlled write-locked mutation, rollback fence restoration, and obsolete-trigger replacement.
-- Full branch/main compare before this update showed all LAB-086 paths as additions with no path overlap; branch remains substantially diverged and must be rechecked before integration.
-- Exact dependency reconstruction for the merged-stack gate is in progress through the GitHub connector because direct shell GitHub transport remains unavailable in this runtime.
+- Exact connector-reconstructed merged implementation dependencies verified by Git blob through LAB-080/082/083/084/085; `SupportedRecoveryCustodyLedger` imports from that closure.
+- Latest branch/main compare after this run: **ahead 61 / behind 19**, status `diverged`; all **21 LAB-086 paths remain additions** with no path overlap against current `main`.
+- Direct shell Internet/GitHub transport remains unavailable; GitHub connector is healthy and is the supported source/control-plane path.
 
 ## Known blockers / constraints
 
@@ -39,14 +42,14 @@ The exact current `strict_fence.py` and exact newly published test bytes were th
 - Remaining merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure.
 - Logical SQLite scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
-- Direct shell Internet/GitHub transport is unavailable in the current runtime; GitHub connector remains healthy and is the supported source/control-plane path.
+- Branch divergence is not currently a content conflict because every LAB-086 path is new, but it must be rechecked immediately before integration.
 
 ## Exact next action
 
-1. Continue reconstructing the exact current PR HEAD `21d762c473d3525eb85762dfc782a7c58321b3cb` dependency closure through the GitHub connector, verifying every executable file with its Git blob identity.
+1. Finish reconstructing the exact current PR HEAD `21d762c473d3525eb85762dfc782a7c58321b3cb` LAB-086 implementation/tests into the already reconstructed merged LAB-080/082/083/084/085 dependency closure, verifying every executable file with its Git blob identity.
 2. Execute all current LAB-086 real-schema tests: migration guard, public-only suffix/restart, scrubbed-prefix + asymmetric suffix, forged-proof and stale-writer regressions, direct-suffix denial, strict fence/trigger upgrade, final-supported rotation, and temporary-fence rollback.
-3. Execute merged LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed, and compileall from the same reconstructed closure.
-4. Perform a fresh full audit focused on alternate mutation entry points, transaction-scoped fence removal, all SQLite conflict algorithms, forged/orphan/substituted proofs, predecessor/root binding, restart snapshots, and rotation races; fix and re-run every defect.
+3. Execute merged LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed, and compileall from the same closure.
+4. Perform a fresh full audit focused on alternate mutation entry points, transaction-scoped fence removal, SQLite conflict algorithms, forged/orphan/substituted proofs, predecessor/root binding, historical-root authorization windows, restart snapshots, and rotation races; fix and re-run every defect.
 5. Re-check branch/main divergence. Keep PR #165 draft until the full gate is clean; only then mark ready and integrate.
 
 ## Backlog
