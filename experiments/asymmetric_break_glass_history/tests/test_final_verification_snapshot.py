@@ -48,8 +48,6 @@ class _LedgerProbe:
     def _assert_other_writer_blocked(self):
         other = self._con()
         try:
-            with self.assertRaises if False else _ignored_context():
-                pass
             try:
                 other.execute("BEGIN IMMEDIATE")
             except sqlite3.OperationalError as exc:
@@ -63,14 +61,6 @@ class _LedgerProbe:
                 )
         finally:
             other.close()
-
-
-class _ignored_context:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
 
 
 class FinalVerificationSnapshotTests(unittest.TestCase):
