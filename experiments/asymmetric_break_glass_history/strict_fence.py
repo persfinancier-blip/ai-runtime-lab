@@ -7,6 +7,7 @@ PUBLIC_MUTATION_TRIGGER_NAMES = (
     "lab086_public_transition_requires_current_authorization",
     "lab086_public_transition_is_immutable",
     "lab086_public_transition_is_not_deletable",
+    "lab086_public_head_insert_requires_current_authorization",
     "lab086_public_head_requires_current_authorization",
     "lab086_public_head_is_not_deletable",
 )
@@ -93,6 +94,16 @@ def install_public_mutation_fence_locked(q):
         )
         BEGIN
           SELECT RAISE(ABORT,'LAB-086 public recovery transitions cannot be deleted after cutoff');
+        END"""
+    )
+    q.execute(
+        """CREATE TRIGGER lab086_public_head_insert_requires_current_authorization
+        BEFORE INSERT ON provider_recovery_public_head
+        WHEN EXISTS(
+          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+        )
+        BEGIN
+          SELECT RAISE(ABORT,'LAB-086 public recovery head insertion requires final supported writer');
         END"""
     )
     q.execute(
