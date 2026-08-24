@@ -13,7 +13,7 @@ from experiments.asymmetric_break_glass_history.suffix import (
 )
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
-from experiments.provider_threshold_rotation.protocol import ThresholdNotMet
+from experiments.provider_threshold_rotation.protocol import Signature, ThresholdNotMet, mac
 from experiments.provider_recovery_authority_lifecycle.asymmetric_custody import (
     CustodyThresholdNotMet,
 )
@@ -28,6 +28,14 @@ from experiments.provider_recovery_authority_lifecycle.tests.test_public_custody
     recovery,
     signatures,
 )
+
+
+def migration_root_signatures(ledger, payload):
+    root = ledger.rotation_authority.current()
+    return tuple(
+        Signature(signer_id, mac(bytes.fromhex(key_hex), payload))
+        for signer_id, key_hex in list(root.keys.items())[: root.threshold]
+    )
 
 
 class AsymmetricSuffixIntegrationTests(unittest.TestCase):
@@ -77,7 +85,8 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
     def migrate(self, ledger, public_signers):
         payload = ledger.migration_guard.payload()
         return ledger.migration_guard.establish(
-            public_signatures(public_signers, payload, 3)
+            public_signatures(public_signers, payload, 3),
+            migration_root_signatures(ledger, payload),
         )
 
     def test_post_cutoff_recovery_uses_only_asymmetric_proof_and_restarts_without_hmac_recovery(self):
