@@ -17,42 +17,38 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Extended the post-cutoff SQLite mutation-fence audit beyond the prior DELETE and `INSERT OR REPLACE` cases. Added regressions for authority UPSERT `ON CONFLICT DO UPDATE`, transition UPSERT `ON CONFLICT DO UPDATE`, head UPSERT `ON CONFLICT DO UPDATE`, and `UPDATE OR REPLACE` on the singleton head. The focused transition fixture was also corrected to match the production LAB-085 schema by making `new_authority_id` the PRIMARY KEY before the UPSERT result was treated as evidence.
+Resumed the current PR and audited the final proof-first SQL-fence boundary against the exact published `final_supported.py`, `strict_fence.py`, `suffix.py`, and alternate-surface regressions. No new bypass was found inside the stated stale/supported-writer model: the final writer verifies old/new Ed25519 quorums plus current-root quorum before transactionally removing the deny triggers, performs the custody mutation under the same `BEGIN IMMEDIATE`, reinstalls/asserts the fence, and verifies public recovery history before commit.
 
-The exact current `strict_fence.py` and exact newly published test bytes were then executed together. All additional SQLite conflict-resolution paths are denied by the existing unconditional post-cutoff triggers; no new bypass was found in this focused pass.
-
-Connector reconstruction of the real merged dependency closure also progressed through LAB-080/082/083/084/085 implementation files. The recovered main files were checked by Git blob identity and the exact `SupportedRecoveryCustodyLedger` import succeeds. The current LAB-086 real-schema package/tests still need to be assembled into that same closure before the full gate can be claimed.
+The audit did identify a broader trust-boundary fact that must not be hidden: SQLite triggers cannot be a security boundary against an actor/process that retains arbitrary DDL access to the same database, because such an actor can drop/replace triggers (or invoke the trigger-removal helper) and commit before using an older writer. This is broader than the current LAB-086 stale-supported-writer acceptance model, so it was split into follow-up Issue #166 / LAB-087 rather than silently expanding LAB-086. LAB-087 will determine whether the enforceable boundary should be a broker-owned DB handle/process, sqlite authorizer policy, filesystem permissions, or an explicitly documented same-privilege DDL limitation.
 
 ## Evidence produced
 
-- Branch commit: `21d762c473d3525eb85762dfc782a7c58321b3cb` (`LAB-086 cover SQLite conflict-algorithm fence paths`).
-- Exact published `strict_fence.py` blob: `eb9f3d60f9bda56de9d71aa3aa406a7d6a99ae78`.
-- Exact published updated `test_strict_fence.py` blob: `4b651db3638c8b9f2341d52b512f075c4b3c31d2`.
-- Local `git hash-object` matched both published blobs.
-- Exact current strict-fence suite: **10/10 passed**.
-- Newly covered and rejected: authority UPSERT/DO UPDATE, transition UPSERT/DO UPDATE, head UPSERT/DO UPDATE, and `UPDATE OR REPLACE` head mutation.
-- Existing covered cases remain: forged proof row, destructive DELETEs, head `INSERT OR REPLACE`, controlled write-locked mutation, rollback fence restoration, and obsolete-trigger replacement.
-- Exact connector-reconstructed merged implementation dependencies verified by Git blob through LAB-080/082/083/084/085; `SupportedRecoveryCustodyLedger` imports from that closure.
-- Latest branch/main compare after this run: **ahead 61 / behind 19**, status `diverged`; all **21 LAB-086 paths remain additions** with no path overlap against current `main`.
+- Exact published `final_supported.py` inspected at blob `518297c1191c444478efabe8081ec5b1bf533952`.
+- Exact published `strict_fence.py` inspected at blob `eb9f3d60f9bda56de9d71aa3aa406a7d6a99ae78`.
+- Exact direct-suffix denial regression inspected at blob `b0625ee6507ce7d7cf0d08579698f9a20feb05d2`.
+- Exact stale-trigger-upgrade regression inspected at blob `e136dd636e4d9c0483595f3f4051c1c07080c5ea`.
+- New follow-up: Issue #166 / LAB-087 `SQLite schema-control boundary for post-cutoff authority fences` — READY.
+- Existing focused evidence remains: strict-fence exact-source suite 10/10 passed on the current branch before this audit; merged implementation dependency closure through LAB-085 had been connector-reconstructed and imported in the prior run.
 - Direct shell Internet/GitHub transport remains unavailable; GitHub connector is healthy and is the supported source/control-plane path.
 
 ## Known blockers / constraints
 
-- Forged-proof, destructive-DELETE, head-REPLACE, and audited UPSERT/conflict-algorithm fence paths are fixed/covered in the candidate.
-- Remaining merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure.
+- Remaining LAB-086 merge gate: exact current-head LAB-086 real-schema tests plus merged LAB-085/084/083/082/080 regressions have not yet been executed together from one connector-reconstructed dependency closure.
+- LAB-086 trigger fences protect against stale/alternate supported mutation paths; they must not be described as protection from an arbitrary same-privilege raw SQLite DDL writer. That broader boundary is now LAB-087 / #166.
 - Logical SQLite scrubbing is not forensic erasure; WAL/filesystem remnants remain outside the claim.
 - Whole-store rollback freshness remains delegated to the external monotonic-anchor layer. No live HSM/KMS is claimed.
-- Branch divergence is not currently a content conflict because every LAB-086 path is new, but it must be rechecked immediately before integration.
+- Branch divergence was previously ahead 61 / behind 19 with all LAB-086 paths additions; re-check immediately before integration.
 
 ## Exact next action
 
-1. Finish reconstructing the exact current PR HEAD `21d762c473d3525eb85762dfc782a7c58321b3cb` LAB-086 implementation/tests into the already reconstructed merged LAB-080/082/083/084/085 dependency closure, verifying every executable file with its Git blob identity.
+1. Finish reconstructing the exact current PR HEAD `21d762c473d3525eb85762dfc782a7c58321b3cb` LAB-086 implementation/tests into the connector-reconstructed merged LAB-080/082/083/084/085 dependency closure, verifying executable files by Git blob identity.
 2. Execute all current LAB-086 real-schema tests: migration guard, public-only suffix/restart, scrubbed-prefix + asymmetric suffix, forged-proof and stale-writer regressions, direct-suffix denial, strict fence/trigger upgrade, final-supported rotation, and temporary-fence rollback.
 3. Execute merged LAB-085/084/083/082/080 regressions, unsafe legacy-promotion seed, and compileall from the same closure.
-4. Perform a fresh full audit focused on alternate mutation entry points, transaction-scoped fence removal, SQLite conflict algorithms, forged/orphan/substituted proofs, predecessor/root binding, historical-root authorization windows, restart snapshots, and rotation races; fix and re-run every defect.
+4. Perform a fresh full audit focused on alternate supported mutation entry points, transaction-scoped fence removal, proof substitution/orphans, predecessor/root binding, historical-root authorization windows, restart snapshots, and rotation races. Keep arbitrary raw SQLite DDL authority explicitly out of the LAB-086 claim and tracked in #166.
 5. Re-check branch/main divergence. Keep PR #165 draft until the full gate is clean; only then mark ready and integrate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; focused fence is now 10/10 with production-shaped conflict-algorithm regressions; full merged-stack exact-source gate remains.
+- #163 / LAB-086 — IN_PROGRESS; focused fence evidence is clean, full merged-stack exact-source gate remains.
+- #166 / LAB-087 — READY; establish/enforce the SQLite schema-control trust boundary behind post-cutoff authority fences.
 - PostgreSQL-specific validation and open-model serving remain deferred until representative runtime/hardware is available.
