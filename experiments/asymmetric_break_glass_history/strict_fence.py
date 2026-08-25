@@ -12,6 +12,15 @@ PUBLIC_MUTATION_TRIGGER_NAMES = (
     "lab086_public_head_is_not_deletable",
 )
 
+# Transaction-scoped final writers need creation + head-UPDATE capability, not
+# authority to rewrite/delete already authenticated history or replace/delete
+# initialized singleton heads. Keep the full trigger set above for reinstall/audit.
+PUBLIC_MUTATION_THAW_TRIGGER_NAMES = (
+    "lab086_public_authority_requires_current_authorization",
+    "lab086_public_transition_requires_current_authorization",
+    "lab086_public_head_requires_current_authorization",
+)
+
 INHERITED_MUTATION_TRIGGERS = {
     "provider_rotation_authority_transitions": "lab086_normal_root_transition_requires_final_writer",
     "provider_rotation_threshold_proofs": "lab086_provider_threshold_proof_requires_final_writer",
@@ -98,6 +107,16 @@ CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES = (
     "lab086_provider_head_insert_requires_final_writer",
     "lab086_provider_head_update_requires_final_writer",
     "lab086_provider_head_delete_requires_final_writer",
+)
+
+ROOT_HEAD_THAW_TRIGGER_NAMES = (
+    "lab086_root_head_requires_final_writer",
+)
+
+CURRENT_AUTHORITY_THAW_TRIGGER_NAMES = (
+    "lab086_root_authority_insert_requires_final_writer",
+    "lab086_provider_generation_insert_requires_final_writer",
+    "lab086_provider_head_update_requires_final_writer",
 )
 
 CURRENT_AUTHORITY_HISTORY_TRIGGERS = {
@@ -249,12 +268,26 @@ def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
     return True
 
 
-def remove_public_mutation_fence_locked(q):
+def _remove_all_public_mutation_fence_triggers_locked(q):
+    """Full trigger cleanup used only before reinstalling the complete fence."""
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *_all_inherited_trigger_names(),
         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
         *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
+        *_all_post_cutoff_evidence_creation_trigger_names(),
+        *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
+    ):
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+
+
+def remove_public_mutation_fence_locked(q):
+    """Grant only the DML capability required by verified final writers."""
+    for name in (
+        *PUBLIC_MUTATION_THAW_TRIGGER_NAMES,
+        *INHERITED_MUTATION_TRIGGERS.values(),
+        *ROOT_HEAD_THAW_TRIGGER_NAMES,
+        *CURRENT_AUTHORITY_THAW_TRIGGER_NAMES,
         *_all_post_cutoff_evidence_creation_trigger_names(),
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
@@ -581,7 +614,7 @@ def _install_provider_receipt_freeze_locked(q):
 
 def install_public_mutation_fence_locked(q):
     _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
-    remove_public_mutation_fence_locked(q)
+    _remove_all_public_mutation_fence_triggers_locked(q)
     _install_legacy_projection_freeze_locked(q)
     _install_current_authority_fence_locked(q)
     _install_migration_metadata_fence_locked(q)
