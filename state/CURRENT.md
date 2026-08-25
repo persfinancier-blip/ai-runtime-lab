@@ -9,50 +9,58 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 ## Active issue / branch / PR
 
 - Completed: LAB-001 through LAB-085.
-- Active: Issue #163 / LAB-086 — IN_PROGRESS.
+- Active priority: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed PR HEAD: `66786dea59809fc070006dc911cc6e4822687ed3`.
-- Parallel unblocked work: Issue #166 / LAB-087 — IN_PROGRESS, branch `lab/087-sqlite-authorizer-boundary`, draft PR #171 HEAD `de211a80d2010df3d653c13e806356f158f13cc2`.
+- Current observed PR HEAD at run start: `66786dea59809fc070006dc911cc6e4822687ed3`; re-fetch before execution/integration.
+- Parallel work: Issue #166 / LAB-087 — IN_PROGRESS, branch `lab/087-sqlite-authorizer-boundary`, draft PR #171.
 
 ## Last completed step
 
-LAB-086 remains the priority, but the full connector-reconstructed LAB-080→086 closure was not locally persistent in this run and direct shell GitHub transport again failed DNS resolution. Per the prior handoff, advanced LAB-087 instead of spending the run repeating already-proven lower-layer reconstruction.
+LAB-086 full connector-reconstructed current-head real-ledger gate remained too expensive to rebuild safely in this run, so per the previous handoff the run advanced the unblocked LAB-087 enforcement slice rather than repeating already-proven LAB-080→085 reconstruction.
 
-LAB-087 now has a real Unix process/filesystem ownership experiment in addition to the connection-scoped SQLite authorizer. Existing `UnixReadOnlyWorkerBoundary` exact branch blob `3db8ee6c6fc4881fc21c4074cc987f19bb0ab539` was reconstructed and executed. The runtime provides a root broker principal plus distinct `nobody:nogroup` worker principal. With broker-owned parent `0750` and DB `0640` owned by broker UID + worker GID, the worker can read the canonical DB but cannot open it `O_RDWR`, commit a SQLite UPDATE, unlink/rename the DB pathname, or chmod it. The broker UID remains writable as the explicit negative control.
+First, the exact published pre-change LAB-087 process boundary was reconstructed from GitHub and byte-verified:
+- `process_boundary.py` blob `3db8ee6c6fc4881fc21c4074cc987f19bb0ab539`;
+- `test_process_boundary.py` blob `82c68ae902ca82f0ca969bf98a6d222036ee7f6d`.
+It executed **2/2 PASS** plus compileall.
 
-A process-level regression was published in branch commit `fc43b928ee3e127b22f553a9742caff71f809007`; README update commit `de211a80d2010df3d653c13e806356f158f13cc2`. Actual local pre-publication run: 2/2 PASS plus compileall. Published test blob is `82c68ae902ca82f0ca969bf98a6d222036ee7f6d`; exact published-byte re-execution is still required before counting it as exact-source evidence.
+A fresh WAL/sidecar audit then found a real contract defect. Under broker umask `077`, a WAL database had main DB `0640` for the worker group but `-wal/-shm` sidecars `0600 root:root`. The old `UnixReadOnlyWorkerBoundary.verify()` still returned true, while the distinct `nobody` worker failed read-only open with `OperationalError: unable to open database file`. SQLite's WAL documentation requires readable existing sidecars, directory write authority to create them, or `immutable`; the latter is not valid for a live broker-mutated authority DB.
+
+LAB-087 now fails closed on `journal_mode=wal` during both install and verify, keeping rollback-journal mode as the supported live worker boundary for this slice. Exact published blobs match the locally executed candidates:
+- `process_boundary.py` `0bca65f9aa1505960d818405fb1a6f5f8d8fd4f7` (commit `c1911a6621fdc6b6f3a397335b63bd640fa9505e`);
+- `test_process_boundary.py` `e4217d8ca016713e380c7631c7d1fc042163a8b8` (commit `41729827f56501edd8ebc07250b51e10b7829d51`).
+The exact combined current PR #171 executable slice then passed **11/11** (authorizer 7/7 + process/filesystem/WAL 4/4) and compileall.
+
+README and research note now state the deployment boundary explicitly: rollback-journal mode plus a dedicated broker-owned DB directory; same-UID/root/CAP_DAC_OVERRIDE, permission-changing and ancestor namespace-replacement authority remain outside the claim. Research note: `research/2026-08-26-lab087-wal-readonly-boundary.md`.
 
 ## Evidence produced / reconfirmed
 
 - LAB-086 published least-privilege `strict_fence.py` blob remains `5da01e28a9f813a136d138637f855940f04aab46`; prior focused 13/13 was run on those exact bytes.
-- Cumulative exact lower-stack evidence remains: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric-custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
-- LAB-087 authorizer slice exact published suite remains 7/7 PASS; compileall PASS.
-- LAB-087 outer-boundary pre-publication process test: 2/2 PASS; compileall PASS.
-- Worker-principal denial observed for `O_RDWR`, SQLite write, unlink, rename and chmod; canonical DB value remained unchanged.
-- Broker-principal negative control successfully updated the DB after the boundary was installed.
-- Exact LAB-087 process-boundary implementation blob: `3db8ee6c6fc4881fc21c4074cc987f19bb0ab539`.
-- Published process regression blob: `82c68ae902ca82f0ca969bf98a6d222036ee7f6d`; publication commit `fc43b928ee3e127b22f553a9742caff71f809007`.
+- Cumulative exact lower-stack evidence for LAB-086 remains: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric-custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
+- LAB-087 exact current slice: **11/11 PASS**, compileall PASS.
+- LAB-087 WAL counterexample: old boundary verified true while a distinct worker could not open the live WAL DB because sidecars were inaccessible.
+- LAB-087 post-fix contract: WAL rejected at install and re-verify; rollback-journal deployment remains readable while worker DML/filesystem mutation stays denied.
+- Official SQLite sources recorded in the research note: `https://www.sqlite.org/wal.html#readonly` and `https://www.sqlite.org/walformat.html`.
 
 ## Known blockers / constraints
 
-- LAB-086 full current-head real-ledger migration/suffix/final-supported exact-source gate is still incomplete. Do not mark PR #165 ready until it passes, followed by unsafe seed, full compileall and final security audit.
-- Direct shell GitHub transport again failed DNS resolution in this run; connector remains healthy and is not an owner blocker.
-- LAB-087 authorizer/wrapper is not a same-process sandbox. The Unix DAC slice protects only a distinct worker UID/GID without broker UID/root/CAP_DAC_OVERRIDE/permission-changing or namespace-replacement authority.
-- The LAB-087 process regression was executed before publication; published-byte exact rerun remains.
+- LAB-086 full current-head real-ledger `migration_guard + suffix + final_supported` exact-source gate is still incomplete. Do not mark PR #165 ready until it passes, followed by unsafe seed, full compileall and final security audit.
+- Direct shell GitHub transport failed DNS in prior runs; connector remains healthy and is not an owner blocker.
+- LAB-087 is not a same-process/root sandbox. The Unix DAC slice assumes a distinct worker principal and a dedicated broker-owned DB directory. WAL is deliberately unsupported in this slice.
 - LAB-088/#167 signer-noise; LAB-090/#169 provider handoff freshness; LAB-091/#170 mutable shared-anchor/new-receipt writer authorization remain READY.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Resume LAB-086 first: connector-reconstruct the exact current PR HEAD `migration_guard + suffix + final_supported` and current real-schema tests on the already proven LAB-080→085 dependency closure; execute migration/root-coauthorization/restart, scrubbed-prefix/asymmetric-suffix, orphan/partial state, lower/public-history guards, cross-binding/history, inherited/direct surfaces, rotation races and final single-snapshot verification.
-2. Run unsafe legacy-promotion seed and full compileall; perform a fresh full security audit and branch/main divergence check. Only then mark PR #165 ready/integrate.
-3. If LAB-086 closure reconstruction is again too expensive for the run, exact-reconstruct the published LAB-087 process regression blob `82c68ae...`, execute it against exact `process_boundary.py`, then audit dedicated-directory/WAL-sidecar assumptions before considering PR #171 ready.
+1. Resume LAB-086 first. Re-fetch PR #165 HEAD, connector-reconstruct exact current `migration_guard.py`, `suffix.py`, `final_supported.py` and current real-schema tests on the already proven LAB-080→085 dependency closure.
+2. Execute migration/root-coauthorization/restart, scrubbed-prefix/asymmetric-suffix, orphan/partial-state, full lower/public-history guards, public-rotation cross-binding/history, inherited/direct surfaces, rotation races and final single-snapshot verification.
+3. Run unsafe legacy-promotion seed and full compileall; perform a fresh full security audit and branch/main divergence check. Fix every blocking failure before ready/merge.
+4. Only if LAB-086 reconstruction again cannot fit safely in the run, continue LAB-087 with enforcement/audit of the dedicated-directory and ancestor-namespace deployment assumptions; do not repeat the already-proven 11/11 WAL/process gate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; minimal-thaw runtime published exactly; full current-head real-ledger gate remains.
-- #166 / LAB-087 — IN_PROGRESS; draft PR #171 now includes authorizer plus real distinct-UID/GID filesystem boundary; published-byte process test rerun and deployment-assumption audit remain.
+- #163 / LAB-086 — IN_PROGRESS; full current-head real-ledger gate remains the primary merge gate.
+- #166 / LAB-087 — IN_PROGRESS; exact authorizer/process/WAL suite 11/11 PASS; dedicated-directory/namespace deployment boundary remains to be hardened/audited before ready.
 - #167 / LAB-088 — READY; threshold signer-noise robustness.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
