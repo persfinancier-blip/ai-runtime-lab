@@ -12,8 +12,8 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed branch HEAD: `f76f29a222752133aeda1656b971de2682f959d7`.
-- PR remains draft; a fresh post-cutoff proof-creation blocker is intentionally unresolved in runtime code.
+- Current observed branch HEAD: `984147026697114ae4f9a973e82ba64d64794673`.
+- PR remains draft; post-cutoff proof-creation authorization is only partially fixed.
 
 ## Last completed step
 
@@ -21,32 +21,34 @@ Fresh security audit found that the two LAB-086-only post-cutoff proof tables st
 - `provider_asymmetric_break_glass_proofs`;
 - `provider_asymmetric_recovery_public_root_proofs`.
 
-Current `strict_fence.py` only rejects replacement of an existing key plus UPDATE/DELETE. A focused SQLite counterexample confirmed that a brand-new bogus proof key is accepted after cutoff. This is persistent fail-closed DoS/correctness damage because LAB-086 restart verification expects exact proof cardinality and binding.
+Current `strict_fence.py` only rejects replacement of an existing key plus UPDATE/DELETE. A focused SQLite counterexample confirmed a brand-new bogus proof key is accepted after cutoff. This is persistent fail-closed DoS/correctness damage because LAB-086 restart verification expects exact proof cardinality and binding.
 
-Unlike provider receipts, these proof tables have exactly one legitimate creator: the cryptographically verified final LAB-086 writer. Therefore this gap is fixed in LAB-086 rather than deferred to LAB-091.
-
-Durable branch evidence added:
+Durable branch evidence:
 - red real regression `experiments/asymmetric_break_glass_history/tests/test_post_cutoff_evidence_insert_authorization.py`, commit `ec588c60002124ec2fe95ce067d4e869036838ef`;
 - exact patch plan `research/2026-08-25-lab086-post-cutoff-proof-insert-authorization.patch`, commit `313ead57c10c606759cc988e2d6f3ecd43a7ec3a`;
-- research note `research/2026-08-25-lab086-post-cutoff-proof-insert-authorization.md`, commit/current HEAD `f76f29a222752133aeda1656b971de2682f959d7`.
+- research note commit `f76f29a222752133aeda1656b971de2682f959d7`.
 
-Focused design probe confirmed the intended split: direct post-cutoff proof INSERT is denied; `BEGIN IMMEDIATE -> remove proof-creation gate -> INSERT verified proof -> reinstall gate -> COMMIT` succeeds. Existing proof UPDATE/DELETE history guards remain active during the thaw.
+Applied the small writer-ordering half of that patch to runtime `final_supported.py` through Contents API:
+- commit/current HEAD `984147026697114ae4f9a973e82ba64d64794673`;
+- published `final_supported.py` blob `ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`.
 
-No passing exact-source result is claimed for this new regression yet. Runtime `strict_fence.py` is still blob `4c16161e83781745f9bf7adce34e4d06ca51e192`.
+`rotate_public_recovery_authority()` now inserts a missing verified public-root proof only inside the existing transaction-scoped thaw, after all quorum checks and existing-proof substitution checks. This remains compatible with the current permissive trigger and prepares the writer for the strict creation gate.
+
+The main runtime blocker is intentionally still open: `strict_fence.py` remains blob `4c16161e83781745f9bf7adce34e4d06ca51e192`, so direct new proof-key INSERT is still possible. No passing result is claimed for the new real regression yet.
 
 ## Evidence produced / reconfirmed
 
-- New executable semantic counterexample: unseen proof key currently inserts successfully after cutoff in both LAB-086 proof tables.
-- Proposed transaction-scoped creation-gate semantics were executed successfully in focused SQLite probes for both tables.
+- Executed semantic counterexample: unseen proof key currently inserts successfully after cutoff in both LAB-086 proof tables.
+- Executed design probe: direct post-cutoff proof INSERT is denied under the proposed creation gate, while `BEGIN IMMEDIATE -> remove creation gate -> INSERT verified proof -> reinstall gate -> COMMIT` succeeds. Existing UPDATE/DELETE history guards stay active.
 - Existing exact provider-receipt fence gate remains: 10/10 strict + 2/2 receipt PASS; focused compileall PASS.
 - Cumulative exact lower-stack evidence remains: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric-custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
 - Exact standalone LAB-086 corrected suite previously passed 12/12; unsafe legacy-auto-promotion seed failed as intended.
 
 ## Known blockers / constraints
 
-- Immediate blocker: apply the saved proof-INSERT authorization patch to exact runtime `strict_fence.py` + `final_supported.py`, then make the new real regression green.
+- Immediate blocker: apply the saved proof-INSERT authorization patch to exact runtime `strict_fence.py` and make the new real regression green. The final-writer ordering half is already published.
 - Remaining merge gate after that: complete current-head real-ledger `migration_guard + suffix + final_supported` suite, unsafe legacy-promotion seed, full compileall, then fresh full security audit.
-- Direct shell GitHub transport is unavailable in this run; GitHub connector/Contents API is the supported fallback.
+- Direct shell GitHub transport is unavailable in this run; GitHub connector/Contents API is the supported fallback. Avoid full-file rewrites without byte-level reconstruction/verification.
 - LAB-087/#166 owns arbitrary same-privilege SQLite DDL/schema control.
 - LAB-088/#167 owns threshold signer-noise robustness.
 - LAB-090/#169 owns provider-generation handoff freshness/external-anchor race.
@@ -55,15 +57,15 @@ No passing exact-source result is claimed for this new regression yet. Runtime `
 
 ## Exact next action
 
-1. Reconstruct exact branch blobs `strict_fence.py` (`4c16161e...`) and current `final_supported.py`, apply `research/2026-08-25-lab086-post-cutoff-proof-insert-authorization.patch` locally, verify source hashes/compile, and execute the new red regression before/after the patch.
-2. Publish only the byte-verified patched files through the supported Contents API; re-fetch and verify the resulting Git blobs; rerun `test_post_cutoff_evidence_insert_authorization.py` plus existing strict/post-cutoff evidence regressions.
+1. Reconstruct exact branch `strict_fence.py` blob `4c16161e83781745f9bf7adce34e4d06ca51e192`, apply `research/2026-08-25-lab086-post-cutoff-proof-insert-authorization.patch` locally, verify source hash/compile, and execute the new regression before/after patch.
+2. Publish only the byte-verified patched `strict_fence.py` through Contents API; re-fetch and verify resulting Git blob; run `test_post_cutoff_evidence_insert_authorization.py` plus existing strict/post-cutoff evidence regressions against current `final_supported.py` blob `ceb7f48a...`.
 3. Reconstruct/execute all remaining current-head real-ledger migration/suffix/final-supported tests on the already proven LAB-080→085 closure.
 4. Run unsafe legacy-promotion seed and full compileall.
 5. Perform fresh full security audit and branch/main conflict check; restore/reduce documentation-only `strict_fence.py` rewrite noise. Only after a clean gate may PR #165 be marked ready and integrated.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; proof-row creation authorization blocker reproduced and patch/test persisted; runtime patch not yet applied.
+- #163 / LAB-086 — IN_PROGRESS; proof-row creation blocker reproduced; red regression + exact patch persisted; writer-ordering half applied; strict runtime creation gate still pending.
 - #166 / LAB-087 — READY; SQLite schema-control trust boundary.
 - #167 / LAB-088 — READY; threshold signer-noise robustness.
 - #168 / LAB-089 — CLOSED `not_planned`.
