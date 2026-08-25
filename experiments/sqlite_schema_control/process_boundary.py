@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,17 @@ class UnixReadOnlyWorkerBoundary:
     directory_mode: int = 0o750
     database_mode: int = 0o640
 
+    @staticmethod
+    def _journal_mode(db: Path) -> str:
+        q = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row = q.execute("PRAGMA journal_mode").fetchone()
+        finally:
+            q.close()
+        if row is None or not isinstance(row[0], str):
+            raise FilesystemBoundaryError("unable to determine SQLite journal mode")
+        return row[0].lower()
+
     @classmethod
     def install(cls, path: str | Path, *, worker_gid: int) -> "UnixReadOnlyWorkerBoundary":
         db = Path(path).absolute()
@@ -40,6 +52,9 @@ class UnixReadOnlyWorkerBoundary:
             raise FilesystemBoundaryError("database file must already exist")
         if type(worker_gid) is not int or worker_gid < 0:
             raise FilesystemBoundaryError("invalid worker gid")
+
+        if cls._journal_mode(db) == "wal":
+            raise FilesystemBoundaryError("WAL mode is not supported for a live read-only worker boundary")
 
         uid = os.geteuid()
         os.chown(parent, uid, worker_gid)
@@ -72,4 +87,6 @@ class UnixReadOnlyWorkerBoundary:
             raise FilesystemBoundaryError("worker group has write permission")
         if not (self.directory_mode & 0o010 and self.database_mode & 0o040):
             raise FilesystemBoundaryError("worker group lacks required read/traverse access")
+        if self._journal_mode(db) == "wal":
+            raise FilesystemBoundaryError("WAL mode is not supported for a live read-only worker boundary")
         return True
