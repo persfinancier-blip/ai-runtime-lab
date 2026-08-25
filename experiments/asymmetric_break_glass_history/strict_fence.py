@@ -182,6 +182,21 @@ POST_CUTOFF_ONLY_EVIDENCE_TABLES = (
     "provider_asymmetric_recovery_public_root_proofs",
 )
 
+POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS = {
+    "provider_asymmetric_break_glass_proofs": (
+        "new_rotation_authority_id",
+        "lab086_break_glass_proof_no_replace",
+        "lab086_break_glass_proof_is_immutable",
+        "lab086_break_glass_proof_is_not_deletable",
+    ),
+    "provider_asymmetric_recovery_public_root_proofs": (
+        "new_public_authority_id",
+        "lab086_public_root_proof_no_replace",
+        "lab086_public_root_proof_is_immutable",
+        "lab086_public_root_proof_is_not_deletable",
+    ),
+}
+
 
 def _table_names(q):
     return {
@@ -220,6 +235,14 @@ def _all_migration_metadata_trigger_names():
         name
         for names in MIGRATION_METADATA_FENCE_TRIGGERS.values()
         for name in names
+    )
+
+
+def _all_post_cutoff_evidence_trigger_names():
+    return tuple(
+        name
+        for _, insert_name, update_name, delete_name in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.values()
+        for name in (insert_name, update_name, delete_name)
     )
 
 
@@ -530,6 +553,26 @@ def _install_migration_metadata_fence_locked(q):
             )
 
 
+def _install_post_cutoff_evidence_freeze_locked(q):
+    tables = _table_names(q)
+    for name in _all_post_cutoff_evidence_trigger_names():
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+    for table, (key_column, insert_name, update_name, delete_name) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items():
+        if table not in tables:
+            continue
+        q.execute(
+            f"""CREATE TRIGGER {insert_name}
+            BEFORE INSERT ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 committed post-cutoff evidence cannot be replaced');
+            END"""
+        )
+        _install_history_immutability(
+            q, table, update_name, delete_name, "post-cutoff evidence history"
+        )
+
 
 def install_public_mutation_fence_locked(q):
     """Install unconditional post-cutoff deny policy for underlying writers.
@@ -564,6 +607,7 @@ def install_public_mutation_fence_locked(q):
     _install_legacy_projection_freeze_locked(q)
     _install_current_authority_fence_locked(q)
     _install_migration_metadata_fence_locked(q)
+    _install_post_cutoff_evidence_freeze_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
         BEFORE INSERT ON provider_recovery_public_authorities
@@ -783,6 +827,13 @@ def assert_public_mutation_fence_locked(q):
         missing |= set(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES) - names
     if set(MIGRATION_METADATA_FENCE_TRIGGERS).issubset(tables):
         missing |= set(_all_migration_metadata_trigger_names()) - names
+    evidence_required = {
+        trigger
+        for table, (_, *triggers) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items()
+        if table in tables
+        for trigger in triggers
+    }
+    missing |= evidence_required - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
