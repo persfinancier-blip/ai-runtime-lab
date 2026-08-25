@@ -42,6 +42,10 @@ class InheritedWriterHistoryGuardTests(unittest.TestCase):
             root2, public_signatures(public1_signers, payload, 3)
         )
         q = sqlite3.connect(path)
+        # Ordinary DML is fenced. Drop only the asymmetric-proof UPDATE guard
+        # to model out-of-band durable corruption before exercising inherited
+        # consequential writers.
+        q.execute("DROP TRIGGER lab086_break_glass_proof_is_immutable")
         q.execute(
             "UPDATE provider_asymmetric_break_glass_proofs "
             "SET public_signatures_json='[]' WHERE new_rotation_authority_id=?",
