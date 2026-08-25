@@ -62,10 +62,12 @@ class PublicCustodyHistoryGuardTests(unittest.TestCase):
                 signatures(root1_raw, rotate_payload, 2),
             )
 
-            # Keep the LAB-086 root-coauthorization row intact while corrupting
-            # the distinct LAB-085 Ed25519 old/new transition proof.  The LAB-086
-            # public-window verifier alone cannot detect this corruption.
+            # Ordinary post-cutoff DML is denied by LAB-086. Drop only the
+            # transition UPDATE guard to model out-of-band durable corruption;
+            # the final supported writer must still re-authenticate LAB-085's
+            # Ed25519 transition history before changing the root.
             q = sqlite3.connect(path)
+            q.execute("DROP TRIGGER lab086_public_transition_is_immutable")
             q.execute(
                 "UPDATE provider_recovery_public_transitions "
                 "SET old_signatures_json='[]' WHERE new_authority_id=?",
