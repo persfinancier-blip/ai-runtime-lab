@@ -76,6 +76,34 @@ class CurrentAuthorityDmlFenceTests(unittest.TestCase):
         self.assertTrue(assert_public_mutation_fence_locked(q))
         q.close()
 
+    def test_conflict_algorithms_cannot_bypass_current_authority_fence(self):
+        q = self.make_db()
+        attacks = (
+            "INSERT OR REPLACE INTO provider_rotation_authorities VALUES('root1','root',999,999,1,'{}','[]')",
+            "INSERT INTO provider_rotation_authorities VALUES('root1','root',999,999,1,'{}','[]') "
+            "ON CONFLICT(authority_id) DO UPDATE SET version=999",
+            "INSERT OR REPLACE INTO asymmetric_provider_generations VALUES('gen1','provider',999,'00')",
+            "INSERT INTO asymmetric_provider_generations VALUES('gen1','provider',999,'00') "
+            "ON CONFLICT(generation_id) DO UPDATE SET generation=999",
+            "INSERT OR REPLACE INTO asymmetric_provider_head VALUES(1,'attacker',999)",
+            "INSERT OR REPLACE INTO provider_rotation_threshold_enablement "
+            "VALUES(1,'x',9,'x',9,9,'x','[]')",
+        )
+        for statement in attacks:
+            self._blocked(q, statement)
+        self.assertEqual(
+            q.execute(
+                "SELECT authority_id,version,generation FROM provider_rotation_authority_head"
+            ).fetchone(),
+            ("root1", 1, 1),
+        )
+        self.assertEqual(
+            q.execute("SELECT generation_id,generation FROM asymmetric_provider_head").fetchone(),
+            ("gen1", 1),
+        )
+        self.assertTrue(assert_public_mutation_fence_locked(q))
+        q.close()
+
     def test_transaction_scoped_thaw_keeps_historical_rows_frozen(self):
         q = self.make_db()
         q.execute("BEGIN IMMEDIATE")
