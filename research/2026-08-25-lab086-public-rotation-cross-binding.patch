@@ -1,0 +1,48 @@
+--- a/experiments/asymmetric_break_glass_history/suffix.py
++++ b/experiments/asymmetric_break_glass_history/suffix.py
+@@ -403,6 +403,45 @@
+             payload = custody_rotation_payload(old, new, root.authority_id)
+             if custody_sha(payload) != row[4]:
+                 raise PublicRecoveryRotationError("public recovery intent digest mismatch")
++            transition = q.execute(
++                "SELECT old_authority_id,root_authority_id,intent_digest,"
++                "old_signatures_json,new_signatures_json "
++                "FROM provider_recovery_public_transitions WHERE new_authority_id=?",
++                (new.authority_id,),
++            ).fetchone()
++            if transition is None or transition[0] != old.authority_id:
++                raise PublicRecoveryRotationError(
++                    "post-cutoff public recovery transition is missing or rebound"
++                )
++            if transition[1] != root.authority_id:
++                raise PublicRecoveryRotationError(
++                    "public recovery transition/root proof authority mismatch"
++                )
++            if transition[2] != row[4]:
++                raise PublicRecoveryRotationError(
++                    "public recovery transition/root proof intent mismatch"
++                )
++            old_public = accepted_public_signatures(
++                old,
++                payload,
++                self.public_recovery_custody._decode_signatures(transition[3]),
++            )
++            new_public = accepted_public_signatures(
++                new,
++                payload,
++                self.public_recovery_custody._decode_signatures(transition[4]),
++            )
++            verify_public_threshold(old, payload, old_public)
++            verify_public_threshold(new, payload, new_public)
++            if (
++                self.public_recovery_custody._encode_signatures(old_public)
++                != transition[3]
++                or self.public_recovery_custody._encode_signatures(new_public)
++                != transition[4]
++            ):
++                raise PublicRecoveryRotationError(
++                    "noncanonical public recovery transition signatures"
++                )
+             accepted = _accepted_root_signatures(
+                 root, payload, self.rotation_authority._decode_signatures(row[5])
+             )
