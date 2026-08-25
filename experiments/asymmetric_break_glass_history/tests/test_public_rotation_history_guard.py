@@ -41,6 +41,10 @@ class PublicRotationHistoryGuardTests(unittest.TestCase):
             )
 
             q = sqlite3.connect(path)
+            # Ordinary DML is fenced. Drop only the asymmetric-proof UPDATE
+            # guard to model out-of-band durable corruption; the final public
+            # rotation must still refuse to mutate any public-recovery state.
+            q.execute("DROP TRIGGER lab086_break_glass_proof_is_immutable")
             q.execute(
                 "UPDATE provider_asymmetric_break_glass_proofs "
                 "SET public_signatures_json='[]' WHERE new_rotation_authority_id=?",
