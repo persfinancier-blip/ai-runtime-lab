@@ -124,6 +124,28 @@ class ProcessBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "WAL mode is not supported"):
                 boundary.verify()
 
+    def test_shared_parent_directory_is_rejected_before_permission_changes(self):
+        worker = pwd.getpwnam("nobody")
+        with tempfile.TemporaryDirectory(dir="/tmp") as td:
+            parent = Path(td)
+            path = parent / "authority.db"
+            sibling = parent / "unrelated.txt"
+            q = sqlite3.connect(path)
+            q.execute("CREATE TABLE authority(id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+            q.execute("INSERT INTO authority VALUES(1,'trusted')")
+            q.commit()
+            q.close()
+            sibling.write_text("unrelated")
+            before = parent.stat()
+
+            with self.assertRaisesRegex(RuntimeError, "directory must be dedicated"):
+                UnixReadOnlyWorkerBoundary.install(path, worker_gid=worker.pw_gid)
+
+            after = parent.stat()
+            self.assertEqual((before.st_uid, before.st_gid, before.st_mode & 0o777),
+                             (after.st_uid, after.st_gid, after.st_mode & 0o777))
+            self.assertEqual(sibling.read_text(), "unrelated")
+
 
 if __name__ == "__main__":
     unittest.main()
