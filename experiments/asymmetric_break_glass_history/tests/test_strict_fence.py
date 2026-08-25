@@ -40,10 +40,14 @@ class StrictPublicMutationFenceTests(unittest.TestCase):
 
     def test_forged_proof_row_is_not_mutation_authority(self):
         q = self.make_db()
+        # Model out-of-band corruption beyond the LAB-086 DML-fence claim. The
+        # normal INSERT path is tested separately and is denied after cutoff.
+        q.execute("DROP TRIGGER lab086_public_root_proof_no_replace")
         q.execute(
             "INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)",
             ("new", "old", "root", 1, 1, "0" * 64, "[]"),
         )
+        install_public_mutation_fence_locked(q)
         q.commit()
         with self.assertRaises(sqlite3.IntegrityError):
             q.execute("INSERT INTO provider_recovery_public_authorities VALUES('new')")
