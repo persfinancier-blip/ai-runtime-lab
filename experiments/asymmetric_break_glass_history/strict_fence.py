@@ -60,6 +60,15 @@ OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES = (
     "lab086_public_head_requires_root_proof",
 )
 
+# These tables contain evidence that is meaningful only after the authenticated
+# LAB-086 cutoff exists. A row in either table before the cutoff is an impossible
+# partial state for every supported transaction. Allowing migration to proceed over
+# it converts pre-existing debris into a guaranteed post-cutoff restart failure.
+POST_CUTOFF_ONLY_EVIDENCE_TABLES = (
+    "provider_asymmetric_break_glass_proofs",
+    "provider_asymmetric_recovery_public_root_proofs",
+)
+
 
 def _table_names(q):
     return {
@@ -75,6 +84,25 @@ def _all_inherited_trigger_names():
     for pair in INHERITED_HISTORY_IMMUTABILITY_TRIGGERS.values():
         names.extend(pair)
     return tuple(names)
+
+
+def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
+    tables = _table_names(q)
+    if "provider_asymmetric_break_glass_boundary" not in tables:
+        return True
+    boundary = q.execute(
+        "SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1"
+    ).fetchone()
+    if boundary is not None:
+        return True
+    for table in POST_CUTOFF_ONLY_EVIDENCE_TABLES:
+        if table not in tables:
+            continue
+        if q.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None:
+            raise RuntimeError(
+                f"LAB-086 orphan post-cutoff evidence exists before migration in {table}"
+            )
+    return True
 
 
 def remove_public_mutation_fence_locked(q):
@@ -124,10 +152,14 @@ def install_public_mutation_fence_locked(q):
     is fenced on INSERT/UPDATE/DELETE so conflict algorithms such as INSERT OR
     REPLACE cannot bypass the update guard. If a stale/direct writer attempts any of
     those operations, the transaction aborts and preceding writes roll back.
+    Post-cutoff-only evidence is also rejected before any authenticated migration
+    boundary exists; supported execution can never create that partial state, and
+    accepting it would turn debris into a durable restart failure after cutoff.
     Tables are discovered dynamically so the isolated strict-fence fixture remains
     usable; on the real LAB-086 schema they are required by
     ``assert_public_mutation_fence_locked``.
     """
+    _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
     remove_public_mutation_fence_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
