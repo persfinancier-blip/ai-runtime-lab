@@ -4,53 +4,57 @@
 
 The current `remove_public_mutation_fence_locked()` is broader than the consequential writers require.
 
-For inherited authenticated history it drops `*_all_inherited_trigger_names()`, which includes both:
-
-- creation-deny triggers needed to permit a new authenticated transition/proof; and
-- UPDATE/DELETE immutability guards for already committed history.
-
-It also drops the complete `PUBLIC_MUTATION_TRIGGER_NAMES` set, including UPDATE/DELETE guards for existing public-recovery authorities/transitions, even though public rotation only requires INSERT of the new authority/transition and UPDATE of the current head.
+For inherited authenticated history it drops `*_all_inherited_trigger_names()`, which includes both creation-deny triggers and UPDATE/DELETE immutability guards for already committed history. It also drops the complete public-recovery and singleton-head mutation trigger sets.
 
 A focused SQLite semantic counterexample reproduced the consequence for inherited history:
 
-1. existing authenticated root transition is protected before thaw;
+1. an existing authenticated root transition is protected before thaw;
 2. current-source-equivalent thaw drops INSERT + UPDATE + DELETE triggers;
 3. UPDATE of the old transition succeeds;
-4. a minimal thaw that drops only the INSERT-deny keeps the same UPDATE blocked.
+4. a creation-only thaw keeps the UPDATE blocked and preserves the old row.
 
-This is not an external concurrent-writer bypass: the final writer holds `BEGIN IMMEDIATE`. It is a least-privilege/correctness blocker because transaction-scoped authority is wider than the operation needs and makes old evidence mutable inside the most privileged path.
+This is not an external concurrent-writer bypass: the final writer holds `BEGIN IMMEDIATE`. It is a least-privilege/correctness blocker because transaction-scoped authority is wider than the supported operation requires.
+
+## Exact capabilities used by supported writers
+
+Source audit of the lower primitives established the required operations:
+
+- normal root rotation: `INSERT provider_rotation_authorities`, `INSERT provider_rotation_authority_transitions`, `UPDATE provider_rotation_authority_head`;
+- provider rotation: `INSERT asymmetric_provider_generations`, `INSERT provider_rotation_threshold_proofs`, `INSERT asymmetric_provider_transitions`, `UPDATE asymmetric_provider_head`;
+- public-recovery rotation: `INSERT provider_recovery_public_authorities`, `INSERT provider_recovery_public_transitions`, `UPDATE provider_recovery_public_head`;
+- asymmetric break-glass: `INSERT provider_rotation_authorities`, `UPDATE provider_rotation_authority_head`, `INSERT provider_asymmetric_break_glass_proofs`.
+
+None of these supported operations requires:
+
+- UPDATE/DELETE of an existing authenticated transition/proof/authority row;
+- INSERT/REPLACE of an already initialized singleton head;
+- DELETE of a singleton head.
 
 ## Required fix
 
-Split mutation-capability triggers from history-immutability triggers.
+Split transaction-scoped mutation capability from durable-history immutability.
 
-At minimum:
+During thaw remove only the exact creation/head-update triggers needed above:
 
-```diff
- def remove_public_mutation_fence_locked(q):
-     for name in (
--        *PUBLIC_MUTATION_TRIGGER_NAMES,
--        *_all_inherited_trigger_names(),
-+        *PUBLIC_RECOVERY_CREATION_AND_HEAD_MUTATION_TRIGGER_NAMES,
-+        *INHERITED_MUTATION_TRIGGERS.values(),
-         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
-         *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
-         *_all_post_cutoff_evidence_creation_trigger_names(),
-         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
-     ):
-         q.execute(f"DROP TRIGGER IF EXISTS {name}")
-```
+- public recovery: authority INSERT, transition INSERT, head UPDATE;
+- inherited root/provider evidence: `INHERITED_MUTATION_TRIGGERS.values()` only;
+- root head: UPDATE only;
+- current root/provider state: root-authority INSERT, provider-generation INSERT, provider-head UPDATE only;
+- LAB-086 post-cutoff evidence: creation triggers only;
+- obsolete legacy trigger names as needed for upgrade cleanup.
 
-The exact public subset should include only the operations required by the final public-recovery writer:
+Keep installed throughout thaw:
 
-- INSERT new public authority;
-- INSERT new public transition;
-- INSERT/UPDATE public head as required by the supported primitive.
-
-It must not remove UPDATE/DELETE guards on existing public authorities/transitions, and it should not remove public-head DELETE unless a supported operation proves it is required.
+- all UPDATE/DELETE immutability guards for committed history;
+- public/root/provider head INSERT/REPLACE and DELETE guards;
+- threshold-enablement, migration-metadata, legacy-projection and provider-receipt history guards.
 
 ## Regression
 
-`tests/test_transaction_scoped_thaw_minimality.py` is committed red on the current candidate. It requires both inherited transition history and existing public-recovery history to remain immutable after transaction-scoped thaw.
+`tests/test_transaction_scoped_thaw_minimality.py` is committed red on the current candidate. It now requires:
 
-The next run should apply the minimal source patch to the exact current `strict_fence.py` blob, execute this regression plus the existing strict-fence suite, then resume the full real-ledger merge gate.
+1. inherited authenticated transition history stays immutable after thaw;
+2. existing public-recovery authority/transition history stays immutable after thaw;
+3. public/root/provider singleton heads still reject `INSERT OR REPLACE` and DELETE during thaw.
+
+The next implementation step is a minimal change to the exact current `strict_fence.py`, followed by this regression plus the complete strict-fence suite before resuming the full real-ledger merge gate.
