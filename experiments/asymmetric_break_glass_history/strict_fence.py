@@ -219,6 +219,13 @@ def _all_post_cutoff_evidence_trigger_names():
     )
 
 
+def _all_post_cutoff_evidence_creation_trigger_names():
+    return tuple(
+        insert_name
+        for _, insert_name, _, _ in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.values()
+    )
+
+
 def _all_provider_receipt_trigger_names():
     return PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
 
@@ -248,6 +255,7 @@ def remove_public_mutation_fence_locked(q):
         *_all_inherited_trigger_names(),
         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
         *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
+        *_all_post_cutoff_evidence_creation_trigger_names(),
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
@@ -533,9 +541,8 @@ def _install_post_cutoff_evidence_freeze_locked(q):
             f"""CREATE TRIGGER {insert_name}
             BEFORE INSERT ON {table}
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
             BEGIN
-              SELECT RAISE(ABORT,'LAB-086 committed post-cutoff evidence cannot be replaced');
+              SELECT RAISE(ABORT,'LAB-086 post-cutoff evidence creation requires final supported writer');
             END"""
         )
         _install_history_immutability(
