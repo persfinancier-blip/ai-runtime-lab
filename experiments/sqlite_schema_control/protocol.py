@@ -89,7 +89,7 @@ class RestrictedConnection:
             return conn.execute(sql, parameters)
         except sqlite3.DatabaseError as exc:
             text = str(exc).lower()
-            if "not authorized" in text or "readonly" in text:
+            if "not authorized" in text or "authorization denied" in text or "readonly" in text:
                 raise RestrictedSQLViolation(str(exc)) from exc
             raise
 
