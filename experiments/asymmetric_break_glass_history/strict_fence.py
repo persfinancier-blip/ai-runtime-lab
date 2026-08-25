@@ -111,6 +111,36 @@ ROOT_HEAD_MUTATION_TRIGGER_NAMES = (
     "lab086_root_head_delete_requires_final_writer",
 )
 
+# Current authority tables need a split policy. Creating the next root/provider
+# generation and moving the provider head are final-writer operations, so those
+# guards are transactionally thawed. Existing authority rows and the threshold
+# enablement singleton are historical trust state and stay immutable even while
+# the final writer owns its BEGIN IMMEDIATE transaction.
+CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES = (
+    "lab086_root_authority_insert_requires_final_writer",
+    "lab086_provider_generation_insert_requires_final_writer",
+    "lab086_provider_head_insert_requires_final_writer",
+    "lab086_provider_head_update_requires_final_writer",
+    "lab086_provider_head_delete_requires_final_writer",
+)
+
+CURRENT_AUTHORITY_HISTORY_TRIGGERS = {
+    "provider_rotation_authorities": (
+        "lab086_root_authority_is_immutable",
+        "lab086_root_authority_is_not_deletable",
+    ),
+    "asymmetric_provider_generations": (
+        "lab086_provider_generation_is_immutable",
+        "lab086_provider_generation_is_not_deletable",
+    ),
+}
+
+THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES = (
+    "lab086_threshold_enablement_no_insert",
+    "lab086_threshold_enablement_is_immutable",
+    "lab086_threshold_enablement_is_not_deletable",
+)
+
 # Historical names from earlier LAB-086 candidates. They must be removed because
 # their proof-row predicates treated unauthenticated durable data as capability.
 OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES = (
@@ -153,6 +183,14 @@ def _all_legacy_projection_trigger_names():
     )
 
 
+def _all_current_authority_history_trigger_names():
+    names = []
+    for pair in CURRENT_AUTHORITY_HISTORY_TRIGGERS.values():
+        names.extend(pair)
+    names.extend(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES)
+    return tuple(names)
+
+
 def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
     tables = _table_names(q)
     if "provider_asymmetric_break_glass_boundary" not in tables:
@@ -173,14 +211,14 @@ def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
 
 
 def remove_public_mutation_fence_locked(q):
-    # Legacy-projection freeze triggers are intentionally *not* removed here.
-    # Final post-cutoff writers never need to mutate the frozen prefix, so keeping
-    # them installed preserves the signed migration semantics even during the
-    # transaction-scoped thaw of current authority tables.
+    # Legacy-projection and current-authority history freeze triggers are
+    # intentionally *not* removed here. Final post-cutoff writers never need to
+    # rewrite an already authenticated authority row or threshold enablement.
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *_all_inherited_trigger_names(),
         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
+        *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
@@ -346,6 +384,85 @@ def _install_legacy_projection_freeze_locked(q):
         _create_legacy_deny_update(q, table, names[1], label)
 
 
+def _install_current_authority_fence_locked(q):
+    tables = _table_names(q)
+    for name in (
+        *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
+        *_all_current_authority_history_trigger_names(),
+    ):
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+
+    if "provider_rotation_authorities" in tables:
+        q.execute(
+            """CREATE TRIGGER lab086_root_authority_insert_requires_final_writer
+            BEFORE INSERT ON provider_rotation_authorities
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 root authority creation requires final supported writer');
+            END"""
+        )
+        _install_history_immutability(
+            q,
+            "provider_rotation_authorities",
+            *CURRENT_AUTHORITY_HISTORY_TRIGGERS["provider_rotation_authorities"],
+            "root authority history",
+        )
+
+    if "asymmetric_provider_generations" in tables:
+        q.execute(
+            """CREATE TRIGGER lab086_provider_generation_insert_requires_final_writer
+            BEFORE INSERT ON asymmetric_provider_generations
+            WHEN EXISTS(
+              SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+            )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 provider generation creation requires final supported writer');
+            END"""
+        )
+        _install_history_immutability(
+            q,
+            "asymmetric_provider_generations",
+            *CURRENT_AUTHORITY_HISTORY_TRIGGERS["asymmetric_provider_generations"],
+            "provider generation history",
+        )
+
+    if "asymmetric_provider_head" in tables:
+        for name, operation, label in (
+            ("lab086_provider_head_insert_requires_final_writer", "INSERT", "insertion"),
+            ("lab086_provider_head_update_requires_final_writer", "UPDATE", "mutation"),
+            ("lab086_provider_head_delete_requires_final_writer", "DELETE", "deletion"),
+        ):
+            q.execute(
+                f"""CREATE TRIGGER {name}
+                BEFORE {operation} ON asymmetric_provider_head
+                WHEN EXISTS(
+                  SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+                )
+                BEGIN
+                  SELECT RAISE(ABORT,'LAB-086 provider head {label} requires final supported writer');
+                END"""
+            )
+
+    if "provider_rotation_threshold_enablement" in tables:
+        for name, operation, label in (
+            ("lab086_threshold_enablement_no_insert", "INSERT", "cannot be inserted"),
+            ("lab086_threshold_enablement_is_immutable", "UPDATE", "is immutable"),
+            ("lab086_threshold_enablement_is_not_deletable", "DELETE", "cannot be deleted"),
+        ):
+            q.execute(
+                f"""CREATE TRIGGER {name}
+                BEFORE {operation} ON provider_rotation_threshold_enablement
+                WHEN EXISTS(
+                  SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+                )
+                BEGIN
+                  SELECT RAISE(ABORT,'LAB-086 threshold enablement {label} after cutoff');
+                END"""
+            )
+
+
 def install_public_mutation_fence_locked(q):
     """Install unconditional post-cutoff deny policy for underlying writers.
 
@@ -365,6 +482,8 @@ def install_public_mutation_fence_locked(q):
     is fenced on INSERT/UPDATE/DELETE so conflict algorithms such as INSERT OR
     REPLACE cannot bypass the update guard. If a stale/direct writer attempts any of
     those operations, the transaction aborts and preceding writes roll back.
+    Current root/provider authority rows are similarly split between thawable
+    successor/head writes and non-thawable historical immutability.
     Post-cutoff-only evidence is also rejected before any authenticated migration
     boundary exists; supported execution can never create that partial state, and
     accepting it would turn debris into a durable restart failure after cutoff.
@@ -375,6 +494,7 @@ def install_public_mutation_fence_locked(q):
     _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
     remove_public_mutation_fence_locked(q)
     _install_legacy_projection_freeze_locked(q)
+    _install_current_authority_fence_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
         BEFORE INSERT ON provider_recovery_public_authorities
@@ -578,6 +698,20 @@ def assert_public_mutation_fence_locked(q):
     missing |= legacy_required - names
     if "provider_rotation_authority_head" in tables:
         missing |= set(ROOT_HEAD_MUTATION_TRIGGER_NAMES) - names
+    if "provider_rotation_authorities" in tables:
+        missing |= {"lab086_root_authority_insert_requires_final_writer"} - names
+        missing |= set(CURRENT_AUTHORITY_HISTORY_TRIGGERS["provider_rotation_authorities"]) - names
+    if "asymmetric_provider_generations" in tables:
+        missing |= {"lab086_provider_generation_insert_requires_final_writer"} - names
+        missing |= set(CURRENT_AUTHORITY_HISTORY_TRIGGERS["asymmetric_provider_generations"]) - names
+    if "asymmetric_provider_head" in tables:
+        missing |= {
+            "lab086_provider_head_insert_requires_final_writer",
+            "lab086_provider_head_update_requires_final_writer",
+            "lab086_provider_head_delete_requires_final_writer",
+        } - names
+    if "provider_rotation_threshold_enablement" in tables:
+        missing |= set(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES) - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
