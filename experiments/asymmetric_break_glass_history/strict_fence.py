@@ -141,6 +141,30 @@ THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES = (
     "lab086_threshold_enablement_is_not_deletable",
 )
 
+# The three authenticated cutoff singletons are themselves durable trust metadata.
+# Once a complete cutoff exists, ordinary DML must not rewrite/delete/replace any
+# of them and thereby turn a previously valid history into a persistent fail-closed
+# restart.  The triggers become active only after all three singleton rows exist,
+# so the first atomic migration ceremony can keep its existing
+# projection -> boundary -> root-proof insertion order.
+MIGRATION_METADATA_FENCE_TRIGGERS = {
+    "provider_asymmetric_break_glass_boundary": (
+        "lab086_migration_boundary_no_insert",
+        "lab086_migration_boundary_is_immutable",
+        "lab086_migration_boundary_no_delete",
+    ),
+    "provider_asymmetric_break_glass_legacy_projection": (
+        "lab086_migration_projection_no_insert",
+        "lab086_migration_projection_is_immutable",
+        "lab086_migration_projection_no_delete",
+    ),
+    "provider_asymmetric_break_glass_root_proof": (
+        "lab086_migration_root_proof_no_insert",
+        "lab086_migration_root_proof_is_immutable",
+        "lab086_migration_root_proof_no_delete",
+    ),
+}
+
 # Historical names from earlier LAB-086 candidates. They must be removed because
 # their proof-row predicates treated unauthenticated durable data as capability.
 OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES = (
@@ -189,6 +213,14 @@ def _all_current_authority_history_trigger_names():
         names.extend(pair)
     names.extend(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES)
     return tuple(names)
+
+
+def _all_migration_metadata_trigger_names():
+    return tuple(
+        name
+        for names in MIGRATION_METADATA_FENCE_TRIGGERS.values()
+        for name in names
+    )
 
 
 def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
@@ -463,6 +495,42 @@ def _install_current_authority_fence_locked(q):
             )
 
 
+def _install_migration_metadata_fence_locked(q):
+    tables = _table_names(q)
+    required = set(MIGRATION_METADATA_FENCE_TRIGGERS)
+    for name in _all_migration_metadata_trigger_names():
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+    if not required.issubset(tables):
+        return
+
+    complete = (
+        "EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1) "
+        "AND EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_legacy_projection WHERE singleton=1) "
+        "AND EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_root_proof WHERE singleton=1)"
+    )
+    labels = {
+        "provider_asymmetric_break_glass_boundary": "migration boundary",
+        "provider_asymmetric_break_glass_legacy_projection": "migration legacy projection",
+        "provider_asymmetric_break_glass_root_proof": "migration root proof",
+    }
+    for table, names in MIGRATION_METADATA_FENCE_TRIGGERS.items():
+        label = labels[table]
+        for name, operation, action in (
+            (names[0], "INSERT", "cannot be inserted/replaced"),
+            (names[1], "UPDATE", "is immutable"),
+            (names[2], "DELETE", "cannot be deleted"),
+        ):
+            q.execute(
+                f"""CREATE TRIGGER {name}
+                BEFORE {operation} ON {table}
+                WHEN {complete}
+                BEGIN
+                  SELECT RAISE(ABORT,'LAB-086 {label} {action} after cutoff');
+                END"""
+            )
+
+
+
 def install_public_mutation_fence_locked(q):
     """Install unconditional post-cutoff deny policy for underlying writers.
 
@@ -495,6 +563,7 @@ def install_public_mutation_fence_locked(q):
     remove_public_mutation_fence_locked(q)
     _install_legacy_projection_freeze_locked(q)
     _install_current_authority_fence_locked(q)
+    _install_migration_metadata_fence_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
         BEFORE INSERT ON provider_recovery_public_authorities
@@ -712,6 +781,8 @@ def assert_public_mutation_fence_locked(q):
         } - names
     if "provider_rotation_threshold_enablement" in tables:
         missing |= set(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES) - names
+    if set(MIGRATION_METADATA_FENCE_TRIGGERS).issubset(tables):
+        missing |= set(_all_migration_metadata_trigger_names()) - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
