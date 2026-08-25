@@ -93,6 +93,37 @@ class ProcessBoundaryTests(unittest.TestCase):
             self.assertEqual(q.execute("SELECT value FROM authority WHERE id=1").fetchone()[0], "broker-write")
             q.close()
 
+    def test_wal_mode_is_rejected_because_worker_sidecars_are_not_owned_by_boundary(self):
+        worker = pwd.getpwnam("nobody")
+        with tempfile.TemporaryDirectory(dir="/tmp") as td:
+            path = Path(td) / "authority.db"
+            q = sqlite3.connect(path)
+            self.assertEqual(q.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower(), "wal")
+            q.execute("CREATE TABLE authority(id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+            q.execute("INSERT INTO authority VALUES(1,'trusted')")
+            q.commit()
+            q.close()
+
+            with self.assertRaisesRegex(RuntimeError, "WAL mode is not supported"):
+                UnixReadOnlyWorkerBoundary.install(path, worker_gid=worker.pw_gid)
+
+    def test_verify_detects_broker_switch_to_wal_after_install(self):
+        worker = pwd.getpwnam("nobody")
+        with tempfile.TemporaryDirectory(dir="/tmp") as td:
+            path = Path(td) / "authority.db"
+            q = sqlite3.connect(path)
+            q.execute("CREATE TABLE authority(id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+            q.execute("INSERT INTO authority VALUES(1,'trusted')")
+            q.commit()
+            q.close()
+            boundary = UnixReadOnlyWorkerBoundary.install(path, worker_gid=worker.pw_gid)
+
+            q = sqlite3.connect(path)
+            self.assertEqual(q.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower(), "wal")
+            q.close()
+            with self.assertRaisesRegex(RuntimeError, "WAL mode is not supported"):
+                boundary.verify()
+
 
 if __name__ == "__main__":
     unittest.main()
