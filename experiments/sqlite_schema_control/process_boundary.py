@@ -55,6 +55,9 @@ class UnixReadOnlyWorkerBoundary:
 
         if cls._journal_mode(db) == "wal":
             raise FilesystemBoundaryError("WAL mode is not supported for a live read-only worker boundary")
+        unexpected = sorted(entry.name for entry in parent.iterdir() if entry != db)
+        if unexpected:
+            raise FilesystemBoundaryError("database directory must be dedicated to the broker-owned database")
 
         uid = os.geteuid()
         os.chown(parent, uid, worker_gid)
