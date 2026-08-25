@@ -12,21 +12,12 @@ PUBLIC_MUTATION_TRIGGER_NAMES = (
     "lab086_public_head_is_not_deletable",
 )
 
-# Lower LAB-083/LAB-082 writers are valid before the LAB-086 cutoff, but after
-# migration they must not create a new consequential successor without the final
-# LAB-086 pre/post full-history verification. Fence their canonical write points
-# at SQL level so direct use of the lower controller/supported surface rolls back.
 INHERITED_MUTATION_TRIGGERS = {
     "provider_rotation_authority_transitions": "lab086_normal_root_transition_requires_final_writer",
     "provider_rotation_threshold_proofs": "lab086_provider_threshold_proof_requires_final_writer",
     "asymmetric_provider_transitions": "lab086_provider_transition_requires_final_writer",
 }
 
-# Those same rows are authenticated historical evidence after cutoff. Prevent
-# ordinary DML from rewriting or deleting an already committed proof/transition;
-# otherwise a stale/raw-DML path can create persistent fail-closed state that is
-# noticed only by the next verifier. Arbitrary schema/DDL control is a separate
-# trust-boundary question (LAB-087), but the LAB-086 DML fence is complete.
 INHERITED_HISTORY_IMMUTABILITY_TRIGGERS = {
     "provider_rotation_authority_transitions": (
         "lab086_normal_root_transition_is_immutable",
@@ -42,12 +33,6 @@ INHERITED_HISTORY_IMMUTABILITY_TRIGGERS = {
     ),
 }
 
-# The migration projection is the authenticated replacement for historical HMAC
-# authority after cutoff. Every SQL row whose semantics are committed by that
-# projection must therefore be frozen against ordinary DML. Four legacy tables
-# are updated once *inside the cutoff transaction* to scrub HMAC material; their
-# UPDATE guards permit only that canonical scrub while requiring every semantic
-# field to stay identical. All other projected rows are fully immutable.
 LEGACY_PROJECTION_FREEZE_TRIGGERS = {
     "provider_rotation_recovery_transitions": (
         "lab086_legacy_recovery_transition_no_insert",
@@ -101,21 +86,12 @@ LEGACY_PROJECTION_FREEZE_TRIGGERS = {
     ),
 }
 
-# The authoritative root-head row needs all three DML operations fenced. SQLite
-# INSERT OR REPLACE is not an UPDATE and can otherwise replace the singleton row;
-# DELETE can remove it outright. Final writers temporarily remove all three only
-# after full pre-verification in the same BEGIN IMMEDIATE transaction.
 ROOT_HEAD_MUTATION_TRIGGER_NAMES = (
     "lab086_root_head_insert_requires_final_writer",
     "lab086_root_head_requires_final_writer",
     "lab086_root_head_delete_requires_final_writer",
 )
 
-# Current authority tables need a split policy. Creating the next root/provider
-# generation and moving the provider head are final-writer operations, so those
-# guards are transactionally thawed. Existing authority rows and the threshold
-# enablement singleton are historical trust state and stay immutable even while
-# the final writer owns its BEGIN IMMEDIATE transaction.
 CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES = (
     "lab086_root_authority_insert_requires_final_writer",
     "lab086_provider_generation_insert_requires_final_writer",
@@ -141,12 +117,6 @@ THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES = (
     "lab086_threshold_enablement_is_not_deletable",
 )
 
-# The three authenticated cutoff singletons are themselves durable trust metadata.
-# Once a complete cutoff exists, ordinary DML must not rewrite/delete/replace any
-# of them and thereby turn a previously valid history into a persistent fail-closed
-# restart.  The triggers become active only after all three singleton rows exist,
-# so the first atomic migration ceremony can keep its existing
-# projection -> boundary -> root-proof insertion order.
 MIGRATION_METADATA_FENCE_TRIGGERS = {
     "provider_asymmetric_break_glass_boundary": (
         "lab086_migration_boundary_no_insert",
@@ -165,18 +135,12 @@ MIGRATION_METADATA_FENCE_TRIGGERS = {
     ),
 }
 
-# Historical names from earlier LAB-086 candidates. They must be removed because
-# their proof-row predicates treated unauthenticated durable data as capability.
 OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES = (
     "lab086_public_authority_requires_root_proof",
     "lab086_public_transition_requires_root_proof",
     "lab086_public_head_requires_root_proof",
 )
 
-# These tables contain evidence that is meaningful only after the authenticated
-# LAB-086 cutoff exists. A row in either table before the cutoff is an impossible
-# partial state for every supported transaction. Allowing migration to proceed over
-# it converts pre-existing debris into a guaranteed post-cutoff restart failure.
 POST_CUTOFF_ONLY_EVIDENCE_TABLES = (
     "provider_asymmetric_break_glass_proofs",
     "provider_asymmetric_recovery_public_root_proofs",
@@ -196,6 +160,15 @@ POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS = {
         "lab086_public_root_proof_is_not_deletable",
     ),
 }
+
+# LAB-082 historical receipts are append-only authenticated evidence. New
+# request IDs must remain insertable after cutoff, but an already committed
+# receipt may never be rewritten, deleted, REPLACE'd, or UPSERT-mutated.
+PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS = (
+    "lab086_provider_receipt_no_replace",
+    "lab086_provider_receipt_is_immutable",
+    "lab086_provider_receipt_is_not_deletable",
+)
 
 
 def _table_names(q):
@@ -246,6 +219,10 @@ def _all_post_cutoff_evidence_trigger_names():
     )
 
 
+def _all_provider_receipt_trigger_names():
+    return PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
+
+
 def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
     tables = _table_names(q)
     if "provider_asymmetric_break_glass_boundary" not in tables:
@@ -266,9 +243,6 @@ def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
 
 
 def remove_public_mutation_fence_locked(q):
-    # Legacy-projection and current-authority history freeze triggers are
-    # intentionally *not* removed here. Final post-cutoff writers never need to
-    # rewrite an already authenticated authority row or threshold enablement.
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *_all_inherited_trigger_names(),
@@ -344,7 +318,6 @@ def _install_legacy_projection_freeze_locked(q):
     for name in _all_legacy_projection_trigger_names():
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
 
-    # Legacy recovery transition: the migration may only erase HMAC signatures.
     table = "provider_rotation_recovery_transitions"
     if table in tables:
         names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
@@ -366,7 +339,6 @@ def _install_legacy_projection_freeze_locked(q):
             BEGIN SELECT RAISE(ABORT,'LAB-086 legacy recovery transition semantics are immutable after cutoff'); END"""
         )
 
-    # Compatibility recovery authority: only key-map scrubbing is allowed.
     table = "provider_rotation_recovery_authorities"
     if table in tables:
         names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
@@ -383,7 +355,6 @@ def _install_legacy_projection_freeze_locked(q):
             BEGIN SELECT RAISE(ABORT,'LAB-086 compatibility recovery authority semantics are immutable after cutoff'); END"""
         )
 
-    # Versioned recovery authority: only key-map scrubbing is allowed.
     table = "provider_recovery_lifecycle_authorities"
     if table in tables:
         names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
@@ -401,7 +372,6 @@ def _install_legacy_projection_freeze_locked(q):
             BEGIN SELECT RAISE(ABORT,'LAB-086 recovery lifecycle authority semantics are immutable after cutoff'); END"""
         )
 
-    # Versioned recovery transition: migration may only erase its three HMAC sets.
     table = "provider_recovery_lifecycle_transitions"
     if table in tables:
         names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
@@ -423,7 +393,6 @@ def _install_legacy_projection_freeze_locked(q):
             BEGIN SELECT RAISE(ABORT,'LAB-086 recovery lifecycle transition semantics are immutable after cutoff'); END"""
         )
 
-    # Every other row in the signed legacy projection is fully frozen.
     for table, label in (
         ("provider_rotation_recovery_head", "compatibility recovery head"),
         ("provider_recovery_lifecycle_head", "recovery lifecycle head"),
@@ -574,40 +543,43 @@ def _install_post_cutoff_evidence_freeze_locked(q):
         )
 
 
+def _install_provider_receipt_freeze_locked(q):
+    tables = _table_names(q)
+    for name in _all_provider_receipt_trigger_names():
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+    if "asymmetric_provider_receipts" not in tables:
+        return
+    insert_name, update_name, delete_name = PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
+    q.execute(
+        f"""CREATE TRIGGER {insert_name}
+        BEFORE INSERT ON asymmetric_provider_receipts
+        WHEN EXISTS(
+          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+        )
+         AND EXISTS(
+          SELECT 1 FROM asymmetric_provider_receipts WHERE request_id=NEW.request_id
+        )
+        BEGIN
+          SELECT RAISE(ABORT,'LAB-086 committed provider receipt cannot be replaced');
+        END"""
+    )
+    _install_history_immutability(
+        q,
+        "asymmetric_provider_receipts",
+        update_name,
+        delete_name,
+        "provider receipt history",
+    )
+
+
 def install_public_mutation_fence_locked(q):
-    """Install unconditional post-cutoff deny policy for underlying writers.
-
-    A durable proof row is evidence, never mutation authority. The final supported
-    writer may temporarily remove current-authority triggers only while it owns the
-    same ``BEGIN IMMEDIATE`` transaction *after* all relevant cryptographic/history
-    checks have passed. SQLite DDL is transactional, so rollback/crash restores the
-    pre-transaction fence.
-
-    The signed migration projection is frozen separately and is never thawed by a
-    final writer. Its scrub-aware UPDATE guards allow exactly the key/signature
-    erasure performed inside the cutoff transaction, while every semantic field,
-    insert and delete is denied once the boundary row exists.
-
-    The inherited-writer triggers fence both new canonical writes and mutation of
-    already authenticated historical proof/transition rows. The root-head singleton
-    is fenced on INSERT/UPDATE/DELETE so conflict algorithms such as INSERT OR
-    REPLACE cannot bypass the update guard. If a stale/direct writer attempts any of
-    those operations, the transaction aborts and preceding writes roll back.
-    Current root/provider authority rows are similarly split between thawable
-    successor/head writes and non-thawable historical immutability.
-    Post-cutoff-only evidence is also rejected before any authenticated migration
-    boundary exists; supported execution can never create that partial state, and
-    accepting it would turn debris into a durable restart failure after cutoff.
-    Tables are discovered dynamically so the isolated strict-fence fixture remains
-    usable; on the real LAB-086 schema they are required by
-    ``assert_public_mutation_fence_locked``.
-    """
     _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
     remove_public_mutation_fence_locked(q)
     _install_legacy_projection_freeze_locked(q)
     _install_current_authority_fence_locked(q)
     _install_migration_metadata_fence_locked(q)
     _install_post_cutoff_evidence_freeze_locked(q)
+    _install_provider_receipt_freeze_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
         BEFORE INSERT ON provider_recovery_public_authorities
@@ -834,6 +806,8 @@ def assert_public_mutation_fence_locked(q):
         for trigger in triggers
     }
     missing |= evidence_required - names
+    if "asymmetric_provider_receipts" in tables:
+        missing |= set(_all_provider_receipt_trigger_names()) - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
     if missing or obsolete:
         raise RuntimeError(
