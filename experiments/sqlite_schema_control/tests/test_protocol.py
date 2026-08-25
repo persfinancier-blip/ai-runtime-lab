@@ -70,6 +70,22 @@ class RestrictedConnectionTests(unittest.TestCase):
             finally:
                 broker.close()
 
+    def test_indirect_and_meta_write_forms_are_denied(self):
+        with tempfile.TemporaryDirectory() as td:
+            path, broker = make_db(td)
+            try:
+                with broker.restricted() as worker:
+                    for statement in (
+                        "VACUUM",
+                        "PRAGMA writable_schema=ON",
+                        "WITH x(v) AS (SELECT 'evil') UPDATE authority SET value=(SELECT v FROM x) WHERE id=1",
+                        "CREATE TEMP TABLE attacker_temp(x INTEGER)",
+                    ):
+                        with self.assertRaises(RestrictedSQLViolation):
+                            worker.execute(statement)
+            finally:
+                broker.close()
+
     def test_write_pragma_is_denied(self):
         with tempfile.TemporaryDirectory() as td:
             path, broker = make_db(td)
