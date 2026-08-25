@@ -22,10 +22,10 @@ INHERITED_MUTATION_TRIGGERS = {
     "asymmetric_provider_transitions": "lab086_provider_transition_requires_final_writer",
 }
 
-# Those same rows are authenticated historical evidence after cutoff.  Prevent
+# Those same rows are authenticated historical evidence after cutoff. Prevent
 # ordinary DML from rewriting or deleting an already committed proof/transition;
 # otherwise a stale/raw-DML path can create persistent fail-closed state that is
-# noticed only by the next verifier.  Arbitrary schema/DDL control is a separate
+# noticed only by the next verifier. Arbitrary schema/DDL control is a separate
 # trust-boundary question (LAB-087), but the LAB-086 DML fence is complete.
 INHERITED_HISTORY_IMMUTABILITY_TRIGGERS = {
     "provider_rotation_authority_transitions": (
@@ -39,6 +39,65 @@ INHERITED_HISTORY_IMMUTABILITY_TRIGGERS = {
     "asymmetric_provider_transitions": (
         "lab086_provider_transition_is_immutable",
         "lab086_provider_transition_is_not_deletable",
+    ),
+}
+
+# The migration projection is the authenticated replacement for historical HMAC
+# authority after cutoff. Every SQL row whose semantics are committed by that
+# projection must therefore be frozen against ordinary DML. Four legacy tables
+# are updated once *inside the cutoff transaction* to scrub HMAC material; their
+# UPDATE guards permit only that canonical scrub while requiring every semantic
+# field to stay identical. All other projected rows are fully immutable.
+LEGACY_PROJECTION_FREEZE_TRIGGERS = {
+    "provider_rotation_recovery_transitions": (
+        "lab086_legacy_recovery_transition_no_insert",
+        "lab086_legacy_recovery_transition_semantics_immutable",
+        "lab086_legacy_recovery_transition_no_delete",
+    ),
+    "provider_rotation_recovery_authorities": (
+        "lab086_compat_recovery_authority_no_insert",
+        "lab086_compat_recovery_authority_semantics_immutable",
+        "lab086_compat_recovery_authority_no_delete",
+    ),
+    "provider_rotation_recovery_head": (
+        "lab086_compat_recovery_head_no_insert",
+        "lab086_compat_recovery_head_immutable",
+        "lab086_compat_recovery_head_no_delete",
+    ),
+    "provider_recovery_lifecycle_authorities": (
+        "lab086_lifecycle_authority_no_insert",
+        "lab086_lifecycle_authority_semantics_immutable",
+        "lab086_lifecycle_authority_no_delete",
+    ),
+    "provider_recovery_lifecycle_head": (
+        "lab086_lifecycle_head_no_insert",
+        "lab086_lifecycle_head_immutable",
+        "lab086_lifecycle_head_no_delete",
+    ),
+    "provider_recovery_lifecycle_transitions": (
+        "lab086_lifecycle_transition_no_insert",
+        "lab086_lifecycle_transition_semantics_immutable",
+        "lab086_lifecycle_transition_no_delete",
+    ),
+    "provider_recovery_custody_bindings": (
+        "lab086_custody_binding_no_insert",
+        "lab086_custody_binding_immutable",
+        "lab086_custody_binding_no_delete",
+    ),
+    "provider_rotation_recovery_custody_proofs": (
+        "lab086_custody_proof_no_insert",
+        "lab086_custody_proof_immutable",
+        "lab086_custody_proof_no_delete",
+    ),
+    "provider_recovery_custody_enablement": (
+        "lab086_custody_enablement_no_insert",
+        "lab086_custody_enablement_immutable",
+        "lab086_custody_enablement_no_delete",
+    ),
+    "provider_recovery_custody_enablement_proof": (
+        "lab086_custody_enablement_proof_no_insert",
+        "lab086_custody_enablement_proof_immutable",
+        "lab086_custody_enablement_proof_no_delete",
     ),
 }
 
@@ -86,6 +145,14 @@ def _all_inherited_trigger_names():
     return tuple(names)
 
 
+def _all_legacy_projection_trigger_names():
+    return tuple(
+        name
+        for names in LEGACY_PROJECTION_FREEZE_TRIGGERS.values()
+        for name in names
+    )
+
+
 def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
     tables = _table_names(q)
     if "provider_asymmetric_break_glass_boundary" not in tables:
@@ -106,6 +173,10 @@ def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
 
 
 def remove_public_mutation_fence_locked(q):
+    # Legacy-projection freeze triggers are intentionally *not* removed here.
+    # Final post-cutoff writers never need to mutate the frozen prefix, so keeping
+    # them installed preserves the signed migration semantics even during the
+    # transaction-scoped thaw of current authority tables.
     for name in (
         *PUBLIC_MUTATION_TRIGGER_NAMES,
         *_all_inherited_trigger_names(),
@@ -138,14 +209,156 @@ def _install_history_immutability(q, table, update_name, delete_name, label):
     )
 
 
+def _create_legacy_deny_insert_delete(q, table, names, label):
+    insert_name, _, delete_name = names
+    q.execute(
+        f"""CREATE TRIGGER {insert_name}
+        BEFORE INSERT ON {table}
+        WHEN EXISTS(
+          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+        )
+        BEGIN
+          SELECT RAISE(ABORT,'LAB-086 {label} cannot be inserted after cutoff');
+        END"""
+    )
+    q.execute(
+        f"""CREATE TRIGGER {delete_name}
+        BEFORE DELETE ON {table}
+        WHEN EXISTS(
+          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+        )
+        BEGIN
+          SELECT RAISE(ABORT,'LAB-086 {label} cannot be deleted after cutoff');
+        END"""
+    )
+
+
+def _create_legacy_deny_update(q, table, name, label):
+    q.execute(
+        f"""CREATE TRIGGER {name}
+        BEFORE UPDATE ON {table}
+        WHEN EXISTS(
+          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
+        )
+        BEGIN
+          SELECT RAISE(ABORT,'LAB-086 {label} is immutable after cutoff');
+        END"""
+    )
+
+
+def _install_legacy_projection_freeze_locked(q):
+    tables = _table_names(q)
+    for name in _all_legacy_projection_trigger_names():
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+
+    # Legacy recovery transition: the migration may only erase HMAC signatures.
+    table = "provider_rotation_recovery_transitions"
+    if table in tables:
+        names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
+        _create_legacy_deny_insert_delete(q, table, names, "legacy recovery transition")
+        q.execute(
+            f"""CREATE TRIGGER {names[1]}
+            BEFORE UPDATE ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND NOT (
+               NEW.new_rotation_authority_id IS OLD.new_rotation_authority_id AND
+               NEW.old_rotation_authority_id IS OLD.old_rotation_authority_id AND
+               NEW.old_rotation_version IS OLD.old_rotation_version AND
+               NEW.old_rotation_generation IS OLD.old_rotation_generation AND
+               NEW.recovery_authority_id IS OLD.recovery_authority_id AND
+               NEW.recovery_generation IS OLD.recovery_generation AND
+               NEW.intent_digest IS OLD.intent_digest AND
+               NEW.signatures_json='[]'
+             )
+            BEGIN SELECT RAISE(ABORT,'LAB-086 legacy recovery transition semantics are immutable after cutoff'); END"""
+        )
+
+    # Compatibility recovery authority: only key-map scrubbing is allowed.
+    table = "provider_rotation_recovery_authorities"
+    if table in tables:
+        names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
+        _create_legacy_deny_insert_delete(q, table, names, "compatibility recovery authority")
+        q.execute(
+            f"""CREATE TRIGGER {names[1]}
+            BEFORE UPDATE ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND NOT (
+               NEW.authority_id IS OLD.authority_id AND NEW.name IS OLD.name AND
+               NEW.generation IS OLD.generation AND NEW.threshold IS OLD.threshold AND
+               NEW.revoked_json IS OLD.revoked_json AND NEW.keys_json='{{}}'
+             )
+            BEGIN SELECT RAISE(ABORT,'LAB-086 compatibility recovery authority semantics are immutable after cutoff'); END"""
+        )
+
+    # Versioned recovery authority: only key-map scrubbing is allowed.
+    table = "provider_recovery_lifecycle_authorities"
+    if table in tables:
+        names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
+        _create_legacy_deny_insert_delete(q, table, names, "recovery lifecycle authority")
+        q.execute(
+            f"""CREATE TRIGGER {names[1]}
+            BEFORE UPDATE ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND NOT (
+               NEW.authority_id IS OLD.authority_id AND NEW.version IS OLD.version AND
+               NEW.name IS OLD.name AND NEW.generation IS OLD.generation AND
+               NEW.threshold IS OLD.threshold AND NEW.revoked_json IS OLD.revoked_json AND
+               NEW.keys_json='{{}}'
+             )
+            BEGIN SELECT RAISE(ABORT,'LAB-086 recovery lifecycle authority semantics are immutable after cutoff'); END"""
+        )
+
+    # Versioned recovery transition: migration may only erase its three HMAC sets.
+    table = "provider_recovery_lifecycle_transitions"
+    if table in tables:
+        names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
+        _create_legacy_deny_insert_delete(q, table, names, "recovery lifecycle transition")
+        q.execute(
+            f"""CREATE TRIGGER {names[1]}
+            BEFORE UPDATE ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND NOT (
+               NEW.new_authority_id IS OLD.new_authority_id AND
+               NEW.old_authority_id IS OLD.old_authority_id AND
+               NEW.root_authority_id IS OLD.root_authority_id AND
+               NEW.root_version IS OLD.root_version AND
+               NEW.root_generation IS OLD.root_generation AND
+               NEW.intent_digest IS OLD.intent_digest AND
+               NEW.old_signatures_json='[]' AND NEW.new_signatures_json='[]' AND
+               NEW.root_signatures_json='[]'
+             )
+            BEGIN SELECT RAISE(ABORT,'LAB-086 recovery lifecycle transition semantics are immutable after cutoff'); END"""
+        )
+
+    # Every other row in the signed legacy projection is fully frozen.
+    for table, label in (
+        ("provider_rotation_recovery_head", "compatibility recovery head"),
+        ("provider_recovery_lifecycle_head", "recovery lifecycle head"),
+        ("provider_recovery_custody_bindings", "recovery custody binding"),
+        ("provider_rotation_recovery_custody_proofs", "recovery custody proof"),
+        ("provider_recovery_custody_enablement", "recovery custody enablement"),
+        ("provider_recovery_custody_enablement_proof", "recovery custody enablement proof"),
+    ):
+        if table not in tables:
+            continue
+        names = LEGACY_PROJECTION_FREEZE_TRIGGERS[table]
+        _create_legacy_deny_insert_delete(q, table, names, label)
+        _create_legacy_deny_update(q, table, names[1], label)
+
+
 def install_public_mutation_fence_locked(q):
     """Install unconditional post-cutoff deny policy for underlying writers.
 
     A durable proof row is evidence, never mutation authority. The final supported
-    writer may temporarily remove these triggers only while it owns the same
-    ``BEGIN IMMEDIATE`` transaction *after* all relevant cryptographic/history
+    writer may temporarily remove current-authority triggers only while it owns the
+    same ``BEGIN IMMEDIATE`` transaction *after* all relevant cryptographic/history
     checks have passed. SQLite DDL is transactional, so rollback/crash restores the
     pre-transaction fence.
+
+    The signed migration projection is frozen separately and is never thawed by a
+    final writer. Its scrub-aware UPDATE guards allow exactly the key/signature
+    erasure performed inside the cutoff transaction, while every semantic field,
+    insert and delete is denied once the boundary row exists.
 
     The inherited-writer triggers fence both new canonical writes and mutation of
     already authenticated historical proof/transition rows. The root-head singleton
@@ -161,6 +374,7 @@ def install_public_mutation_fence_locked(q):
     """
     _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
     remove_public_mutation_fence_locked(q)
+    _install_legacy_projection_freeze_locked(q)
     q.execute(
         """CREATE TRIGGER lab086_public_authority_requires_current_authorization
         BEFORE INSERT ON provider_recovery_public_authorities
@@ -355,6 +569,13 @@ def assert_public_mutation_fence_locked(q):
         if table in tables:
             inherited_required.update(pair)
     missing |= inherited_required - names
+    legacy_required = {
+        trigger
+        for table, triggers in LEGACY_PROJECTION_FREEZE_TRIGGERS.items()
+        if table in tables
+        for trigger in triggers
+    }
+    missing |= legacy_required - names
     if "provider_rotation_authority_head" in tables:
         missing |= set(ROOT_HEAD_MUTATION_TRIGGER_NAMES) - names
     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
