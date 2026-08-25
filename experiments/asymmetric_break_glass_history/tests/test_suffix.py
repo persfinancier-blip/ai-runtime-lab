@@ -255,6 +255,10 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
                 root2, public_signatures(public_signers, payload, 3)
             )
             q = sqlite3.connect(path)
+            # Ordinary DML is frozen. Drop only the proof UPDATE guard to model
+            # durable corruption and prove restart verification independently
+            # rejects the invalid Ed25519 evidence.
+            q.execute("DROP TRIGGER lab086_break_glass_proof_is_immutable")
             q.execute(
                 "UPDATE provider_asymmetric_break_glass_proofs SET public_signatures_json='[]'"
             )
@@ -283,6 +287,10 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
                 root2, public_signatures(public_signers, payload, 3)
             )
             q = sqlite3.connect(path)
+            # The normal-transition insertion path is correctly fenced after
+            # cutoff. Drop only that insertion guard to synthesize an impossible
+            # duplicate proof type and exercise the history verifier itself.
+            q.execute("DROP TRIGGER lab086_normal_root_transition_requires_final_writer")
             q.execute(
                 "INSERT INTO provider_rotation_authority_transitions VALUES(?,?,?,?,?)",
                 (
