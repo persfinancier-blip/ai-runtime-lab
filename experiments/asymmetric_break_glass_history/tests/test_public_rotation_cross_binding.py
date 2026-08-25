@@ -64,15 +64,16 @@ class PublicRotationCrossBindingTests(unittest.TestCase):
             )
 
             # Rebind only the LAB-086 root-threshold proof to root2, with a
-            # completely valid quorum over that different payload. Without an
-            # explicit cross-binding check, the public transition under root1
-            # and the root proof under root2 are each valid in isolation.
+            # completely valid quorum over that different payload. Ordinary DML
+            # is fenced, so remove only the proof UPDATE guard to model
+            # out-of-band durable corruption and exercise verifier cross-binding.
             rebound = custody_rotation_payload(public1, public2, root2.authority_id)
             rebound_root_signatures = signatures(root2_raw, rebound, 2)
             encoded = ledger.rotation_authority._encode_signatures(
                 rebound_root_signatures
             )
             q = sqlite3.connect(path)
+            q.execute("DROP TRIGGER lab086_public_root_proof_is_immutable")
             q.execute(
                 "UPDATE provider_asymmetric_recovery_public_root_proofs "
                 "SET root_authority_id=?,root_version=?,root_generation=?,"
