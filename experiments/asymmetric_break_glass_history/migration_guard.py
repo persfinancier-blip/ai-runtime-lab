@@ -409,6 +409,9 @@ class AuthenticatedBreakGlassMigrationGuard:
     def verify_locked(self, q):
         self.ledger.public_recovery_custody.verify_durable()
         row = self._boundary_row_locked(q)
+        projection_row = q.execute(
+            'SELECT projection_json FROM provider_asymmetric_break_glass_legacy_projection WHERE singleton=1'
+        ).fetchone()
         root_proof = q.execute(
             'SELECT boundary_digest,root_authority_id,root_version,root_generation,root_signatures_json '
             'FROM provider_asymmetric_break_glass_root_proof WHERE singleton=1'
@@ -416,13 +419,12 @@ class AuthenticatedBreakGlassMigrationGuard:
         if row is None:
             if root_proof is not None:
                 raise MigrationGuardError('orphan migration root proof')
+            if projection_row is not None:
+                raise MigrationGuardError('orphan migration legacy projection')
             return None
         if root_proof is None:
             raise MigrationGuardError('missing migration root coauthorization')
         legacy, rid, rv, rg, pid, pv, pg, bd, sigs = row
-        projection_row = q.execute(
-            'SELECT projection_json FROM provider_asymmetric_break_glass_legacy_projection WHERE singleton=1'
-        ).fetchone()
         if projection_row is None:
             raise MigrationGuardError('missing migration legacy projection')
         projection = self._decode_projection(projection_row[0])
