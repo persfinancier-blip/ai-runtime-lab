@@ -201,6 +201,10 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             self.establish(guard, public_signers)
             q = sqlite3.connect(path)
+            # Ordinary DML is now denied by LAB-086. Drop exactly the relevant
+            # trigger to model out-of-band durable corruption and prove the
+            # verifier remains independently fail-closed.
+            q.execute("DROP TRIGGER lab086_compat_recovery_authority_semantics_immutable")
             q.execute(
                 "UPDATE provider_rotation_recovery_authorities SET keys_json=?",
                 ('{"attacker":"00"}',),
@@ -278,6 +282,7 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             self.establish(guard, public_signers)
             q = sqlite3.connect(path)
+            q.execute("DROP TRIGGER lab086_migration_root_proof_is_immutable")
             q.execute(
                 "UPDATE provider_asymmetric_break_glass_root_proof SET root_signatures_json='[]'"
             )
@@ -294,6 +299,7 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             self.establish(guard, public_signers)
             q = sqlite3.connect(path)
+            q.execute("DROP TRIGGER lab086_migration_boundary_is_immutable")
             q.execute(
                 "UPDATE provider_asymmetric_break_glass_boundary SET boundary_digest=?",
                 ("0" * 64,),
@@ -313,6 +319,7 @@ class MigrationGuardIntegrationTests(unittest.TestCase):
             guard = AuthenticatedBreakGlassMigrationGuard(ledger)
             self.establish(guard, public_signers)
             q = sqlite3.connect(path)
+            q.execute("DROP TRIGGER lab086_legacy_recovery_transition_semantics_immutable")
             q.execute(
                 "UPDATE provider_rotation_recovery_transitions SET intent_digest=?",
                 ("0" * 64,),
