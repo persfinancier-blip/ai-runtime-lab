@@ -12,54 +12,50 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Active: Issue #163 / LAB-086 — IN_PROGRESS.
 - Branch: `lab/086-asymmetric-break-glass-history`.
 - Draft PR: #165 `[LAB-086] Asymmetric break-glass proof migration`.
-- Current observed branch HEAD: `c258cd2c0e2f0ffb91a9280778bef7fa74daac42`.
-- Runtime `strict_fence.py` is still blob `7c8387f050bf44894ae02a0a9b90f3bfe09dc003`; the new evidence-DML fix is staged/tested but not yet applied to that runtime file.
+- Current observed branch HEAD after this run: `a1bcd89bb8b7fd0f6d981673afc8b25e13816e66`.
+- PR remains draft; full current-head real-ledger migration/suffix/final-supported regression gate has not passed.
 
 ## Last completed step
 
-Fresh current-head audit found another ordinary-DML durable-integrity gap. `provider_asymmetric_break_glass_proofs` and `provider_asymmetric_recovery_public_root_proofs` are recognized as post-cutoff-only evidence for the pre-cutoff orphan check, but current `strict_fence.py` does not freeze already committed rows in either table against UPDATE/DELETE/replacement. A stale/raw DML actor can therefore corrupt/delete authenticated restart evidence; later crypto verification fails closed, so this is persistent fail-closed DoS rather than forged authority.
+Applied the previously staged post-cutoff evidence-DML fence to the real branch runtime through the supported GitHub Contents API. The write produced branch commit `a1bcd89bb8b7fd0f6d981673afc8b25e13816e66` and runtime `strict_fence.py` blob `34ba1db9c5aa04fc55c3842d73d5ceff92964b55`.
 
-Durable artifacts added to PR #165:
-- regression `experiments/asymmetric_break_glass_history/tests/test_post_cutoff_evidence_dml_fence.py`, commit `fe9229aa64065b3484b4b3cd9f43595e5c5d2b3a`;
-- design note `research/2026-08-25-lab086-post-cutoff-evidence-dml-fence.md`, commit `805642302b42b00b7ed7c108346a22669630aa24`;
-- staged patch `research/2026-08-25-lab086-post-cutoff-evidence-dml-fence.patch`, current branch HEAD `c258cd2c0e2f0ffb91a9280778bef7fa74daac42`.
+The published blob did not initially equal the locally pre-tested candidate `6992a55a1dcc61f4b2f066ff1844f68a7c9610be`. Investigation showed exactly one byte-layout difference: the published file omits one blank line immediately before `_install_post_cutoff_evidence_freeze_locked()`. No semantic/code-token difference was found. Rather than rewriting again or reusing the prior test evidence, the published branch bytes were reconstructed and executed directly.
 
-The exact current runtime `strict_fence.py` was reconstructed from connector chunks and locally verified by `git hash-object` as `7c8387f050bf44894ae02a0a9b90f3bfe09dc003`. The staged fix was applied locally to those exact bytes; candidate blob is `6992a55a1dcc61f4b2f066ff1844f68a7c9610be` and `py_compile` passed.
+Exact published `strict_fence.py` plus exact branch `test_strict_fence.py` (`4b651db3638c8b9f2341d52b512f075c4b3c31d2`) and `test_post_cutoff_evidence_dml_fence.py` (`a8509be97bd1f10ae87d7a733827f3475e8ee9e6`) passed **12/12**. Focused compileall also passed. These tests cover UPDATE, DELETE, `INSERT OR REPLACE`, and UPSERT corruption attempts against committed `provider_asymmetric_break_glass_proofs` and `provider_asymmetric_recovery_public_root_proofs`; original evidence remains unchanged.
 
-Executed existing exact `test_strict_fence.py` plus the new regression against that candidate: **12/12 PASS** (10 existing + 2 new). The new tests cover UPDATE, DELETE, `INSERT OR REPLACE`, and UPSERT for both evidence tables while requiring the original digest to remain unchanged.
+Fresh source audit of current `migration_guard.py` (`5a5bb928b39a96f93f019b103b483dfb9bf43c6d`), `suffix.py` (`44847bde53b9f7b0e2fbcbab37d36dc992f497b2`) and `final_supported.py` (`9f0198d2db85d08ec64f614d6288323c1d642383`) found no new privilege-escalation path. Public-recovery root proof is cross-bound to the actual Ed25519 transition by exact predecessor/root/intent, and final consequential writers retain full preverification -> transaction-scoped thaw -> mutation -> refreeze/assert -> postverification before commit.
 
-Correct fence shape: new proof insertion remains allowed only for a previously absent primary key; insertion against an existing key is denied (blocking REPLACE/UPSERT), UPDATE/DELETE are always denied after cutoff, these evidence-history triggers are never thawed by final writers, and `assert_public_mutation_fence_locked()` requires all six triggers.
-
-No branch-runtime PASS is claimed for this fix yet because the 800-line runtime file has not been rewritten. Avoid an unaudited full-file Contents API rewrite; apply the already durable patch to the exact known blob and verify the published result before claiming success.
+Started rebuilding the current-run real dependency workspace using connector-sourced implementation bytes. LAB-036/080 and LAB-082 implementation files reconstructed so far are checked by Git blob where complete; direct shell GitHub transport is still unavailable. The complete LAB-080→085 local closure was not finished in this run, so no new full real-ledger PASS is claimed.
 
 ## Evidence produced / reconfirmed
 
-- Current branch runtime before fix: `strict_fence.py` blob `7c8387f050bf44894ae02a0a9b90f3bfe09dc003`.
-- Local exact-byte patched candidate: `6992a55a1dcc61f4b2f066ff1844f68a7c9610be`.
-- Candidate focused regression: **12/12 PASS**; compile of patched runtime PASS.
-- Issue #163 audit comment: `5410344104`.
-- Lower-stack exact gate remains complete: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, LAB-085 asymmetric-custody 8/8, LAB-085 public/final 11/11.
-- Previous branch-exact migration-metadata strict-fence gate remains 13/13 PASS.
-- Direct shell GitHub transport remains unavailable; connector/Contents API work and are not owner blockers.
+- Branch runtime post-fix: `strict_fence.py` blob `34ba1db9c5aa04fc55c3842d73d5ceff92964b55`.
+- Branch-exact focused regression: **12/12 PASS**; focused compileall PASS.
+- Issue #163 current-run evidence comment: `5411243840`.
+- Fresh branch/main compare after branch write: `ahead 118 / behind 63`; all 45 PR paths remain additions, so no path-level content collision with current `main` is observed.
+- Lower-stack exact evidence remains complete from prior runs: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, LAB-085 asymmetric-custody 8/8, LAB-085 public/final 11/11; lower unsafe baselines failed as intended.
+- Exact standalone LAB-086 corrected suite remains 12/12 PASS; unsafe legacy-auto-promotion seed failed as intended.
+- Direct shell GitHub transport was probed again and is unavailable; GitHub connector/Contents API are working supported fallbacks and are not owner blockers.
 
 ## Known blockers / constraints
 
-- New post-cutoff evidence-DML blocker is fixed only in the tested local candidate/staged patch; branch runtime still needs exact application + published blob verification.
-- After that, the full current-head real-ledger migration/suffix/final-supported suite, unsafe legacy-promotion seed, complete compileall, and final security audit remain mandatory before merge.
+- The post-cutoff evidence-DML blocker itself is now fixed and branch-exact tested; do not repeat that work unless a later regression invalidates it.
+- Remaining merge gate is the full current-head real-ledger `migration_guard + suffix + final_supported` suite on the proven LAB-080→085 implementation closure, then unsafe seed, full compileall, and final security audit.
+- Local dependency reconstruction is per-run and not durable. Connector reconstruction works but is slower than a normal checkout.
 - SQLite fences cover audited ordinary DML/stale supported paths, not arbitrary same-privilege SQLite schema/DDL authority; LAB-087/#166 owns that stronger boundary.
 - LAB-083/LAB-084 signer-noise robustness remains LAB-088/#167 and is fail-closed availability work.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Re-fetch branch `strict_fence.py` and require blob `7c8387f050bf44894ae02a0a9b90f3bfe09dc003`; apply the durable post-cutoff-evidence patch without unrelated rewrite. Verify published result equals the locally tested candidate blob `6992a55a1dcc61f4b2f066ff1844f68a7c9610be` (or re-run exact tests if formatting/content necessarily changes).
-2. Execute exact branch `test_strict_fence.py` + `test_post_cutoff_evidence_dml_fence.py`; require 12/12 PASS and compileall.
-3. Reconstruct current PR HEAD `migration_guard.py`, `suffix.py`, `final_supported.py` and remaining real-ledger LAB-086 tests on the already proven LAB-080→085 closure; execute migration v4/root coauthorization/restart, scrubbed-prefix/asymmetric-suffix, orphan/partial state, public-rotation cross-binding, inherited/direct surfaces, final verification snapshot, and rotation races.
-4. Execute unsafe legacy-promotion seed + full compileall, then perform final security audit and branch/main divergence check. Fix every failure; only then mark PR #165 ready and integrate.
+1. Continue the connector-sourced local dependency closure from the already reconstructed LAB-036/080/082 implementation: add exact LAB-083/084/085 implementation bytes and verify every completed file by Git blob identity.
+2. Re-fetch PR #165 HEAD before execution. Reconstruct exact current `migration_guard.py`, `suffix.py`, `final_supported.py` and all real-ledger tests. Execute migration v4/root coauthorization/restart, scrubbed-prefix/asymmetric-suffix, orphan/partial state, full lower/public-history guards, public-rotation cross-binding, inherited/direct surfaces, final verification snapshot and rotation races.
+3. Execute unsafe legacy-promotion seed + full compileall over the reconstructed closure.
+4. Perform a fresh full security audit of every consequential/restart path and a new branch/main divergence check. Fix every blocking failure. Only after a clean current-head gate may PR #165 be marked ready and integrated.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; new post-cutoff evidence DML blocker has regression + tested patch but branch runtime is not yet updated.
+- #163 / LAB-086 — IN_PROGRESS; post-cutoff evidence-DML fix is now in branch runtime and branch-exact 12/12 PASS; full real-ledger gate remains.
 - #166 / LAB-087 — READY; SQLite schema-control trust boundary.
 - #167 / LAB-088 — READY; threshold signer-noise robustness.
 - #168 / LAB-089 — CLOSED `not_planned`.
