@@ -199,10 +199,10 @@ class SupportedFencedAsymmetricBreakGlassLedger:
             existing = q.execute('SELECT old_public_authority_id,root_authority_id,root_version,root_generation,intent_digest,root_signatures_json FROM provider_asymmetric_recovery_public_root_proofs WHERE new_public_authority_id=?', (new_public.authority_id,)).fetchone()
             if existing is not None and existing != proof:
                 raise PublicRecoveryRotationError('public recovery root proof substitution')
-            if existing is None:
-                q.execute('INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)', (new_public.authority_id, *proof))
             remove_public_mutation_fence_locked(q)
             try:
+                if existing is None:
+                    q.execute('INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)', (new_public.authority_id, *proof))
                 ledger.public_recovery_custody.rotate_locked(q, new_public, root.authority_id, old_valid, new_valid)
             finally:
                 install_public_mutation_fence_locked(q)
