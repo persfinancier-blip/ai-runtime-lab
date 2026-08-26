@@ -17,17 +17,17 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read AGENTS.md, this state and SELF_RESUME.md; inspected current PR #165. LAB-086 remains draft and its required exact current-head real-ledger closure is still not fully reconstructed in this runtime. Exact connector reads confirm the published own-proof cardinality guard is present and `test_pre_cutoff_lab086_proof_cardinality.py` targets both LAB-086 proof tables. No test result was fabricated from source inspection.
+Re-read AGENTS.md, this state and SELF_RESUME.md and re-inspected PR #165. LAB-086 remains first priority and draft; its exact current-head LAB-080→086 real-ledger closure is still outstanding, so no merge/readiness claim was made.
 
-Per the recorded fallback, advanced LAB-091's known RED merge blocker. Added a standalone connection-local one-shot operation permit primitive to PR #173. The permit binds `(operation kind, identity, expected old value, expected new value)`, requires an active SQL transaction, is consumed by the guarding trigger before row mutation, cannot authorize a second statement, and is cleared on unused/error paths.
+Per the recorded fallback, advanced LAB-091's known transaction-wide writer-authority blocker. Added an operation-scoped guard layer on PR #173 using the already-published one-shot permit primitive. `operation_permit_guards.py` replaces broad authorization semantics for the meta-tail and component-watermark surfaces with triggers that consume an exact `(kind, identity, old, new)` permit. A transaction without a permit cannot mutate those rows.
 
 Published exact artifacts:
-- `experiments/mutable_shared_anchor_writer/operation_permit.py`: commit `2024407d350ea9b0c7d07bcdba814e2bada70bc3`, blob `637784a5cb61a024a1df3e0e983887b6d0a838be`;
-- `experiments/mutable_shared_anchor_writer/tests/test_operation_permit_primitive.py`: commit `570112b4ce5b3340e8ee639350011d47dd509851`, blob `b410a5111542db23a80fcb2645a65c6b4e96c80d`.
+- `experiments/mutable_shared_anchor_writer/operation_permit_guards.py`: commit `65ee18274dd9f81f505335bbdbdf368f8e70c617`, blob `773dd331f5d7f76cf1a79ef7b80c630a80dfa9b3`;
+- `experiments/mutable_shared_anchor_writer/tests/test_operation_permit_guards.py`: commit `7b6134ddc74ba5c3e955647a3cb4c611d248f1e6`, blob `af1823815f2bc73c2b9fb6f94b811fbe7a4e7688`.
 
-Exact-source local reconstruction matched both published Git blobs via `git hash-object`. The primitive suite ran 6/6 PASS and compileall PASS. Tests prove: unpermitted DML blocked; exact transition allowed; different new value blocked; permit consumed after one statement; failed statement does not leave authority; permit cannot exist outside an active transaction.
+Local reconstruction hashes matched both published blobs. Focused exact guard suite ran 6/6 PASS; compileall PASS. It proves: broad transaction cannot jump meta 0→999; exact meta CAS works and does not authorize a second statement; broad transaction cannot jump watermark 1→999; exact watermark insert/update permits work; wrong new values fail and do not leave authority behind.
 
-This closes only the permit primitive. PR #173 remains DRAFT because `real_integration.py` still uses transaction-wide `lab091_writer_authorized()` and must be migrated to one-shot permits for actual reserve/confirm/watermark/receipt statements.
+An attempted combined run also named the prior primitive test module without reconstructing that test file in this runtime, causing one unittest loader error. That missing-module error is recorded and is not counted as a product regression; the newly published guard suite itself is 6/6 green.
 
 ## Evidence retained
 
@@ -37,15 +37,16 @@ This closes only the permit primitive. PR #173 remains DRAFT because `real_integ
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-087 remains merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 reference layer remains exact 11/11 PASS + compileall; unsafe raw-DML seed failed as intended.
-- LAB-091 one-shot permit primitive exact published-source gate: 6/6 PASS + compileall; blobs `637784a5...` and `b410a511...` matched local execution exactly.
-- Prior LAB-091 counterexample remains relevant to old integration: transaction-wide boolean authority allowed meta and watermark jumps to 999.
+- LAB-091 one-shot permit primitive exact published-source gate remains 6/6 PASS + compileall; blobs `637784a5...` and `b410a511...`.
+- LAB-091 operation-scoped meta/watermark guard layer exact published-source gate: 6/6 PASS + compileall; blobs `773dd331...` and `af182381...`.
+- Prior LAB-091 counterexample remains relevant to old `real_integration.py`: transaction-wide boolean authority allowed meta and watermark jumps to 999.
 
 ## Known blockers / constraints
 
 - Remaining LAB-086 merge gate is exact execution: reconstruct current HEAD with LAB-080→085 dependencies and run real-ledger cardinality + migration + suffix + final-supported/security suites, unsafe seed and compileall.
 - PR #165 currently reports mergeable=false; do not reconcile/integrate until the complete current-head security/test gate is clean.
-- LAB-091 real integration still has transaction-wide boolean writer authority. The new one-shot primitive is proven but not yet wired into real reserve/confirm/watermark/receipt DML; PR #173 must remain draft.
-- LAB-091 exact published integration execution and restart/concurrency/crash/UNKNOWN/LAB-087 composition gates remain outstanding.
+- LAB-091 `real_integration.py` still uses transaction-wide `lab091_writer_authorized()`. The one-shot primitive and meta/watermark guard layer are proven separately but not yet wired into the actual reserve/confirm/watermark/receipt statements; PR #173 remains draft.
+- LAB-091 still needs operation-scoped guards for intent creation/confirmation and provider-receipt creation, followed by exact real-stack restart/concurrency/crash/UNKNOWN and LAB-087 composition gates.
 - Direct shell GitHub may remain unavailable; connector exact reads/writes are the control-plane fallback.
 - LAB-086 SQLite fences cover audited ordinary-DML/stale supported paths, not arbitrary same-privilege DDL/schema authority; LAB-087 owns that boundary.
 - LAB-090/#169 provider handoff freshness remains separate.
@@ -54,7 +55,7 @@ This closes only the permit primitive. PR #173 remains DRAFT because `real_integ
 ## Exact next action
 
 1. LAB-086 remains first priority: connector-reconstruct exact current PR #165 `migration_guard.py`, `suffix.py`, `final_supported.py` and tests on the proven LAB-080→085 closure; execute own/lower cardinality, migration, suffix, final-supported, cross-binding/history, inherited/direct-surface, strict-fence/thaw, restart/concurrency tests; then unsafe seed + full compileall + final audit.
-2. If exact closure reconstruction remains tool-limited, wire LAB-091 `operation_permit.py` into `real_integration.py`: replace transaction-wide boolean guards with operation-specific trigger calls and install a one-shot permit immediately around each reserve intent INSERT, meta CAS, receipt INSERT, confirmation UPDATE, and watermark INSERT/UPDATE. Make the existing RED operation-scoped regression green.
+2. If exact closure reconstruction remains tool-limited, continue LAB-091 operation-scoped integration: add exact one-shot triggers for intent INSERT/PREPARED→CONFIRMED and receipt INSERT, then replace `_authorized_txn()`'s boolean authority in `real_integration.py` with transaction-only scope plus `one_shot_permit()` immediately around each actual DML statement (intent INSERT, meta CAS, receipt INSERT, confirmation UPDATE, watermark INSERT/UPDATE). Make `test_operation_scoped_permit_regression.py` green without granting transaction-wide authority.
 3. Then run exact published LAB-091 real-stack restart/concurrency/crash/UNKNOWN and LAB-087 composition tests. Keep PR #165 and PR #173 draft until their complete gates are clean.
 
 ## Backlog
@@ -64,4 +65,4 @@ This closes only the permit primitive. PR #173 remains DRAFT because `real_integ
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; one-shot permit primitive exact 6/6 PASS, but real integration still uses broad boolean authority; draft PR #173.
+- #170 / LAB-091 — IN_PROGRESS; one-shot permit primitive exact 6/6 PASS and meta/watermark guard layer exact 6/6 PASS, but real integration still uses broad boolean authority; draft PR #173.
