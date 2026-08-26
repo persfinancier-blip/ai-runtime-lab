@@ -104,6 +104,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
                 enable,
             ) = self.make_ledger(path)
             self.migrate(ledger, public_signers)
+            ledger = SupportedFencedAsymmetricBreakGlassLedger.from_existing(ledger)
             root2, _ = authority(2, 2, "asymmetric")
             payload = ledger.asymmetric_recovery_payload(root2)
             out = ledger.recover_rotation_authority_asymmetric(
@@ -249,6 +250,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
                 self.make_ledger(path)
             )
             self.migrate(ledger, public_signers)
+            ledger = SupportedFencedAsymmetricBreakGlassLedger.from_existing(ledger)
             root2, _ = authority(2, 2, "tamper")
             payload = ledger.asymmetric_recovery_payload(root2)
             ledger.recover_rotation_authority_asymmetric(
@@ -281,6 +283,7 @@ class AsymmetricSuffixIntegrationTests(unittest.TestCase):
             path = Path(td) / "db"
             ledger, _, _, _, _, _, _, public_signers, _ = self.make_ledger(path)
             self.migrate(ledger, public_signers)
+            ledger = SupportedFencedAsymmetricBreakGlassLedger.from_existing(ledger)
             root2, _ = authority(2, 2, "count")
             payload = ledger.asymmetric_recovery_payload(root2)
             ledger.recover_rotation_authority_asymmetric(
