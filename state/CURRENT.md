@@ -10,26 +10,25 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: Issue #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current observed PR #165 HEAD remains `95fa5da3c457e3431cd596ec969d5939b0a1d925`; mergeable=false; full current-head LAB-080→086 real-ledger execution gate remains outstanding.
+- Current observed PR #165 HEAD: `95fa5da3c457e3431cd596ec969d5939b0a1d925`; mergeable=false; full current-head LAB-080→086 real-ledger execution gate remains outstanding.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current PR #173 HEAD `f65b7e51965631eca4fd0b724d49871a1c4b1734`, mergeable=true, draft.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current PR #173 HEAD `57648107966baba58fccbc4191cb9bb401aba7d6`, mergeable=true, draft.
 
 ## Last completed step
 
-Re-read AGENTS.md, this state and SELF_RESUME.md, re-inspected PR #165/#173 and Issues #163/#170. LAB-086 remains first priority, but the exact full LAB-080→086 dependency closure was not reconstructed in this runtime; no new LAB-086 PASS or merge claim was made.
+Re-read AGENTS.md, CURRENT and SELF_RESUME, re-inspected PR #165/#173 and resumed LAB-086 first. The exact full LAB-080→086 dependency closure was still not safely reconstructed in this runtime, so no new LAB-086 PASS or merge claim was made.
 
-Per the recorded fallback, audited LAB-091's remaining alternate/legacy supported surfaces and found a real downgrade path. The first operation-scoped guards reused trigger names that the older transaction-wide `SupportedMutableAsymmetricSharedAnchorLedger` installer knows and drops. A focused executable counterexample proved the downgrade: exact guard blocked `shared_anchor_meta.reserved_position 0 -> 999`; legacy trigger reinstall plus broad `lab091_writer_authorized()==1` accepted and persisted `999`.
+Per the recorded fallback, audited LAB-091 operation-scoped concurrency. Found a real fail-closed convergence bug: two identical workers can share the same exact request and authenticated provider receipt, but if one commits `PREPARED→CONFIRMED` first, the loser previously observed `current != entry` and raised `IntentSubstitution` instead of converging on the durable winner.
 
-Fixed the downgrade without changing the outer LAB-087 trust claim. Operation-scoped guards now use persistent `lab091_v2_*` trigger names outside the legacy installer's drop namespace. Legacy reinstall may add broad triggers but can no longer remove the one-shot guards. A real legacy connection lacks `lab091_consume_permit`, so consequential writes fail closed; the final operation-scoped connection continues to consume exact permits normally.
+Published additive candidate `SupportedConvergentOperationScopedAsymmetricSharedAnchorLedger`. `_commit_confirmation()` now accepts an already-CONFIRMED winner only when exact request identity and exact authenticated receipt binding match; a different request or receipt remains fail-closed. The first writer still uses the one-shot `intent-confirm` permit; a loser performs no second mutation.
 
 Published/exact evidence:
-- `full_operation_guards.py` commit `2975b733b046bd9657e4ee51c2ea9151416f8bf1`, blob `8e409d61d3d813dbf3a564ea8ea5f4d3015106fb`;
-- new regression `test_legacy_surface_persistence.py` blob `e47e2ed29e3652b2c70ec7eec1a86d8975219a1a`;
-- exact dependencies matched published blobs: `operation_permit.py 637784a5...`, `row_tokens.py 801eb0fb...`, existing `test_full_operation_guards.py 40ec2f20...`;
-- existing exact full-guard suite + new legacy-surface regression: **12/12 PASS**; compileall PASS;
-- research note `research/2026-08-26-lab091-legacy-surface-trigger-persistence.md` committed as `f65b7e51965631eca4fd0b724d49871a1c4b1734`.
+- `convergent_operation_scoped.py` blob `84a84df633fbaaca7f424f4db5bd3fd20403263b`;
+- byte-aligned focused regression `test_confirmation_convergence.py` blob `faae1a75d5448737f51c850d4cbec289e83c4697`;
+- focused harness actually executed **4/4 PASS**: normal confirm, identical-worker convergence, receipt substitution rejection, request substitution rejection;
+- research note `research/2026-08-26-lab091-identical-worker-confirmation-convergence.md` published at PR HEAD `57648107966baba58fccbc4191cb9bb401aba7d6`.
 
-Issue #170 and PR #173 were updated to reflect the operation-scoped candidate and the new alternate-surface fix.
+This 4/4 result is focused evidence only, not the final LAB-080/LAB-082 concurrent-worker/restart/UNKNOWN gate.
 
 ## Evidence retained
 
@@ -38,22 +37,23 @@ Issue #170 and PR #173 were updated to reflect the operation-scoped candidate an
 - LAB-087 is merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 reference layer exact 11/11 PASS + compileall; unsafe raw-DML seed failed as intended.
 - LAB-091 one-shot permit primitive exact 6/6 PASS + compileall.
-- LAB-091 full mutable-row guards now have exact **12/12 PASS** including the legacy-surface persistence regression.
+- LAB-091 full mutable-row guards exact 12/12 PASS including legacy-surface persistence.
+- LAB-091 identical-worker confirmation convergence focused exact-byte candidate: 4/4 PASS.
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. Merge gate is still exact current-head execution on one LAB-080→086 closure: own/lower cardinality + migration + suffix + final-supported/security suites, unsafe seed, compileall and final audit. PR #165 reports mergeable=false; do not reconcile/integrate before that gate is clean.
+- LAB-086 remains first priority. Merge gate is exact current-head execution on one LAB-080→086 closure: own/lower cardinality + migration + suffix + final-supported/security suites, unsafe seed, compileall and final audit. PR #165 reports mergeable=false; do not reconcile/integrate before that gate is clean.
 - Direct shell GitHub transport is not assumed; connector reconstruction works but full closure assembly remains expensive.
-- LAB-091 `operation_scoped_integration.py` still needs exact real LAB-080/LAB-082 execution: restart, concurrency, crash rollback, timeout/UNKNOWN reconciliation and LAB-087 restricted-worker composition.
-- The v2 trigger persistence fix protects against the specific legacy installer namespace. Arbitrary same-privilege DDL that explicitly drops v2 triggers remains outside LAB-091 and is owned by LAB-087.
+- LAB-091 `operation_scoped_integration.py` plus the new convergence candidate still need exact real LAB-080/LAB-082 execution: restart, real concurrent workers, crash rollback, timeout/UNKNOWN reconciliation and LAB-087 restricted-worker composition.
+- The convergence wrapper is additive/focused; do not treat it as the final supported surface until the real-stack gate validates it and alternate/legacy surfaces are re-audited.
 - LAB-090/#169 provider handoff freshness remains separate.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
 1. LAB-086 first: connector-reconstruct exact current PR #165 `migration_guard.py`, `suffix.py`, `final_supported.py` and their real-schema tests on the proven LAB-080→085 closure; execute own/lower cardinality, migration, suffix, final-supported, cross-binding/history, inherited/direct-surface, strict-fence/thaw, restart/concurrency tests; then unsafe seed + full compileall + final audit.
-2. If that exact closure remains tool-limited, continue LAB-091 from PR #173: reconstruct exact LAB-080/LAB-082 dependencies and execute `operation_scoped_integration.py` against real reserve/confirm/reconcile/verify-component flows, including reopening the DB through the legacy surface to prove v2 guards survive the actual installer rather than only the focused trigger model.
-3. Add exact restart, concurrent workers, crash rollback, timeout-after-commit/UNKNOWN reconciliation and LAB-087 restricted-worker composition tests. Keep PR #173 draft until that complete gate is clean.
+2. If that exact closure remains tool-limited, continue LAB-091 from PR #173: run the new convergence surface against real LAB-080/LAB-082 with two actual worker processes/threads sharing one intent/request, proving exactly one durable confirmation and identical receipt convergence.
+3. Add exact restart, crash rollback, timeout-after-commit/UNKNOWN reconciliation and LAB-087 restricted-worker composition tests. Keep PR #173 draft until that complete gate is clean.
 
 ## Backlog
 
@@ -62,4 +62,4 @@ Issue #170 and PR #173 were updated to reflect the operation-scoped candidate an
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; operation-scoped primitive/guards exact-tested, legacy-surface downgrade fixed, but real-stack restart/concurrency/crash/UNKNOWN/LAB-087 gate remains.
+- #170 / LAB-091 — IN_PROGRESS; one-shot primitive/guards exact-tested, legacy downgrade fixed, focused identical-worker convergence fixed, but real-stack restart/concurrency/crash/UNKNOWN/LAB-087 gate remains.
