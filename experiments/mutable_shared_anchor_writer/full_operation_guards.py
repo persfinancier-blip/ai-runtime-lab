@@ -11,8 +11,6 @@ def install_full_operation_guards(q: PermitConnection) -> None:
         raise RuntimeError("guard installation requires an active transaction")
 
     names = (
-        # Replace the earlier transaction-wide boolean guard names if this is an
-        # upgrade of an existing LAB-091 database.
         "lab091_meta_authorized_update",
         "lab091_intent_authorized_insert",
         "lab091_intent_authorized_update",
@@ -31,15 +29,28 @@ def install_full_operation_guards(q: PermitConnection) -> None:
         "lab091_receipt_exact_insert",
         "lab091_receipt_no_update",
         "lab091_receipt_no_delete",
+        # v2 names are intentionally outside the legacy installer's namespace.
+        "lab091_v2_meta_no_insert",
+        "lab091_v2_meta_exact_update",
+        "lab091_v2_meta_no_delete",
+        "lab091_v2_intent_exact_insert",
+        "lab091_v2_intent_exact_confirm",
+        "lab091_v2_intent_no_delete",
+        "lab091_v2_watermark_exact_insert",
+        "lab091_v2_watermark_exact_update",
+        "lab091_v2_watermark_no_delete",
+        "lab091_v2_receipt_exact_insert",
+        "lab091_v2_receipt_no_update",
+        "lab091_v2_receipt_no_delete",
     )
     for name in names:
         q.execute(f"DROP TRIGGER IF EXISTS {name}")
 
     statements = (
-        """CREATE TRIGGER lab091_meta_no_insert
+        """CREATE TRIGGER lab091_v2_meta_no_insert
            BEFORE INSERT ON shared_anchor_meta
            BEGIN SELECT RAISE(ABORT,'LAB-091 meta singleton already initialized'); END""",
-        """CREATE TRIGGER lab091_meta_exact_update
+        """CREATE TRIGGER lab091_v2_meta_exact_update
            BEFORE UPDATE ON shared_anchor_meta
            WHEN NEW.singleton IS NOT OLD.singleton
              OR NEW.reserved_position!=OLD.reserved_position+1
@@ -48,10 +59,10 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                CAST(OLD.reserved_position AS TEXT),CAST(NEW.reserved_position AS TEXT)
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact meta permit required'); END""",
-        """CREATE TRIGGER lab091_meta_no_delete
+        """CREATE TRIGGER lab091_v2_meta_no_delete
            BEFORE DELETE ON shared_anchor_meta
            BEGIN SELECT RAISE(ABORT,'LAB-091 meta cannot be deleted'); END""",
-        """CREATE TRIGGER lab091_intent_exact_insert
+        """CREATE TRIGGER lab091_v2_intent_exact_insert
            BEFORE INSERT ON shared_anchor_intents
            WHEN NEW.status!='PREPARED'
              OR NEW.receipt_binding IS NOT NULL
@@ -69,7 +80,7 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                )
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact intent creation permit required'); END""",
-        """CREATE TRIGGER lab091_intent_exact_confirm
+        """CREATE TRIGGER lab091_v2_intent_exact_confirm
            BEFORE UPDATE ON shared_anchor_intents
            WHEN OLD.status!='PREPARED'
              OR NEW.status!='CONFIRMED'
@@ -98,10 +109,10 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                )
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact intent confirmation permit required'); END""",
-        """CREATE TRIGGER lab091_intent_no_delete
+        """CREATE TRIGGER lab091_v2_intent_no_delete
            BEFORE DELETE ON shared_anchor_intents
            BEGIN SELECT RAISE(ABORT,'LAB-091 intent history cannot be deleted'); END""",
-        """CREATE TRIGGER lab091_watermark_exact_insert
+        """CREATE TRIGGER lab091_v2_watermark_exact_insert
            BEFORE INSERT ON component_anchor_watermarks
            WHEN EXISTS(
                SELECT 1 FROM component_anchor_watermarks WHERE component_id=NEW.component_id
@@ -110,7 +121,7 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                'watermark-insert',NEW.component_id,'',CAST(NEW.position AS TEXT)
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact watermark insert permit required'); END""",
-        """CREATE TRIGGER lab091_watermark_exact_update
+        """CREATE TRIGGER lab091_v2_watermark_exact_update
            BEFORE UPDATE ON component_anchor_watermarks
            WHEN NEW.component_id IS NOT OLD.component_id
              OR NEW.position<OLD.position
@@ -119,10 +130,10 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                CAST(OLD.position AS TEXT),CAST(NEW.position AS TEXT)
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact watermark update permit required'); END""",
-        """CREATE TRIGGER lab091_watermark_no_delete
+        """CREATE TRIGGER lab091_v2_watermark_no_delete
            BEFORE DELETE ON component_anchor_watermarks
            BEGIN SELECT RAISE(ABORT,'LAB-091 watermark cannot be deleted'); END""",
-        """CREATE TRIGGER lab091_receipt_exact_insert
+        """CREATE TRIGGER lab091_v2_receipt_exact_insert
            BEFORE INSERT ON asymmetric_provider_receipts
            WHEN EXISTS(
                SELECT 1 FROM asymmetric_provider_receipts WHERE request_id=NEW.request_id
@@ -135,10 +146,10 @@ def install_full_operation_guards(q: PermitConnection) -> None:
                )
              )!=1
            BEGIN SELECT RAISE(ABORT,'LAB-091 exact receipt creation permit required'); END""",
-        """CREATE TRIGGER lab091_receipt_no_update
+        """CREATE TRIGGER lab091_v2_receipt_no_update
            BEFORE UPDATE ON asymmetric_provider_receipts
            BEGIN SELECT RAISE(ABORT,'LAB-091 provider receipt is immutable'); END""",
-        """CREATE TRIGGER lab091_receipt_no_delete
+        """CREATE TRIGGER lab091_v2_receipt_no_delete
            BEFORE DELETE ON asymmetric_provider_receipts
            BEGIN SELECT RAISE(ABORT,'LAB-091 provider receipt cannot be deleted'); END""",
     )
