@@ -11,6 +11,14 @@ def install_full_operation_guards(q: PermitConnection) -> None:
         raise RuntimeError("guard installation requires an active transaction")
 
     names = (
+        # Replace the earlier transaction-wide boolean guard names if this is an
+        # upgrade of an existing LAB-091 database.
+        "lab091_meta_authorized_update",
+        "lab091_intent_authorized_insert",
+        "lab091_intent_authorized_update",
+        "lab091_watermark_authorized_insert",
+        "lab091_watermark_authorized_update",
+        "lab091_receipt_authorized_insert",
         "lab091_meta_no_insert",
         "lab091_meta_exact_update",
         "lab091_meta_no_delete",
