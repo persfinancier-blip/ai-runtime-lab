@@ -18,44 +18,46 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Continued the current-head LAB-086 gate audit after exact migration-guard 11/11 and corrected scrubbed-prefix/final-writer 1/1 had passed.
+Solved the exact-source transport bottleneck without weakening the gate. Direct shell/raw GitHub transport is still unavailable, but the GitHub connector exposes blob-by-SHA reads. `fetch_blob` returns byte-stable source suitable for local execution and `git hash-object` verification.
 
-The strengthened least-privilege fence exposed the same stale test-harness assumption in `test_suffix.py`: three tests performed *successful* consequential asymmetric recovery directly through `SupportedAsymmetricBreakGlassLedger` after cutoff, although direct suffix mutation is intentionally denied and only `SupportedFencedAsymmetricBreakGlassLedger` may thaw the creation/head-update gates.
+Reconstructed the LAB-080 shared-anchor implementation through this path and verified exact identities locally:
+- `experiments/shared_anchor_intent_ledger/protocol.py` → `68834409363c93eee4e9a9a7b9ec076098af0acf`;
+- `experiments/shared_anchor_intent_ledger/supported.py` → `22a05c04831f65c1d7fe9077df3bb780c4008e09`.
 
-Only the successful mutation cases were changed to wrap the migrated ledger with `SupportedFencedAsymmetricBreakGlassLedger.from_existing(...)`; negative tests that must fail before mutation remain on the underlying suffix surface. No runtime fence was weakened.
+A fresh current-head source/schema coverage audit rechecked `migration_guard.py`, `suffix.py`, `final_supported.py`, `strict_fence.py`, LAB-085 public custody/final tables and LAB-082 provider history. No new privilege-escalation or stale-supported-writer bypass was established. The remaining intentionally mutable/unrestricted boundaries are already tracked in LAB-091/#170 (shared-anchor/new-receipt writer authorization) and LAB-087/#166 (arbitrary same-privilege DDL/schema control).
 
-Branch commit `6a368a26e85c5d0672a527481f44f47283c8f951`; new `test_suffix.py` blob `14b87522974a365738a56d82923ed9ae377a752e`.
-
-Direct shell GitHub transport is unavailable in this run (`Could not resolve host: github.com`); connector read/write works and is not an owner blocker.
+No new PASS is claimed for the changed `test_suffix.py`; exact execution still requires reconstructing the remaining LAB-082→085 implementation closure and current LAB-086 files.
 
 ## Evidence produced / reconfirmed
 
-- Exact LAB-086 migration guard integration: 11/11 PASS from the prior reconstructed current-head closure.
+- Exact LAB-086 migration guard integration: 11/11 PASS from the prior current-head closure.
 - Exact corrected scrubbed-prefix → final-writer → restart regression: 1/1 PASS.
-- Current LAB-086 implementation blobs previously reconstructed exactly: migration guard `5a5bb928...`, strict fence `5da01e28...`, suffix `44847bde...`, final supported `ceb7f48a...`.
-- The current source audit found and corrected three stale successful direct-suffix mutation calls in `test_suffix.py`; no new PASS count is claimed for that changed module until it is executed in the exact closure.
+- Current LAB-086 implementation blobs previously reconstructed exactly: migration guard `5a5bb928b39a96f93f019b103b483dfb9bf43c6d`, strict fence `5da01e28a9f813a136d138637f855940f04aab46`, suffix `44847bde53b9f7b0e2fbcbab37d36dc992f497b2`, final supported `ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`.
+- Current `test_suffix.py` blob: `14b87522974a365738a56d82923ed9ae377a752e`; successful post-cutoff mutations use the final fenced surface, negative tests remain on the underlying suffix surface.
 - Cumulative exact lower-stack evidence remains: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric-custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
+- Fresh branch/main compare: ahead 142 / behind 83; the LAB-086 PR paths remain additions relative to main, so the observed divergence is history/path-nonoverlap rather than a current path-level conflict.
+- Exact connector reconstruction path is now proven by blob SHA and local `git hash-object`; manual line-range reconstruction must not be counted as evidence.
 
 ## Known blockers / constraints
 
-- Full current-head LAB-086 gate is still incomplete: the updated exact `test_suffix.py` and remaining final-supported/security modules must be connector-reconstructed and executed, followed by unsafe legacy-promotion seed, full compileall and final audit.
-- Do not weaken the runtime fence to satisfy old direct-suffix tests. Successful consequential mutation after cutoff must use the final fenced surface.
-- Direct shell GitHub transport is unavailable in this runtime; connector reconstruction works.
+- Full current-head LAB-086 gate is still incomplete: updated exact `test_suffix.py` and remaining final-supported/security modules must be executed on one exact reconstructed closure, followed by unsafe legacy-promotion seed, full compileall and final audit.
+- Direct shell GitHub transport remains unavailable; connector `fetch_blob` is the supported exact-source fallback and is not an owner blocker.
+- Do not weaken the runtime fence to satisfy stale tests. Successful consequential mutation after cutoff must use the final fenced surface.
 - LAB-086 SQL fences cover audited supported/DML paths, not arbitrary same-privilege schema/DDL authority; LAB-087/#166 owns that boundary.
 - LAB-088/#167 signer-noise, LAB-090/#169 provider handoff freshness, and LAB-091/#170 mutable shared-anchor/new-receipt authorization remain separate follow-ups.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Reconstruct and execute exact current `test_suffix.py` blob `14b87522974a365738a56d82923ed9ae377a752e` against the already proven LAB-080→085 closure and current LAB-086 implementation bytes.
-2. Continue the remaining current-head real-ledger security modules: orphan/partial migration, full lower/public-history guards, public-rotation cross-binding/history, inherited/direct surfaces, rotation races, final single-snapshot verification and strict DML/fence regressions not already counted in this closure.
-3. Run unsafe legacy-promotion seed and full compileall over the complete reconstructed closure.
-4. Perform a fresh security audit of every consequential/restart path and re-check branch/main divergence. Fix every blocking failure before ready/merge.
-5. Only after the complete current-head gate is clean, mark PR #165 ready and integrate; otherwise keep it draft with exact evidence and next action recorded.
+1. Use connector `fetch_blob` by known Git SHA to reconstruct the exact LAB-082→085 implementation closure into one local workspace, verifying each executable file with `git hash-object`; replace any earlier manual/non-exact local copies before testing.
+2. Add the current exact LAB-086 implementation and `test_suffix.py` blob `14b87522974a365738a56d82923ed9ae377a752e`, then execute it.
+3. Execute the remaining current-head real-ledger security modules: orphan/partial migration, full lower/public-history guards, public-rotation cross-binding/history, inherited/direct surfaces, rotation races, final single-snapshot verification and strict DML/fence regressions not already counted in this closure.
+4. Run unsafe legacy-promotion seed and full compileall over the complete reconstructed closure.
+5. Perform a fresh security audit and branch/main conflict check. Fix every blocking failure before ready/merge; only after a clean complete gate may PR #165 be marked ready and integrated.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; migration guard 11/11 and corrected scrubbed-suffix 1/1 PASS; `test_suffix.py` successful mutation paths now corrected to final writer and await exact execution.
+- #163 / LAB-086 — IN_PROGRESS; exact blob transport solved; migration guard 11/11 and corrected scrubbed-suffix 1/1 PASS; current `test_suffix.py` awaits exact closure execution.
 - #166 / LAB-087 — IN_PROGRESS; prior exact current slice 12/12 PASS.
 - #167 / LAB-088 — READY; threshold signer-noise robustness.
 - #168 / LAB-089 — CLOSED `not_planned`.
