@@ -178,10 +178,81 @@ class AuthenticatedBreakGlassMigrationGuard:
         self.ledger._verify_break_glass_custody_locked(q)
         return True
 
+    def _verify_lower_evidence_cardinality_locked(self, q):
+        """Reject unexplained lower-layer evidence before signing the cutoff.
+
+        LAB-082/LAB-083 durable verifiers prove every referenced transition/proof,
+        but their reference-driven walks do not make the reverse statement that
+        every durable row is referenced.  LAB-086 must not freeze unexplained rows
+        into the public-only database outside the signed migration projection.
+        """
+        root_ids = [
+            row[0]
+            for row in q.execute(
+                'SELECT authority_id FROM provider_rotation_authorities ORDER BY version'
+            ).fetchall()
+        ]
+        expected_root_successors = set(root_ids[1:])
+        normal_root_successors = {
+            row[0]
+            for row in q.execute(
+                'SELECT new_authority_id FROM provider_rotation_authority_transitions'
+            ).fetchall()
+        }
+        recovery_root_successors = {
+            row[0]
+            for row in q.execute(
+                'SELECT new_rotation_authority_id FROM provider_rotation_recovery_transitions'
+            ).fetchall()
+        }
+        if (
+            normal_root_successors & recovery_root_successors
+            or normal_root_successors | recovery_root_successors
+            != expected_root_successors
+        ):
+            raise MigrationGuardError('unexplained root transition evidence before migration')
+
+        generation_rows = q.execute(
+            'SELECT generation_id FROM asymmetric_provider_generations ORDER BY generation'
+        ).fetchall()
+        expected_provider_successors = {row[0] for row in generation_rows[1:]}
+        provider_transition_ids = {
+            row[0]
+            for row in q.execute(
+                'SELECT new_generation_id FROM asymmetric_provider_transitions'
+            ).fetchall()
+        }
+        if provider_transition_ids != expected_provider_successors:
+            raise MigrationGuardError('unexplained provider transition evidence before migration')
+
+        enablement = self.ledger._load_enablement_locked(q)
+        controlled_provider_successors = {
+            row[0]
+            for row in q.execute(
+                'SELECT t.new_generation_id FROM asymmetric_provider_transitions t '
+                'JOIN asymmetric_provider_generations g '
+                'ON g.generation_id=t.new_generation_id '
+                'WHERE g.generation>?',
+                (enablement.start_provider_generation,),
+            ).fetchall()
+        }
+        threshold_proof_ids = {
+            row[0]
+            for row in q.execute(
+                'SELECT new_provider_generation_id FROM provider_rotation_threshold_proofs'
+            ).fetchall()
+        }
+        if threshold_proof_ids != controlled_provider_successors:
+            raise MigrationGuardError('unexplained provider threshold proof before migration')
+        return True
+
     def _verify_preboundary_locked(self, q):
         if type(self.ledger) is SupportedRecoveryCustodyLedger:
-            return self._verify_inherited_locked(q)
-        return self.ledger._verify_lab086_locked(q)
+            self._verify_inherited_locked(q)
+        else:
+            self.ledger._verify_lab086_locked(q)
+        self._verify_lower_evidence_cardinality_locked(q)
+        return True
 
     @staticmethod
     def _rows(q, sql, args=()):
