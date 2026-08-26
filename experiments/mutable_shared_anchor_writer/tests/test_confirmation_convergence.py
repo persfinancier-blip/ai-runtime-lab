@@ -20,19 +20,9 @@ sys.modules["experiments.shared_anchor_intent_ledger.protocol"] = shared
 setattr(experiments, "shared_anchor_intent_ledger", shared_pkg)
 setattr(shared_pkg, "protocol", shared)
 
-
-class Intent:
-    pass
-
-
-class IntentSubstitution(RuntimeError):
-    pass
-
-
-class PendingIntent(RuntimeError):
-    pass
-
-
+class Intent: pass
+class IntentSubstitution(RuntimeError): pass
+class PendingIntent(RuntimeError): pass
 shared.Intent = Intent
 shared.IntentSubstitution = IntentSubstitution
 shared.PendingIntent = PendingIntent
@@ -51,7 +41,6 @@ Entry = namedtuple(
 parent_mod = types.ModuleType(
     "experiments.mutable_shared_anchor_writer.operation_scoped_integration"
 )
-
 
 class Parent:
     def _con(self):
@@ -127,7 +116,6 @@ class Parent:
         q.close()
         return Entry(*row)
 
-
 parent_mod.SupportedOperationScopedAsymmetricSharedAnchorLedger = Parent
 sys.modules[
     "experiments.mutable_shared_anchor_writer.operation_scoped_integration"
@@ -165,19 +153,7 @@ class ConfirmationConvergenceTests(unittest.TestCase):
         )
         q.execute(
             "INSERT INTO shared_anchor_intents VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                "i",
-                "c",
-                "migration",
-                (payload_digest or "d" * 64),
-                "p",
-                1,
-                0,
-                1,
-                "r",
-                status,
-                receipt,
-            ),
+            ("i","c","migration",(payload_digest or "d"*64),"p",1,0,1,"r",status,receipt),
         )
         q.executescript(
             """
@@ -198,41 +174,39 @@ class ConfirmationConvergenceTests(unittest.TestCase):
         q.close()
         ledger = Ledger.__new__(Ledger)
         ledger.path = str(path)
-        prepared = Entry(
-            "i", "c", "migration", "d" * 64, "p", 1, 0, 1, "r", "PREPARED", None
-        )
+        prepared = Entry("i","c","migration","d"*64,"p",1,0,1,"r","PREPARED",None)
         return ledger, prepared
 
     def test_prepared_worker_can_confirm(self):
         with tempfile.TemporaryDirectory() as td:
             ledger, entry = self.make(td)
-            out = ledger._commit_confirmation("i", entry, "b" * 64)
+            out = ledger._commit_confirmation("i", entry, "b"*64)
             self.assertEqual(out.status, "CONFIRMED")
-            self.assertEqual(out.receipt_binding, "b" * 64)
+            self.assertEqual(out.receipt_binding, "b"*64)
 
     def test_identical_loser_converges_on_confirmed_winner(self):
         with tempfile.TemporaryDirectory() as td:
-            ledger, entry = self.make(td, status="CONFIRMED", receipt="b" * 64)
-            out = ledger._commit_confirmation("i", entry, "b" * 64)
+            ledger, entry = self.make(td, status="CONFIRMED", receipt="b"*64)
+            out = ledger._commit_confirmation("i", entry, "b"*64)
             self.assertEqual(out.status, "CONFIRMED")
-            self.assertEqual(out.receipt_binding, "b" * 64)
+            self.assertEqual(out.receipt_binding, "b"*64)
 
     def test_confirmed_winner_with_different_receipt_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
-            ledger, entry = self.make(td, status="CONFIRMED", receipt="x" * 64)
+            ledger, entry = self.make(td, status="CONFIRMED", receipt="x"*64)
             with self.assertRaises(IntentSubstitution):
-                ledger._commit_confirmation("i", entry, "b" * 64)
+                ledger._commit_confirmation("i", entry, "b"*64)
 
     def test_confirmed_winner_with_different_request_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             ledger, entry = self.make(
                 td,
                 status="CONFIRMED",
-                receipt="b" * 64,
-                payload_digest="e" * 64,
+                receipt="b"*64,
+                payload_digest="e"*64,
             )
             with self.assertRaises(IntentSubstitution):
-                ledger._commit_confirmation("i", entry, "b" * 64)
+                ledger._commit_confirmation("i", entry, "b"*64)
 
 
 if __name__ == "__main__":
