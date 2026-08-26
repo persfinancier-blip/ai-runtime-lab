@@ -37,6 +37,16 @@ class HistoryBindingGuardTests(unittest.TestCase):
               component_id TEXT PRIMARY KEY,
               position INTEGER NOT NULL
             );
+            CREATE TABLE asymmetric_provider_receipts(
+              request_id TEXT PRIMARY KEY,
+              provider_id TEXT NOT NULL,
+              generation INTEGER NOT NULL,
+              position INTEGER NOT NULL,
+              kind TEXT NOT NULL,
+              challenge TEXT NOT NULL,
+              signature TEXT NOT NULL,
+              stable_binding TEXT NOT NULL
+            );
             """
         )
         q.execute("BEGIN IMMEDIATE")
@@ -108,6 +118,36 @@ class HistoryBindingGuardTests(unittest.TestCase):
         )
         with self.assertRaises(sqlite3.IntegrityError):
             q.execute("INSERT INTO component_anchor_watermarks VALUES('component-A',2)")
+
+    def test_confirmation_requires_matching_provider_receipt(self):
+        q=self.make()
+        self.insert_intent(q,1,status="PREPARED",receipt=False)
+        binding=digest("binding-1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute(
+                "UPDATE shared_anchor_intents SET status='CONFIRMED',receipt_binding=? WHERE intent_id='intent-1'",
+                (binding,),
+            )
+
+    def test_confirmation_accepts_matching_provider_receipt(self):
+        q=self.make()
+        self.insert_intent(q,1,status="PREPARED",receipt=False)
+        row=q.execute(
+            "SELECT request_id,provider_id,provider_generation,position FROM shared_anchor_intents WHERE intent_id='intent-1'"
+        ).fetchone()
+        binding=digest("binding-1")
+        q.execute(
+            "INSERT INTO asymmetric_provider_receipts VALUES(?,?,?,?,?,?,?,?)",
+            (row[0],row[1],row[2],row[3],"RECONCILE","challenge","signature",binding),
+        )
+        q.execute(
+            "UPDATE shared_anchor_intents SET status='CONFIRMED',receipt_binding=? WHERE intent_id='intent-1'",
+            (binding,),
+        )
+        self.assertEqual(
+            q.execute("SELECT status FROM shared_anchor_intents WHERE intent_id='intent-1'").fetchone()[0],
+            "CONFIRMED",
+        )
 
 
 if __name__ == "__main__":
