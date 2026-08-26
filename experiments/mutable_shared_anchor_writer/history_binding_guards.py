@@ -7,6 +7,7 @@ HISTORY_TRIGGER_NAMES = (
     "lab091_v4_intent_requires_deterministic_request_id",
     "lab091_v4_watermark_insert_requires_confirmed_prefix",
     "lab091_v4_watermark_update_requires_confirmed_prefix",
+    "lab091_v4_confirmation_requires_matching_receipt",
 )
 
 
@@ -71,5 +72,24 @@ def install_history_binding_guards(q: PermitConnection) -> None:
              )
            BEGIN
              SELECT RAISE(ABORT,'LAB-091 watermark update lacks complete confirmed history');
+           END"""
+    )
+    q.execute(
+        """CREATE TRIGGER lab091_v4_confirmation_requires_matching_receipt
+           BEFORE UPDATE ON shared_anchor_intents
+           WHEN NEW.status='CONFIRMED' AND (
+             NEW.receipt_binding IS NULL
+             OR NOT EXISTS(
+               SELECT 1 FROM asymmetric_provider_receipts r
+               WHERE r.request_id=NEW.request_id
+                 AND r.provider_id=NEW.provider_id
+                 AND r.generation=NEW.provider_generation
+                 AND r.position=NEW.position
+                 AND r.kind='RECONCILE'
+                 AND r.stable_binding=NEW.receipt_binding
+             )
+           )
+           BEGIN
+             SELECT RAISE(ABORT,'LAB-091 confirmation lacks matching provider receipt');
            END"""
     )
