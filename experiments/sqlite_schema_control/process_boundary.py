@@ -20,9 +20,16 @@ class UnixReadOnlyWorkerBoundary:
     Workers running under a different UID in that group can read the database,
     but cannot modify the database file or replace/delete names in its directory.
 
-    This is a Unix discretionary-access-control experiment, not a same-UID/root
-    sandbox.  A process with the broker UID, root, CAP_DAC_OVERRIDE, or authority
-    to change permissions remains outside this boundary.
+    Every lexical ancestor above the protected directory must also be a stable
+    root/broker-owned namespace. Group/world-writable ancestors are rejected
+    unless sticky-bit semantics protect broker-owned child names (for example
+    ``/tmp``). This prevents a worker from replacing the whole protected
+    directory through a writable ancestor while never writing inside it.
+
+    This is a Unix discretionary-access-control experiment, not a same-UID/root,
+    ACL, capability, mount-namespace, or privileged-filesystem sandbox. A process
+    with the broker UID, root, CAP_DAC_OVERRIDE, or authority to change namespace
+    ownership/permissions remains outside this boundary.
     """
 
     path: Path
@@ -42,6 +49,22 @@ class UnixReadOnlyWorkerBoundary:
             raise FilesystemBoundaryError("unable to determine SQLite journal mode")
         return row[0].lower()
 
+    @staticmethod
+    def _verify_ancestor_namespace(parent: Path, broker_uid: int) -> None:
+        current = parent.parent
+        while True:
+            st = os.lstat(current)
+            if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+                raise FilesystemBoundaryError("database namespace ancestor is not a stable directory")
+            if st.st_uid not in (0, broker_uid):
+                raise FilesystemBoundaryError("database namespace ancestor is not root/broker owned")
+            mode = stat.S_IMODE(st.st_mode)
+            if mode & (stat.S_IWGRP | stat.S_IWOTH) and not st.st_mode & stat.S_ISVTX:
+                raise FilesystemBoundaryError("database namespace ancestor is writable without sticky protection")
+            if current == current.parent:
+                break
+            current = current.parent
+
     @classmethod
     def install(cls, path: str | Path, *, worker_gid: int) -> "UnixReadOnlyWorkerBoundary":
         db = Path(path).absolute()
@@ -53,13 +76,14 @@ class UnixReadOnlyWorkerBoundary:
         if type(worker_gid) is not int or worker_gid < 0:
             raise FilesystemBoundaryError("invalid worker gid")
 
+        uid = os.geteuid()
+        cls._verify_ancestor_namespace(parent, uid)
         if cls._journal_mode(db) == "wal":
             raise FilesystemBoundaryError("WAL mode is not supported for a live read-only worker boundary")
         unexpected = sorted(entry.name for entry in parent.iterdir() if entry != db)
         if unexpected:
             raise FilesystemBoundaryError("database directory must be dedicated to the broker-owned database")
 
-        uid = os.geteuid()
         os.chown(parent, uid, worker_gid)
         os.chmod(parent, 0o750)
         os.chown(db, uid, worker_gid)
@@ -77,6 +101,7 @@ class UnixReadOnlyWorkerBoundary:
             raise FilesystemBoundaryError("namespace became symlinked")
         if not stat.S_ISREG(ds.st_mode) or not stat.S_ISDIR(ps.st_mode):
             raise FilesystemBoundaryError("unexpected filesystem object type")
+        self._verify_ancestor_namespace(parent, self.broker_uid)
         if (ps.st_uid, ps.st_gid, stat.S_IMODE(ps.st_mode)) != (
             self.broker_uid, self.worker_gid, self.directory_mode
         ):
