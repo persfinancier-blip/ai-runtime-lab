@@ -146,6 +146,47 @@ class ProcessBoundaryTests(unittest.TestCase):
                              (after.st_uid, after.st_gid, after.st_mode & 0o777))
             self.assertEqual(sibling.read_text(), "unrelated")
 
+    def test_worker_writable_ancestor_is_rejected_before_permission_changes(self):
+        worker = pwd.getpwnam("nobody")
+        with tempfile.TemporaryDirectory(dir="/tmp") as outer:
+            container = Path(outer) / "worker-writable"
+            container.mkdir()
+            container.chmod(0o777)
+            protected = container / "protected"
+            protected.mkdir()
+            path = protected / "authority.db"
+            q = sqlite3.connect(path)
+            q.execute("CREATE TABLE authority(id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+            q.execute("INSERT INTO authority VALUES(1,'trusted')")
+            q.commit(); q.close()
+            before = protected.stat()
+
+            with self.assertRaisesRegex(RuntimeError, "ancestor is writable"):
+                UnixReadOnlyWorkerBoundary.install(path, worker_gid=worker.pw_gid)
+
+            after = protected.stat()
+            self.assertEqual((before.st_uid, before.st_gid, before.st_mode & 0o777),
+                             (after.st_uid, after.st_gid, after.st_mode & 0o777))
+
+    def test_verify_detects_ancestor_becoming_worker_writable(self):
+        worker = pwd.getpwnam("nobody")
+        with tempfile.TemporaryDirectory(dir="/tmp") as outer:
+            container = Path(outer) / "stable"
+            container.mkdir()
+            protected = container / "protected"
+            protected.mkdir()
+            path = protected / "authority.db"
+            q = sqlite3.connect(path)
+            q.execute("CREATE TABLE authority(id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+            q.execute("INSERT INTO authority VALUES(1,'trusted')")
+            q.commit(); q.close()
+            boundary = UnixReadOnlyWorkerBoundary.install(path, worker_gid=worker.pw_gid)
+            self.assertTrue(boundary.verify())
+
+            container.chmod(0o777)
+            with self.assertRaisesRegex(RuntimeError, "ancestor is writable"):
+                boundary.verify()
+
 
 if __name__ == "__main__":
     unittest.main()
