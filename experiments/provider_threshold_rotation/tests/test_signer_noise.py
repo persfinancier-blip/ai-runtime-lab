@@ -46,7 +46,10 @@ class SignerNoiseTests(unittest.TestCase):
             root.generation,
             (invalid(raw[0]), valid(raw[0], intent.payload), valid(raw[1], intent.payload)),
         )
-        self.assertEqual(verify_threshold(root, intent, proof), tuple(sorted((key_id(raw[0]), key_id(raw[1])))))
+        self.assertEqual(
+            verify_threshold(root, intent, proof),
+            tuple(sorted((key_id(raw[0]), key_id(raw[1])))),
+        )
 
     def test_enablement_invalid_known_signer_does_not_consume_later_valid_signature(self):
         root, raw = authority()
@@ -59,7 +62,10 @@ class SignerNoiseTests(unittest.TestCase):
             unsigned.authority_generation,
             (invalid(raw[0]), valid(raw[0], unsigned.payload), valid(raw[1], unsigned.payload)),
         )
-        self.assertEqual(verify_enablement(root, enablement), tuple(sorted((key_id(raw[0]), key_id(raw[1])))))
+        self.assertEqual(
+            verify_enablement(root, enablement),
+            tuple(sorted((key_id(raw[0]), key_id(raw[1])))),
+        )
 
     def test_authority_rotation_invalid_known_signer_does_not_consume_later_valid_signature(self):
         old, old_raw = authority(prefix="old")
@@ -72,7 +78,10 @@ class SignerNoiseTests(unittest.TestCase):
                 (invalid(old_raw[0]), valid(old_raw[0], payload), valid(old_raw[1], payload)),
                 (valid(new_raw[0], payload), valid(new_raw[1], payload)),
             )
-        self.assertEqual(result["old_signers"], tuple(sorted((key_id(old_raw[0]), key_id(old_raw[1])))))
+        self.assertEqual(
+            result["old_signers"],
+            tuple(sorted((key_id(old_raw[0]), key_id(old_raw[1])))),
+        )
 
     def test_restart_verifier_invalid_known_signer_noise_does_not_break_valid_history(self):
         old, old_raw = authority(prefix="old")
@@ -103,7 +112,10 @@ class SignerNoiseTests(unittest.TestCase):
                 q.close()
             q = durable._con()
             try:
-                self.assertEqual(durable.verify_durable_locked(q, ()).authority_id, new.authority_id)
+                self.assertEqual(
+                    durable.verify_durable_locked(q, ()).authority_id,
+                    new.authority_id,
+                )
             finally:
                 q.close()
 
@@ -145,7 +157,10 @@ class SignerNoiseTests(unittest.TestCase):
                 valid(raw[1], intent.payload),
             ),
         )
-        self.assertEqual(verify_threshold(root, intent, proof), tuple(sorted((key_id(raw[0]), key_id(raw[1]))))
+        self.assertEqual(
+            verify_threshold(root, intent, proof),
+            tuple(sorted((key_id(raw[0]), key_id(raw[1])))),
+        )
 
 
 if __name__ == "__main__":
