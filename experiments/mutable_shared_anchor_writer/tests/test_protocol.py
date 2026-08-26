@@ -81,6 +81,27 @@ class Tests(unittest.TestCase):
                     with w._write_txn() as q: q.execute(sql)
             w.close()
 
+    def test_replace_existing_intent_and_watermark_denied_even_authorized(self):
+        with tempfile.TemporaryDirectory() as td:
+            w=self.make(td); w.reserve(intent_row()); w.advance_watermark("component-A",0,1)
+            with self.assertRaises(sqlite3.DatabaseError):
+                with w._write_txn() as q:
+                    q.execute("INSERT OR REPLACE INTO shared_anchor_intents VALUES('i1','component-A','migration','"+"a"*64+"','anchor-A',1,0,1,'req-i1','PREPARED',NULL)")
+            with self.assertRaises(sqlite3.DatabaseError):
+                with w._write_txn() as q:
+                    q.execute("INSERT OR REPLACE INTO component_anchor_watermarks VALUES('component-A',99)")
+            w.close()
+
+    def test_negative_control_writable_connection_can_spoof_udf_if_lab087_boundary_is_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            w=self.make(td)
+            q=sqlite3.connect(w.path)
+            q.create_function("lab091_writer_authorized",0,lambda:1)
+            q.execute("UPDATE shared_anchor_meta SET reserved_position=9")
+            q.commit()
+            self.assertEqual(q.execute("SELECT reserved_position FROM shared_anchor_meta").fetchone()[0],9)
+            q.close(); w.close()
+
     def test_failure_rolls_back_authorization_and_data(self):
         with tempfile.TemporaryDirectory() as td:
             w=self.make(td)
