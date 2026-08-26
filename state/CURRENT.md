@@ -13,25 +13,31 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Current observed PR #165 HEAD: `95fa5da3c457e3431cd596ec969d5939b0a1d925`; mergeable=false; full current-head LAB-080→086 real-ledger execution gate remains outstanding.
 - Fresh compare: branch is ahead 154 / behind 105. All 59 PR files are additions relative to current main; no path-level overlap is observed, so the reported non-mergeability is currently history divergence rather than an established content conflict.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current observed PR #173 HEAD `0287d961c64dbf4dedf7cab8f97ffe61dc4223fc`, mergeable=true, draft.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current observed PR #173 HEAD `14c0424e1701c77290e5d9aa08d3cf5a2fac557b`, mergeable=true, draft.
 
 ## Last completed step
 
 Re-read AGENTS.md, CURRENT and SELF_RESUME, inspected PR #165/#173 and resumed LAB-086 first. Direct shell GitHub transport remains unavailable, and the full exact LAB-080→086 dependency closure was not safely reconstructed in this runtime. Fresh source audit of current `migration_guard.py`, `suffix.py`, `final_supported.py` and `strict_fence.py` did not establish a new LAB-086 privilege-escalation/stale-writer blocker. No new LAB-086 PASS or merge claim was made.
 
-Per the recorded fallback, audited LAB-091 beyond exact row-token binding. Found a real state-machine gap: the v2 one-shot guards proved that a permit matched the exact row requested, but did not prove that the row was a legal successor of current durable LAB-080/LAB-082 state. Focused executable counterexamples accepted:
+Per the recorded fallback, audited LAB-091 beyond exact row-token binding. Found a real state-machine gap: the v2 one-shot guards proved that a permit matched the exact row requested, but did not prove that the row was a legal successor of current durable LAB-080/LAB-082 state. Executable counterexamples accepted:
 - a PREPARED intent with `provider_id='attacker'`, generation 999 while the durable provider head was anchor-A generation 1;
 - an orphan asymmetric provider receipt with no matching intent.
 
 Published additive v3 fix on PR #173:
-- `cross_table_guards.py` — exact runtime blob `b73c7ae95669a561a13c5fc2c1eca752721fe8a4`;
-- `state_machine_operation_scoped.py` — exact runtime blob `b359a9a191ea9632e97c227193b3bde886f904dc`;
-- `test_cross_table_state_machine_guards.py` — published blob `7ab5b406e3a1c1b45ac2f171a6e02fe6503777f6`;
+- `cross_table_guards.py` — blob `b73c7ae95669a561a13c5fc2c1eca752721fe8a4`;
+- `state_machine_operation_scoped.py` — blob `b359a9a191ea9632e97c227193b3bde886f904dc`;
+- `test_cross_table_state_machine_guards.py` — blob `7ab5b406e3a1c1b45ac2f171a6e02fe6503777f6`;
 - research note `research/2026-08-26-lab091-cross-table-state-machine-binding.md`.
 
 The v3 guards add cross-table invariants in a distinct trigger namespace: intent predecessor must equal the current shared-anchor tail; intent provider ID/generation must equal the current asymmetric provider head; meta advancement requires its matching PREPARED intent; provider-receipt creation requires RECONCILE evidence matching an existing PREPARED intent's request/provider/generation/position. `SupportedStateMachineOperationScopedAsymmetricSharedAnchorLedger` installs v2 exact-row guards + v3 state-machine guards atomically.
 
-Focused candidate execution passed **6/6**: wrong provider, wrong tail, missing intent for meta advance, orphan receipt, READ-vs-RECONCILE, and provider-generation rotation. The two runtime modules above are byte-identical to the locally executed candidate. The published regression file differs in formatting from the earlier local harness, so the 6/6 result is focused candidate evidence, not exact execution of the published test blob.
+Exact published-source reconstruction was then completed for this v3 slice. Local `git hash-object` matched GitHub for:
+- `operation_permit.py` `637784a5cb61a024a1df3e0e983887b6d0a838be`;
+- `row_tokens.py` `801eb0fbdb915bb31f40069d087bf3ce56d659a8`;
+- `cross_table_guards.py` `b73c7ae95669a561a13c5fc2c1eca752721fe8a4`;
+- published regression `7ab5b406e3a1c1b45ac2f171a6e02fe6503777f6`.
+
+The exact published v3 regression passed **6/6** and compileall passed. Covered cases: wrong provider, wrong tail, missing intent for meta advance, orphan receipt, READ-vs-RECONCILE, and provider-generation rotation.
 
 ## Evidence retained
 
@@ -42,7 +48,7 @@ Focused candidate execution passed **6/6**: wrong provider, wrong tail, missing 
 - LAB-091 one-shot permit primitive exact 6/6 PASS + compileall.
 - LAB-091 full mutable-row guards exact 12/12 PASS including legacy-surface persistence.
 - LAB-091 identical-worker confirmation convergence focused exact-byte candidate: 4/4 PASS.
-- LAB-091 v3 cross-table state-machine candidate: focused 6/6 PASS; published runtime blobs exactly match executed candidate, published regression blob itself not yet exact-executed.
+- LAB-091 v3 cross-table state-machine published-source regression: exact **6/6 PASS** + compileall.
 
 ## Known blockers / constraints
 
@@ -57,7 +63,7 @@ Focused candidate execution passed **6/6**: wrong provider, wrong tail, missing 
 ## Exact next action
 
 1. LAB-086 first: connector-reconstruct exact current PR #165 `migration_guard.py`, `suffix.py`, `final_supported.py` and the minimal import-closure of their real-schema tests on the proven LAB-080→085 stack; execute own/lower cardinality, migration, suffix, final-supported, cross-binding/history, inherited/direct-surface, strict-fence/thaw, restart/concurrency tests; then unsafe seed + full compileall + final audit.
-2. If that exact closure remains tool-limited, continue LAB-091 from PR #173 using the new `SupportedStateMachineOperationScopedAsymmetricSharedAnchorLedger`: exact-execute the published v3 regression, then run against real LAB-080/LAB-082 with two actual workers sharing one intent/request and prove exactly one confirmation plus identical receipt convergence.
+2. If that exact closure remains tool-limited, continue LAB-091 from PR #173 using `SupportedStateMachineOperationScopedAsymmetricSharedAnchorLedger`: run it against real LAB-080/LAB-082 with two actual workers sharing one intent/request and prove exactly one confirmation plus identical receipt convergence.
 3. Add exact restart, crash rollback, timeout-after-commit/UNKNOWN reconciliation and LAB-087 restricted-worker composition tests. Audit deterministic request-id and watermark/history binding before declaring LAB-091 supported. Keep PR #173 draft until that complete gate is clean.
 
 ## Backlog
@@ -67,4 +73,4 @@ Focused candidate execution passed **6/6**: wrong provider, wrong tail, missing 
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; one-shot/v2 guards, legacy downgrade and identical-worker convergence are tested; v3 cross-table runtime guards are published and focused-tested, but exact real-stack restart/concurrency/crash/UNKNOWN/LAB-087 gate remains.
+- #170 / LAB-091 — IN_PROGRESS; one-shot/v2 guards, legacy downgrade and identical-worker convergence are tested; v3 cross-table runtime guards are exact-published and 6/6 tested, but real-stack restart/concurrency/crash/UNKNOWN/LAB-087 gate remains.
