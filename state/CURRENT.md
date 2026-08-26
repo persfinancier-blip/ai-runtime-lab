@@ -18,26 +18,29 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Finished LAB-087 exactly while LAB-086 bulk dependency export remains unavailable in this runtime.
+Re-audited the current LAB-086 migration/cardinality path while the bulk exact dependency export remains unavailable in this runtime.
 
-Exact current LAB-087 source/test blobs were reconstructed and executed. The pre-audit suite passed 12/12. A separate adversarial filesystem audit then reproduced a namespace bypass: with the protected DB directory under a broker-owned `0777` non-sticky ancestor, the distinct worker UID could rename the entire protected directory and create a replacement without writing inside the protected directory.
+The new `_verify_lower_evidence_cardinality_locked()` rule was compared with the exact merged LAB-083 enablement semantics. LAB-083 controls provider transitions strictly where `new_generation > start_provider_generation`; LAB-086 uses the same strict `>` boundary. A focused SQLite semantic execution using the exact current cardinality logic observed:
+- valid history PASS;
+- orphan provider transition rejected;
+- orphan threshold proof rejected;
+- orphan root transition rejected;
+- a successor represented by both normal-root and recovery-root evidence rejected;
+- enablement at provider generation 2 correctly permits the generation-2 legacy transition without a threshold proof while requiring the generation-3 proof.
 
-LAB-087 now verifies the full lexical ancestor chain in addition to the immediate DB directory/file: ancestors must be root/broker-owned; group/world-writable ancestors are rejected unless sticky-bit semantics protect broker-owned child names (for example `/tmp`). The corrected published blobs are `process_boundary.py` `87456dfcbeac0c0e795fc0bcdeb3502cf57fcdd0` and `test_process_boundary.py` `eacffa649db7e848de6b17cbf734b4fbc7f6cae3`. Exact full suite after publication: **14/14 PASS**; compileall PASS. Final audit found no remaining blocker inside the stated Unix-DAC/process boundary. Issue #166 was closed completed.
+A separate source audit checked migration ceremony ordering against the current DML fence. The legacy freeze triggers intentionally permit only the one-way HMAC scrub transforms (`signatures_json -> []`, `keys_json -> {}`) while freezing semantic columns, so `projection/boundary/root-proof -> scrub -> verify -> commit` is compatible with the installed fence. LAB-085 public-custody `verify_durable()` uses a read transaction, so calling it while the outer LAB-086 verifier owns `BEGIN IMMEDIATE` does not attempt a second writer lock. No new blocker was established in this pass.
 
-Returned to LAB-086 after integration. Fresh branch/main compare after the LAB-087 merge is `ahead 146 / behind 89`; all 56 PR paths remain additions relative to main. A current-head source audit of `migration_guard -> strict_fence -> suffix` found no new privilege-escalation/stale-supported-writer blocker in this run. Issue #163 comment `5421449169` records the continuation report.
+Issue #163 comment `5421940902` records this continuation evidence.
 
 ## Evidence produced / reconfirmed
 
-LAB-087 final exact evidence:
-- `experiments/sqlite_schema_control/protocol.py` blob `5c999166c2155baa5ce3f644c36efe0e01e4e3fe`.
-- `experiments/sqlite_schema_control/process_boundary.py` blob `87456dfcbeac0c0e795fc0bcdeb3502cf57fcdd0`.
-- `tests/test_protocol.py` blob `3f795d22d844293d62a09a0c1285764443db2279`.
-- `tests/test_process_boundary.py` blob `eacffa649db7e848de6b17cbf734b4fbc7f6cae3`.
-- Full exact suite: 14/14 PASS; compileall PASS.
-- Process negative controls: broker UID remains writable; an unrestricted writable SQLite connection bypasses connection-scoped authorizer as expected.
-- Filesystem negative control/fix: writable non-sticky ancestor replacement attack reproduced pre-fix and rejected post-fix.
+LAB-086 focused evidence this run:
+- exact LAB-083 `SupportedThresholdAuthorizedAsymmetricProviderLedger.verify_durable()` uses `WHERE g.generation > enablement.start_provider_generation`, matching the LAB-086 cardinality rule;
+- focused cardinality semantic harness: valid PASS; orphan provider/proof/root and double root-proof-type cases rejected; later enablement boundary PASS;
+- migration scrub ordering is compatible with current legacy semantic-freeze triggers;
+- nested public-custody verifier uses `BEGIN` read transaction, not a competing `BEGIN IMMEDIATE`.
 
-LAB-086 cumulative exact lower-stack evidence remains:
+Cumulative exact lower-stack evidence remains:
 - LAB-080 18/18 PASS.
 - LAB-082 28/28 PASS.
 - LAB-083 24/24 PASS.
@@ -48,21 +51,24 @@ LAB-086 cumulative exact lower-stack evidence remains:
 - Current least-privilege fence blob: `5da01e28a9f813a136d138637f855940f04aab46`.
 - Current suffix blob: `44847bde53b9f7b0e2fbcbab37d36dc992f497b2`.
 
+LAB-087 final exact evidence remains 14/14 PASS + compileall PASS and is merged/DONE.
+
 ## Known blockers / constraints
 
 - LAB-086 remaining merge gate: execute current `test_pre_cutoff_lower_evidence_cardinality.py`, then the full current-head real-schema migration/suffix/final-supported/security suite from one exact LAB-080→086 dependency closure; run unsafe seed, compileall and final audit.
-- Direct shell/raw GitHub transport remains unavailable; connector reads work, but no safe bulk exact-byte repository export into the local executor was observed. File-by-file exact reconstruction remains the safe path.
-- LAB-086 branch is substantially diverged (`ahead 146 / behind 89` after LAB-087 merge); reconcile only after the test/security gate is clean.
-- LAB-086 fences cover audited supported/DML paths. LAB-087 now supplies the separate process/filesystem/write-handle boundary; root, broker UID, `CAP_DAC_OVERRIDE`, ACL/capability policy outside mode bits and privileged namespace replacement remain outside that claim.
+- Direct shell/raw GitHub transport remains unavailable. GitHub connector reads work; its archive endpoint is not supported. File-by-file exact reconstruction remains the safe execution path.
+- The focused cardinality execution above validates the formula but is not the exact real-ledger test module and is not counted as the merge gate.
+- PR #165 is currently reported non-mergeable by GitHub and is substantially diverged from current `main`; do not reconcile/integrate until the complete test/security gate is clean.
+- LAB-086 fences cover audited supported/DML paths. LAB-087 supplies the separate process/filesystem/write-handle boundary; root, broker UID, `CAP_DAC_OVERRIDE`, ACL/capability policy outside mode bits and privileged namespace replacement remain outside that claim.
 - LAB-088/#167 signer-noise, LAB-090/#169 provider handoff freshness, and LAB-091/#170 mutable shared-anchor/new-receipt authorization remain separate follow-ups.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Reconstruct the exact current LAB-086 dependency closure required by `test_pre_cutoff_lower_evidence_cardinality.py`, verify executable files with `git hash-object`, and execute that regression against migration guard blob `2ae3df05271385f1a0dd03d7ed85b86ec0ff72e2`.
-2. Execute current `test_suffix.py` and every remaining LAB-086 real-schema migration/final-supported/security module on the same closure, followed by unsafe legacy-promotion seed and full compileall.
+1. Continue file-by-file connector reconstruction of the exact LAB-080→086 dependency closure required by `test_pre_cutoff_lower_evidence_cardinality.py`; verify every reconstructed executable file with `git hash-object` and execute the real test module against migration guard blob `2ae3df05271385f1a0dd03d7ed85b86ec0ff72e2`.
+2. On the same closure execute current `test_suffix.py` and every remaining LAB-086 real-schema migration/final-supported/security module, followed by unsafe legacy-promotion seed and full compileall.
 3. Perform a fresh final security audit focused on reverse evidence cardinality, cutoff/root/public proof binding, alternate supported mutation paths, transaction-scoped thaw/restoration, restart snapshots and rotation races.
-4. Re-check branch/main divergence. Keep PR #165 draft until the complete current-head gate is clean; only then reconcile and integrate using supported auditable operations.
+4. Re-check branch/main divergence and PR mergeability. Keep PR #165 draft until the complete current-head gate is clean; only then reconcile and integrate using supported auditable operations.
 
 ## Backlog
 
