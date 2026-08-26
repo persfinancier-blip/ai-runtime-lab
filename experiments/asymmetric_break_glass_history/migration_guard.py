@@ -244,6 +244,26 @@ class AuthenticatedBreakGlassMigrationGuard:
         }
         if threshold_proof_ids != controlled_provider_successors:
             raise MigrationGuardError('unexplained provider threshold proof before migration')
+
+        # LAB-086 post-cutoff proof tables have no legitimate pre-cutoff
+        # semantics.  Do not sign a migration boundary while unexplained LAB-086
+        # evidence is already present.  The break-glass proof table is created by
+        # the suffix surface after the migration guard is first constructed, so a
+        # missing table is equivalent to zero rows on that earliest path.
+        for table in (
+            'provider_asymmetric_break_glass_proofs',
+            'provider_asymmetric_recovery_public_root_proofs',
+        ):
+            exists = q.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if exists is not None and q.execute(
+                f'SELECT COUNT(*) FROM {table}'
+            ).fetchone()[0]:
+                raise MigrationGuardError(
+                    f'unexplained LAB-086 proof evidence before migration: {table}'
+                )
         return True
 
     def _verify_preboundary_locked(self, q):
