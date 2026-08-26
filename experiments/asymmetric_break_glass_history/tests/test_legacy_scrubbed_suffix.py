@@ -9,6 +9,9 @@ from experiments.asymmetric_break_glass_history.migration_guard import (
 from experiments.asymmetric_break_glass_history.suffix import (
     SupportedAsymmetricBreakGlassLedger,
 )
+from experiments.asymmetric_break_glass_history.final_supported import (
+    SupportedFencedAsymmetricBreakGlassLedger,
+)
 from experiments.asymmetric_provider_history.protocol import GenerationSigner
 from experiments.provider_threshold_rotation.enablement import ThresholdEnablement
 from experiments.provider_threshold_rotation.protocol import Signature, mac
@@ -123,10 +126,11 @@ class ScrubbedLegacyPrefixIntegrationTests(unittest.TestCase):
             )
             root3, _ = authority(3, 3, "asymmetric")
             payload = migrated.asymmetric_recovery_payload(root3)
-            migrated.recover_rotation_authority_asymmetric(
+            fenced = SupportedFencedAsymmetricBreakGlassLedger.from_existing(migrated)
+            fenced.recover_rotation_authority_asymmetric(
                 root3, public_signatures(public_signers, payload, 3)
             )
-            self.assertTrue(migrated.verify_durable())
+            self.assertTrue(fenced.verify_durable())
 
             restarted = SupportedAsymmetricBreakGlassLedger(
                 path,
