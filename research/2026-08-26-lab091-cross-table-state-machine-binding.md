@@ -23,14 +23,16 @@ An additive v3 cross-table guard layer now binds exact one-shot permits to autho
 
 The candidate final surface `SupportedStateMachineOperationScopedAsymmetricSharedAnchorLedger` installs both the exact v2 row guards and the v3 cross-table guards in one `BEGIN IMMEDIATE` transaction.
 
-## Focused evidence
+## Exact published-source evidence
 
-The additive runtime files were published from the locally executed candidate and their Git blobs match exactly:
+The exact published files were reconstructed into one local workspace and verified with `git hash-object` before execution:
 
+- `operation_permit.py`: `637784a5cb61a024a1df3e0e983887b6d0a838be`;
+- `row_tokens.py`: `801eb0fbdb915bb31f40069d087bf3ce56d659a8`;
 - `cross_table_guards.py`: `b73c7ae95669a561a13c5fc2c1eca752721fe8a4`;
-- `state_machine_operation_scoped.py`: `b359a9a191ea9632e97c227193b3bde886f904dc`.
+- `test_cross_table_state_machine_guards.py`: `7ab5b406e3a1c1b45ac2f171a6e02fe6503777f6`.
 
-Focused execution passed 6/6 scenarios:
+The exact published regression suite passed **6/6** and compileall passed for the reconstructed package. Covered cases:
 
 - wrong provider/generation intent rejected despite exact permit;
 - wrong predecessor/tail intent rejected despite exact permit;
@@ -39,7 +41,7 @@ Focused execution passed 6/6 scenarios:
 - READ receipt rejected while matching RECONCILE receipt is accepted;
 - after durable provider-head rotation, an old-generation intent is rejected and the new generation is accepted.
 
-The published regression file is semantically the same six-case matrix, but its Git blob differs from the earlier local harness because of formatting/transcription during Contents API publication. Therefore the 6/6 result is focused candidate evidence, **not** exact execution of the published test blob.
+The final additive surface itself is published as `state_machine_operation_scoped.py` blob `b359a9a191ea9632e97c227193b3bde886f904dc`; it is intentionally not claimed as fully real-stack validated yet because its inherited LAB-080/LAB-082 execution/restart/concurrency paths remain part of the remaining gate.
 
 ## Remaining boundary
 
