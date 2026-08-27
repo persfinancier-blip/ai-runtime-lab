@@ -570,6 +570,17 @@ def _install_post_cutoff_evidence_freeze_locked(q):
     for table, (key_column, insert_name, update_name, delete_name) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items():
         if table not in tables:
             continue
+        no_replace_name = f"{insert_name}_existing_key_no_replace"
+        q.execute(f"DROP TRIGGER IF EXISTS {no_replace_name}")
+        q.execute(
+            f"""CREATE TRIGGER {no_replace_name}
+            BEFORE INSERT ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 existing post-cutoff evidence key cannot be replaced');
+            END"""
+        )
         q.execute(
             f"""CREATE TRIGGER {insert_name}
             BEFORE INSERT ON {table}
@@ -844,6 +855,11 @@ def assert_public_mutation_fence_locked(q):
         for table, (_, *triggers) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items()
         if table in tables
         for trigger in triggers
+    }
+    evidence_required |= {
+        f"{insert_name}_existing_key_no_replace"
+        for table, (_, insert_name, _, _) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items()
+        if table in tables
     }
     missing |= evidence_required - names
     if "asymmetric_provider_receipts" in tables:
