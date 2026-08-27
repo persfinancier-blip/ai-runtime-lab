@@ -356,6 +356,15 @@ def _install_thaw_insert_history_collision_fences_locked(q):
     for table, (key_column, trigger_name) in THAW_INSERT_HISTORY_COLLISION_FENCES.items():
         if table not in tables:
             continue
+        semantic_collision = ""
+        if table == "asymmetric_provider_generations":
+            semantic_collision = """
+               OR EXISTS(
+                 SELECT 1 FROM asymmetric_provider_generations
+                 WHERE provider_id IS NEW.provider_id
+                   AND generation IS NEW.generation
+               )
+            """
         q.execute(
             f"""CREATE TRIGGER {trigger_name}
             BEFORE INSERT ON {table}
@@ -363,6 +372,7 @@ def _install_thaw_insert_history_collision_fences_locked(q):
              AND (
                NEW.{key_column} IS NULL
                OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
+               {semantic_collision}
              )
             BEGIN
               SELECT RAISE(ABORT,'LAB-086 existing authenticated history key cannot be replaced');
