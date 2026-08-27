@@ -10,7 +10,7 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current PR #165 HEAD: `8082d0ab0c97efe15c1c8cb7c55767b457431d98`.
+- Current PR #165 HEAD: `5887eb79da5a13d2beb03ee8b846d64efb9328bd`.
 - Last fully executed runtime/test pin before the new blocker: `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
 - Published runtime at that pin: `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
 - GitHub reports PR #165 draft/mergeable=true. Mergeability is not a test/security result.
@@ -29,12 +29,18 @@ Focused executable counterexample:
 - `INSERT OR REPLACE ... (rowid=1, history_id='attacker-id', marker='tampered')` succeeded;
 - resulting row became `rowid=1, attacker-id, tampered`.
 
-Durable RED regression added:
-- `experiments/asymmetric_break_glass_history/tests/test_thaw_rowid_collision_regression.py` in commit `beefe0cf8f8ed17a52f149d09284ecd513dbb865`;
-- it covers public history during thaw, post-cutoff proof history during thaw, and append-only provider receipts.
+Exact pinned source inspection confirms the current runtime has no hidden-rowid predicate in:
+- `_install_thaw_insert_history_collision_fences_locked()`;
+- `_install_post_cutoff_evidence_freeze_locked()`;
+- `_install_provider_receipt_freeze_locked()`.
 
-Research/fix design added:
-- `research/2026-08-28-lab086-hidden-rowid-replace.md` in commit/current HEAD `8082d0ab0c97efe15c1c8cb7c55767b457431d98`.
+Durable RED regression:
+- `experiments/asymmetric_break_glass_history/tests/test_thaw_rowid_collision_regression.py`, blob `9773536e5c1627f2a01f13d45fcdcb7016aa7d08`, introduced by commit `beefe0cf8f8ed17a52f149d09284ecd513dbb865`.
+- It covers public history during thaw, post-cutoff proof history during thaw, and append-only provider receipts.
+
+Durable research/fix artifacts:
+- `research/2026-08-28-lab086-hidden-rowid-replace.md`;
+- `research/2026-08-28-lab086-hidden-rowid-replace.patch`, staged in current HEAD `5887eb79da5a13d2beb03ee8b846d64efb9328bd`.
 
 Focused candidate mechanism was executed separately. A safe permanent guard needs both:
 1. BEFORE INSERT: reject explicit rowid collision when `NEW.rowid != -1` and an existing row has that rowid;
@@ -57,7 +63,7 @@ Runtime has not been changed yet; security-critical `strict_fence.py` must be pa
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. The new hidden-rowid REPLACE bypass must be fixed before the full real-ledger gate can resume.
+- LAB-086 remains first priority. The hidden-rowid REPLACE bypass must be fixed before the full real-ledger gate can resume.
 - Affected policy includes INSERT-thawed authenticated-history tables, post-cutoff proof creation surfaces and `asymmetric_provider_receipts` append-only history.
 - Direct shell/raw GitHub transport remains unavailable. Connector reconstruction is byte-exact but file-by-file.
 - A reconstructed file counts as evidence only if `git hash-object` equals the pinned Git blob.
@@ -67,7 +73,7 @@ Runtime has not been changed yet; security-critical `strict_fence.py` must be pa
 
 ## Exact next action
 
-1. Reconstruct/hash-verify current `strict_fence.py` from the branch and produce the minimal rowid-safe collision patch for:
+1. Reconstruct/hash-verify current `strict_fence.py` and apply the staged rowid-safe patch from exact bytes to:
    - thawed authenticated-history collision fences;
    - post-cutoff proof no-replace fences;
    - provider-receipt append-only no-replace fence.
@@ -78,7 +84,7 @@ Runtime has not been changed yet; security-critical `strict_fence.py` must be pa
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; hidden-rowid REPLACE blocker RED and durable; runtime fix next.
+- #163 / LAB-086 — IN_PROGRESS; hidden-rowid REPLACE blocker RED and durable; exact runtime patch next.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
