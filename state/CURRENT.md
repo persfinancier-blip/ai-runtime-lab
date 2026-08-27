@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 ## Active objective
 
@@ -13,24 +13,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Current PR #165 HEAD: `e6bf48d81129914b8dbe3e23a2b1a416fab11e24`; current executable pin: `05d8e75a636818afcb32e085d464c9fa9171dea5`.
 - Fresh GitHub status: PR #165 is draft + mergeable=true. Mergeability is not a substitute for the execution gate.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current HEAD `5b3aebea574f9e8d6c4d7883625ef37b91a487cf`, draft + mergeable=true. Fallback only while LAB-086 exact reconstruction/execution is concretely tool-limited.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact reconstruction/execution is concretely tool-limited.
 
 ## Last completed step
 
-Resumed the repinned LAB-086 execution gate. Per-run capability probe reconfirmed that direct `git` and raw GitHub HTTP are unavailable in this runtime (`Could not resolve host` for both `github.com` and `raw.githubusercontent.com`). Connector reads remain exact but file-by-file, so the 30-module LAB-080→086 gate was not replaced by a manual/partial reconstruction.
+Resumed the exact published LAB-086 execution gate at pinned snapshot `05d8e75a...`. The connector now supports exact line-range reads of the 945-line `strict_fence.py`, so the previous display-truncation problem can be avoided. A complete local text reconstruction was attempted and then rejected by the mandatory Git blob gate: local `956472d15be506f94db8849cc43bd83eb7fcb0f2` != published `eb2198354d222ad0ad6b7d751bf5c649157b6b36`. No test execution from that reconstruction was counted. Connector base64 paging is also available, but there is still no supported machine pipe/mount from connector response bytes into the local executor; manually transcribing a security-critical 37 KB blob remains non-evidence.
 
-Fresh source audit of pinned `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` found no new thaw/semantic-identity bypass beyond the already fixed `UNIQUE(provider_id,generation)` case. The exact full gate remains required.
+Because that exact-execution path remained concretely tool-limited, performed the allowed LAB-091 fallback source audit. The final inheritance path is `history_bound_operation_scoped -> state_machine_operation_scoped -> convergent_operation_scoped -> operation_scoped_integration`. The broad `except Exception -> PendingIntent` in the base prototype is not reachable through the final execute method: the convergent override narrows retryable conversion to `ProviderUnavailable` / `UnknownOutcome`. Also confirmed LAB-082 cached receipt loading is cryptographic, not raw-row trust: `_maybe_load_receipt_locked()` calls `_verify_receipt_locked()` and checks stable binding. No new LAB-091 blocker was established.
 
-Because the documented fallback condition was met, advanced LAB-091 adversarial coverage. `shared_anchor_intents` has PK `intent_id` plus secondary UNIQUE identities `position` and `request_id`; the existing v2 insert guard checks all three, but the published suite did not explicitly attack REPLACE through the two secondary identities. Added `test_intent_alternate_unique_replace_regression.py` on PR #173, commit `5b3aebea574f9e8d6c4d7883625ef37b91a487cf`.
-
-Exact published-source evidence for that regression:
-- `operation_permit.py` blob `637784a5cb61a024a1df3e0e983887b6d0a838be` — local `git hash-object` MATCH;
-- `row_tokens.py` blob `801eb0fbdb915bb31f40069d087bf3ce56d659a8` — MATCH;
-- `full_operation_guards.py` blob `8e409d61d3d813dbf3a564ea8ea5f4d3015106fb` — MATCH;
-- new published regression blob `cb034b5b62e59ecf52038c69c652a74a9c9783d8` — MATCH;
-- post-publication execution: 2/2 PASS; focused compileall PASS.
-
-The two attacks use fresh `intent_id` values with a colliding existing `request_id` or `position` under a matching one-shot insert permit. Both `INSERT OR REPLACE` attempts fail and the authenticated original row remains unchanged. No LAB-091 runtime change was required; this closes an adversarial-coverage gap rather than a discovered bypass.
+Issue #163 and Issue #170 were updated with these exact observations. No LAB-086 or LAB-091 runtime code changed in this run.
 
 ## Evidence retained
 
@@ -39,24 +30,27 @@ The two attacks use fresh `intent_id` values with a colliding existing `request_
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - Predecessor published LAB-086 thaw/fence exact subgate: 14/14 PASS + compileall.
 - Corrected LAB-086 alternate-UNIQUE regression blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
-- Published LAB-086 `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` is byte-identical to the corrected candidate that passed the focused alternate-UNIQUE regression 1/1 + `py_compile` before publication.
+- Published LAB-086 `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` is byte-identical to the corrected candidate that passed focused alternate-UNIQUE 1/1 + `py_compile` before publication.
+- Current run: failed reconstruction hash was explicitly rejected; zero new LAB-086 PASS claims were added.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 exact published secondary-UNIQUE intent regression: 2/2 PASS + compileall, blob `cb034b5b62e59ecf52038c69c652a74a9c9783d8`.
+- Current LAB-091 source audit: final execute path uses the convergent narrow exception policy; cached receipts are cryptographically reverified before use.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Remaining work is the exact published execution gate, not more protocol redesign unless a new executable/source audit blocker appears.
-- The retained predecessor 14/14 thaw/fence result must be rerun on repinned snapshot `05d8e75a...`.
-- Direct shell/raw GitHub transport is unavailable in this run. Connector reconstruction is byte-exact but file-by-file.
+- The retained predecessor 14/14 thaw/fence result must still be rerun on repinned snapshot `05d8e75a...`.
+- Direct shell/raw GitHub transport is unavailable. Connector reads are byte-exact and support ranges/base64, but there is no supported binary/text stream handoff into the local executor; large manual reconstruction must continue to fail the evidence gate unless the local blob hash matches exactly.
 - PR #165 must remain draft until the repinned strict/thaw subgate, complete branch-local LAB-080→086 real-ledger tests, unsafe seed, compileall and final security/reconciliation audit are all clean.
 - LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Reconstruct exact `strict_fence.py` and strict/thaw test modules from executable pin `05d8e75a...`, hash-verify every file, and execute the repinned subgate: alternate-UNIQUE, primary/history/proof replacement, NULL identities, transaction-scoped thaw minimality, conflict/current-authority/root-head tests + compileall.
-2. Reconstruct the complete branch-local LAB-080→086 dependency closure from the same executable pin, hash-verify every file, execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
-3. Perform final security/reconciliation audit and fresh branch/main compare. Only a completely clean gate may make PR #165 ready/integratable.
-4. Use LAB-091 fallback only when exact LAB-086 reconstruction/execution is concretely tool-limited; next fallback target is the full real LAB-080/LAB-082 supported-surface two-worker/crash/UNKNOWN gate, not more focused guard tests unless a new specific threat is identified.
+1. Continue exact `strict_fence.py` reconstruction from executable pin `05d8e75a...` using connector range/base64 reads, but execute nothing until local `git hash-object` equals `eb2198354d222ad0ad6b7d751bf5c649157b6b36`.
+2. Once exact, reconstruct/hash-verify the strict/thaw regression modules and run the repinned subgate: alternate-UNIQUE, primary/history/proof replacement, NULL identities, transaction-scoped thaw minimality, conflict/current-authority/root-head tests + compileall.
+3. Reconstruct the complete branch-local LAB-080→086 dependency closure from the same executable pin, execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
+4. Perform final security/reconciliation audit and fresh branch/main compare. Only a completely clean gate may make PR #165 ready/integratable.
+5. Use LAB-091 fallback only when exact LAB-086 reconstruction/execution is concretely tool-limited; next fallback target remains the full real LAB-080/LAB-082 supported-surface two-worker/crash/UNKNOWN gate.
 
 ## Backlog
 
@@ -65,4 +59,4 @@ The two attacks use fresh `intent_id` values with a colliding existing `request_
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; new exact secondary-UNIQUE intent regression 2/2 PASS; full real-stack gate remains.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; no new blocker from inheritance/receipt-verification audit; full real-stack gate remains.
