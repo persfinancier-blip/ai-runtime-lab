@@ -673,9 +673,13 @@ def _install_provider_receipt_freeze_locked(q):
         WHEN EXISTS(
           SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
         )
-         AND EXISTS(
-          SELECT 1 FROM asymmetric_provider_receipts WHERE request_id=NEW.request_id
-        )
+         AND (
+          NEW.request_id IS NULL
+          OR EXISTS(
+            SELECT 1 FROM asymmetric_provider_receipts
+            WHERE request_id IS NEW.request_id
+          )
+         )
         BEGIN
           SELECT RAISE(ABORT,'LAB-086 committed provider receipt cannot be replaced');
         END"""
