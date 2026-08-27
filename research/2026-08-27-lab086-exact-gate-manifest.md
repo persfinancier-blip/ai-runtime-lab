@@ -4,11 +4,11 @@ Date: 2026-08-28
 
 ## Purpose
 
-The remaining merge gate must execute LAB-086 against one coherent source snapshot. Do not mix current `main` with the long-lived PR branch. The pinned executable source snapshot for this gate is now:
+The remaining merge gate must execute LAB-086 against one coherent source snapshot. Do not mix current `main` with the long-lived PR branch. The pinned executable/test source snapshot for the remaining full gate is now:
 
-`1f90830fca21e2f43fc241012cdd34fd187ba96d`
+`1fa85a0e34c9ae67da57f1e64dadccf211feacc0`
 
-This supersedes the earlier `05d8e75a...` pin because the provider-receipt NULL-identity hardening was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
+This supersedes `1f90830f...` because exact execution exposed a stale regression schema in `test_thaw_history_key_collision_regression.py`; the test was corrected to use the real LAB-082 provider-generation schema and published byte-identical to the passing candidate. Runtime `strict_fence.py` is unchanged from executable fix commit `1f90830f...`.
 
 The GitHub connector can read the recursive tree and exact UTF-8 blobs for this commit. Direct shell/raw GitHub transport is unavailable in the observed runtime, so branch-local connector blobs are the source of truth. A locally reconstructed file counts as exact only when `git hash-object <file>` equals the pinned blob SHA below.
 
@@ -41,7 +41,7 @@ The GitHub connector can read the recursive tree and exact UTF-8 blobs for this 
 
 The LAB-085 helper used by LAB-086 integration fixtures is `experiments/provider_recovery_authority_lifecycle/tests/test_public_custody_supported.py` from the same pinned tree; never substitute the current-main copy without verifying the blob is identical.
 
-## Current LAB-086 gate inventory
+## Current LAB-086 full-gate inventory
 
 Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/tests` from the pinned tree, including at minimum:
 
@@ -52,8 +52,9 @@ Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/test
 - inherited/direct supported-surface fences;
 - current authority, root-head, provider-receipt and migration metadata DML fences;
 - post-cutoff proof creation/freeze authorization;
-- transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities, including the alternate SQL identity `(provider_id,generation)` on `asymmetric_provider_generations`;
-- provider-receipt canonical identity: `test_provider_receipt_null_identity_regression.py` blob `a66d9ddef2d4a41db937222b875f697c7ff74b75` must reject post-cutoff `NULL request_id` while preserving a genuinely new non-NULL receipt insert;
+- transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities, including alternate SQL identity `(provider_id,generation)` on `asymmetric_provider_generations`;
+- provider-receipt canonical identity regression `test_provider_receipt_null_identity_regression.py` blob `a66d9ddef2d4a41db937222b875f697c7ff74b75`;
+- corrected thaw history collision regression `test_thaw_history_key_collision_regression.py` blob `55f3f2b20a02b566bbeb6461ac54910a7194a9f9`;
 - final single-snapshot verification;
 - stale writer, stale trigger upgrade and rotation/concurrency regressions.
 
@@ -71,14 +72,36 @@ Then execute `unsafe_legacy_promotion_expected_failure.py` separately and requir
 
 The previous combined candidate was published in executable pin `4570a19fb92f1222db64cb07f7e4ce6312630879` as runtime blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`. Exact published tests at that pin passed 14/14 + compileall for primary-key/NULL/proof/history replacement protection.
 
-A later schema audit found a second identity on `asymmetric_provider_generations`: content PK `generation_id` plus SQL `UNIQUE(provider_id,generation)`. With the transaction-scoped INSERT thaw, `INSERT OR REPLACE` using a fresh `generation_id` and an existing `(provider_id,generation)` could replace authenticated history. Corrected regression `test_thaw_alternate_unique_collision_regression.py` is blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
+A later schema audit found a second identity on `asymmetric_provider_generations`: content PK `generation_id` plus SQL `UNIQUE(provider_id,generation)`. With transaction-scoped INSERT thaw, `INSERT OR REPLACE` using a fresh `generation_id` and an existing `(provider_id,generation)` could replace authenticated history. Corrected alternate-UNIQUE regression blob is `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
 
-The saved alternate-UNIQUE patch was applied to exact runtime blob `080eb945...`; candidate blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` passed the corrected regression 1/1 and `py_compile` before publication. It was published in executable commit `05d8e75a636818afcb32e085d464c9fa9171dea5` and GitHub returned exactly `eb219835...`.
+A subsequent pinned-source audit found that LAB-082 `asymmetric_provider_receipts.request_id` is `TEXT PRIMARY KEY` without explicit `NOT NULL`, while the LAB-086 collision trigger used SQL `=` and allowed a post-cutoff NULL request identity. LAB-082 durable verification enumerates every receipt and `SignedReceipt.validate()` rejects NULL request IDs, so the admitted row deterministically broke later verification/restart. Regression blob is `a66d9ddef2d4a41db937222b875f697c7ff74b75`.
 
-A subsequent pinned-source audit found that LAB-082 `asymmetric_provider_receipts.request_id` is `TEXT PRIMARY KEY` without explicit `NOT NULL`, while the LAB-086 collision trigger used SQL `=` and allowed a post-cutoff NULL request identity. LAB-082 durable verification enumerates every receipt and `SignedReceipt.validate()` rejects NULL request IDs, so the admitted row deterministically broke later verification/restart. Regression `test_provider_receipt_null_identity_regression.py` is blob `a66d9ddef2d4a41db937222b875f697c7ff74b75`.
+The minimal NULL-safe receipt predicate was published through Contents API in executable commit `1f90830fca21e2f43fc241012cdd34fd187ba96d`; GitHub returned runtime blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. Compare against the preceding branch head showed exactly one modified file (`strict_fence.py`, +7/-3).
 
-The minimal NULL-safe receipt predicate was published through Contents API in executable commit `1f90830fca21e2f43fc241012cdd34fd187ba96d`; GitHub returned runtime blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. Compare against the preceding branch head showed exactly one modified file (`strict_fence.py`, +7/-3), and exact source inspection shows only `NEW.request_id IS NULL` plus NULL-safe `request_id IS NEW.request_id` collision handling. A post-publication focused SQLite semantic check blocked NULL, allowed a genuinely new non-NULL request ID, and blocked reuse of that non-NULL ID. This is publication/source/semantic evidence only; the repinned exact unittest subgate is still required.
+Exact execution then exposed a test-only schema drift: `test_thaw_history_key_collision_regression.py` still modeled `asymmetric_provider_generations(generation_id, marker)` although the runtime collision fence now correctly reads real `provider_id/generation`. The regression was updated to the real LAB-082 provider-generation schema without changing runtime; published corrected blob `55f3f2b20a02b566bbeb6461ac54910a7194a9f9` is byte-identical to the locally passing candidate, commit `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
+
+## Exact repinned strict/thaw subgate — PASS
+
+Using connector line-range reconstruction, local `strict_fence.py` was reconstructed to exact Git blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. Every executed test file was separately verified by `git hash-object` against its published blob.
+
+Combined exact result on test pin `1fa85a0e...`: **31/31 distinct tests PASS + compileall PASS**.
+
+Covered:
+- base strict fence/conflict algorithms;
+- provider receipt append-only DML fence;
+- new provider-receipt NULL identity regression;
+- alternate `(provider_id,generation)` UNIQUE collision;
+- primary/history key replacement and NULL identities;
+- proof NULL/replacement protection;
+- transaction-scoped thaw least privilege;
+- current root/provider authority DML/conflict algorithms;
+- root-head mutation fencing;
+- inherited lower root/provider SQL write fences.
+
+Non-LAB stderr in this executor included an artifact-tool spreadsheet warmup failure and Python `ResourceWarning` messages from test connections; unittest returned `rc=0` and LAB compileall returned `rc=0`. These warnings did not change LAB assertions/results.
 
 ## Fresh audit note
 
 The migration verifier calls public-custody durable verification through a separate read transaction while the outer LAB-086 path holds `BEGIN IMMEDIATE`. The lower verifier uses ordinary `BEGIN`, not a second `BEGIN IMMEDIATE`; the outer transaction excludes concurrent writers across the composed verification interval. No mixed-writer snapshot blocker was established from this path.
+
+The strict/thaw subgate is now complete. Remaining merge work is the complete branch-local LAB-080→086 real-ledger suite from pin `1fa85a0e...`, unsafe seed, full compileall and final security/reconciliation audit.
