@@ -84,6 +84,24 @@ class CrossTableStateMachineGuardTests(unittest.TestCase):
             self.insert_intent(q,self.intent(predecessor=7,position=8))
         q.rollback()
 
+    def test_position_jump_is_rejected_even_with_exact_permit(self):
+        q=self.make(); q.execute("BEGIN IMMEDIATE")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert_intent(q,self.intent(predecessor=0,position=999,request="request-999"))
+        q.rollback()
+
+    def test_meta_cannot_jump_even_if_gap_intent_is_present_out_of_band(self):
+        q=self.make()
+        q.execute("DROP TRIGGER lab091_v3_intent_requires_current_tail_and_provider")
+        q.execute(
+            "INSERT INTO shared_anchor_intents VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            self.intent(predecessor=0,position=999,request="request-999"),
+        )
+        q.execute("BEGIN IMMEDIATE")
+        with self.assertRaises(sqlite3.IntegrityError):
+            q.execute("UPDATE shared_anchor_meta SET reserved_position=999 WHERE singleton=1")
+        q.rollback()
+
     def test_meta_advance_requires_the_prepared_intent_row(self):
         q=self.make(); q.execute("BEGIN IMMEDIATE")
         with self.assertRaises(sqlite3.IntegrityError):
