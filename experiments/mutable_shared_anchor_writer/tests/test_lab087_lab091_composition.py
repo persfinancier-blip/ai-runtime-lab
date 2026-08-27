@@ -48,7 +48,7 @@ class Lab087Lab091CompositionTests(unittest.TestCase):
     @staticmethod
     def run_worker(db: Path, code: str):
         env = dict(os.environ)
-        env["PYTHONPATH"] = "/mnt/data/lab091_lab087_comp"
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3])
 
         def demote():
             os.setgroups([])
