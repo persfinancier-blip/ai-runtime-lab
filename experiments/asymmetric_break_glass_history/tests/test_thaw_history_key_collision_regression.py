@@ -44,9 +44,14 @@ class ThawHistoryKeyCollisionRegressionTests(unittest.TestCase):
             INSERT INTO provider_rotation_threshold_proofs VALUES('generation-1','original');
 
             CREATE TABLE asymmetric_provider_generations(
-              generation_id TEXT PRIMARY KEY,marker TEXT NOT NULL
+              generation_id TEXT PRIMARY KEY,
+              provider_id TEXT NOT NULL,
+              generation INTEGER NOT NULL,
+              public_key_hex TEXT NOT NULL,
+              UNIQUE(provider_id,generation)
             );
-            INSERT INTO asymmetric_provider_generations VALUES('generation-1','original');
+            INSERT INTO asymmetric_provider_generations
+            VALUES('generation-1','anchor-A',1,'original-key');
             CREATE TABLE asymmetric_provider_transitions(
               new_generation_id TEXT PRIMARY KEY,marker TEXT NOT NULL
             );
@@ -68,7 +73,6 @@ class ThawHistoryKeyCollisionRegressionTests(unittest.TestCase):
                 ("provider_rotation_authorities", "authority_id", "root-1", "root-2"),
                 ("provider_rotation_authority_transitions", "new_authority_id", "root-1", "root-2"),
                 ("provider_rotation_threshold_proofs", "new_provider_generation_id", "generation-1", "generation-2"),
-                ("asymmetric_provider_generations", "generation_id", "generation-1", "generation-2"),
                 ("asymmetric_provider_transitions", "new_generation_id", "generation-1", "generation-2"),
             )
             for table, key_column, existing_key, new_key in cases:
@@ -97,6 +101,38 @@ class ThawHistoryKeyCollisionRegressionTests(unittest.TestCase):
                         ).fetchone()[0],
                         "new",
                     )
+
+            # Provider generations have the real LAB-082 schema and a second
+            # semantic UNIQUE identity. Keep the PK/null checks here, while the
+            # alternate-UNIQUE regression separately attacks (provider_id,generation).
+            with self.assertRaises(sqlite3.IntegrityError):
+                q.execute(
+                    "INSERT OR REPLACE INTO asymmetric_provider_generations "
+                    "VALUES('generation-1','anchor-A',1,'tampered-key')"
+                )
+            self.assertEqual(
+                q.execute(
+                    "SELECT provider_id,generation,public_key_hex "
+                    "FROM asymmetric_provider_generations WHERE generation_id='generation-1'"
+                ).fetchone(),
+                ("anchor-A", 1, "original-key"),
+            )
+            with self.assertRaises(sqlite3.IntegrityError):
+                q.execute(
+                    "INSERT INTO asymmetric_provider_generations "
+                    "VALUES(NULL,'anchor-B',1,'null-key')"
+                )
+            q.execute(
+                "INSERT INTO asymmetric_provider_generations "
+                "VALUES('generation-2','anchor-A',2,'new-key')"
+            )
+            self.assertEqual(
+                q.execute(
+                    "SELECT generation_id FROM asymmetric_provider_generations "
+                    "WHERE provider_id='anchor-A' AND generation=2"
+                ).fetchone()[0],
+                "generation-2",
+            )
             q.rollback()
         finally:
             q.close()
