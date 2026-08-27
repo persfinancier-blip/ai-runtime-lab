@@ -23,7 +23,8 @@ def install_cross_table_guards(q: PermitConnection) -> None:
     q.execute(
         """CREATE TRIGGER lab091_v3_meta_requires_matching_prepared_intent
            BEFORE UPDATE ON shared_anchor_meta
-           WHEN NOT EXISTS(
+           WHEN NEW.reserved_position != OLD.reserved_position + 1
+           OR NOT EXISTS(
              SELECT 1 FROM shared_anchor_intents i
              WHERE i.position=NEW.reserved_position
                AND i.predecessor_position=OLD.reserved_position
@@ -31,13 +32,14 @@ def install_cross_table_guards(q: PermitConnection) -> None:
                AND i.receipt_binding IS NULL
            )
            BEGIN
-             SELECT RAISE(ABORT,'LAB-091 meta advance lacks matching PREPARED intent');
+             SELECT RAISE(ABORT,'LAB-091 meta advance lacks exact next PREPARED intent');
            END"""
     )
     q.execute(
         """CREATE TRIGGER lab091_v3_intent_requires_current_tail_and_provider
            BEFORE INSERT ON shared_anchor_intents
-           WHEN NOT EXISTS(
+           WHEN NEW.position != NEW.predecessor_position + 1
+           OR NOT EXISTS(
              SELECT 1 FROM shared_anchor_meta m
              WHERE m.singleton=1 AND m.reserved_position=NEW.predecessor_position
            )
@@ -52,7 +54,7 @@ def install_cross_table_guards(q: PermitConnection) -> None:
                AND g.generation=NEW.provider_generation
            )
            BEGIN
-             SELECT RAISE(ABORT,'LAB-091 intent is not bound to current tail/provider');
+             SELECT RAISE(ABORT,'LAB-091 intent is not exact next tail/current provider');
            END"""
     )
     q.execute(
