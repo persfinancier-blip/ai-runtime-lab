@@ -10,32 +10,37 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current PR #165 HEAD after RED/research artifacts: `2c8540420f55cd41ccf12c953d2f7521790902b1`.
-- Last executable pin remains `05d8e75a636818afcb32e085d464c9fa9171dea5`; published `strict_fence.py` remains blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36`.
-- PR #165 is draft/mergeable; mergeability does not substitute for the execution gate.
+- Current PR #165 HEAD: `f74f20cca7a4e8c63dd04325be28acbc929af194` (manifest-only after executable fix).
+- Current executable pin: `1f90830fca21e2f43fc241012cdd34fd187ba96d`.
+- Published `strict_fence.py` blob: `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
+- GitHub reports PR #165 draft/mergeable=true. Mergeability is not a test/security result.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
 - LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact reconstruction/execution is concretely tool-limited.
 
 ## Last completed step
 
-Fresh pinned-source audit found a new LAB-086 merge blocker in the LAB-082 provider-receipt fence.
+Found and fixed a new LAB-086 restart blocker in the inherited LAB-082 provider-receipt fence.
 
-Exact pinned LAB-082 schema defines `asymmetric_provider_receipts.request_id` as `TEXT PRIMARY KEY` without explicit `NOT NULL`. Current LAB-086 `lab086_provider_receipt_no_replace` compares `request_id=NEW.request_id` and therefore does not reject `NEW.request_id IS NULL`. A focused SQLite reproduction using the exact table shape/current predicate accepted multiple NULL request IDs.
+Exact LAB-082 schema has `asymmetric_provider_receipts.request_id TEXT PRIMARY KEY` without explicit `NOT NULL`. SQLite rowid tables therefore admit NULL request identities. The previous LAB-086 `lab086_provider_receipt_no_replace` used `request_id=NEW.request_id`, so a post-cutoff NULL receipt bypassed the collision guard.
 
-This is a real LAB-086 restart blocker, not only LAB-091 arbitrary-writer hardening: exact pinned `IntegratedAsymmetricProviderHistory._verify_durable_locked()` enumerates every persisted receipt, and `SignedReceipt.validate()` requires `request_id`, `kind`, and `challenge` to be non-empty strings. Therefore one post-cutoff NULL receipt accepted by the current fence deterministically makes the next durable verification/restart fail closed.
+This is a LAB-086 merge blocker because exact LAB-082 durable verification enumerates every receipt row and constructs `SignedReceipt`; `SignedReceipt.validate()` requires a non-empty string request_id. A persisted NULL receipt therefore makes the next durable verification/restart fail closed. Pre-cutoff malformed receipts are already rejected by inherited LAB-082 verification before cutoff.
 
-Pre-cutoff malformed receipts do not escape migration because LAB-086 verifies inherited LAB-082 durable history before establishing the cutoff.
+Durable RED/fix artifacts:
+- regression `test_provider_receipt_null_identity_regression.py` blob `a66d9ddef2d4a41db937222b875f697c7ff74b75`;
+- patch `research/2026-08-28-lab086-provider-receipt-null-identity.patch`;
+- research note `research/2026-08-28-lab086-provider-receipt-null-identity.md`.
 
-Staged minimal predicate:
-`NEW.request_id IS NULL OR EXISTS(SELECT 1 FROM asymmetric_provider_receipts WHERE request_id IS NEW.request_id)`.
-Focused RED→GREEN semantics: current predicate allowed NULL; staged predicate blocked NULL while preserving a genuinely new non-NULL receipt insert.
+Published fix:
+- executable commit `1f90830fca21e2f43fc241012cdd34fd187ba96d`;
+- runtime blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`;
+- compare from preceding branch head `2c854042...` is exactly one modified file (`strict_fence.py`), +7/-3;
+- exact published source rejects `NEW.request_id IS NULL` and checks existing identities with `request_id IS NEW.request_id`.
 
-Durable artifacts on PR #165 branch:
-- RED regression `experiments/asymmetric_break_glass_history/tests/test_provider_receipt_null_identity_regression.py`, commit `20fd52bd6066c158de5464ebc9d5e61bd0563bd3`;
-- exact patch `research/2026-08-28-lab086-provider-receipt-null-identity.patch`, commit `5c09a5ed774072f1c9d68f3c960bf1bc39ebb25a`;
-- research/evidence note `research/2026-08-28-lab086-provider-receipt-null-identity.md`, commit `2c8540420f55cd41ccf12c953d2f7521790902b1`.
+Post-publication focused SQLite semantic check using the exact published predicate: NULL receipt BLOCKED; genuinely new non-NULL receipt ALLOWED; duplicate non-NULL request ID BLOCKED. This is semantic/source evidence only, not an exact published unittest-suite PASS.
 
-Runtime `strict_fence.py` has not yet been rewritten for this blocker, so no post-fix exact-suite PASS is claimed.
+Exact-gate manifest was repinned to executable `1f90830f...` in manifest-only commit `f74f20cca7a4e8c63dd04325be28acbc929af194`.
+
+Fresh branch/main compare: ahead 185 / behind 134. All LAB-086/runtime/research paths in the compare remain additions relative to `main`; observed divergence is still historical/path-disjoint, not a proven content conflict.
 
 ## Evidence retained
 
@@ -43,29 +48,30 @@ Runtime `strict_fence.py` has not yet been rewritten for this blocker, so no pos
 - LAB-085 core 12/12 PASS; asymmetric custody 8/8 PASS; public/final 11/11 PASS; lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - Predecessor published LAB-086 thaw/fence exact subgate: 14/14 PASS + compileall.
-- Alternate-UNIQUE regression blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`; current published runtime `eb219835...` is byte-identical to that focused corrected candidate.
-- New provider-receipt NULL-identity focused counterexample/fix semantics executed as described above; exact post-fix runtime execution is still pending.
+- Alternate-UNIQUE regression/candidate evidence retained; previous runtime `eb219835...` was byte-identical to its focused corrected candidate.
+- New receipt-NULL runtime publication is byte-safe by one-file +7/-3 compare and returned blob `d4a6a40f...`; post-publication focused semantic check passed the intended BLOCK/ALLOW/BLOCK behavior.
+- No repinned exact unittest subgate PASS is claimed yet for executable `1f90830f...`.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 retained exact/focused evidence remains durable; it is not the active priority while this LAB-086 blocker is open.
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. The new provider-receipt NULL-identity blocker must be fixed before resuming the repinned full execution gate.
-- Direct shell/raw GitHub transport remains unavailable. Connector reads are byte-exact but large source transfer into the local executor is file/chunk oriented; manual reconstruction is non-evidence unless `git hash-object` matches the published blob.
-- PR #165 must remain draft until the NULL receipt fix is published byte-exact, the strict/thaw subgate is rerun on the new pin, the complete branch-local LAB-080→086 real-ledger tests/unsafe seed/compileall are clean, and final security/reconciliation audit passes.
+- LAB-086 remains first priority. Remaining work is now execution evidence, not another protocol redesign unless a new executable/source blocker appears.
+- Direct shell/raw GitHub transport is still unavailable (`git ls-remote` fails DNS). Connector reads are byte-exact but large source transfer into the local executor remains file/chunk oriented.
+- A reconstructed file counts as exact only if `git hash-object` equals the pinned Git blob. Focused semantic checks must not be promoted to exact-suite evidence.
+- PR #165 must remain draft until the repinned strict/thaw subgate, complete branch-local LAB-080→086 real-ledger tests, unsafe seed, compileall and final security/reconciliation audit are all clean.
 - LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Apply `research/2026-08-28-lab086-provider-receipt-null-identity.patch` only to current `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` using a byte-safe whole-file Contents API path; verify the returned blob and exact diff before counting the fix.
-2. Execute `test_provider_receipt_null_identity_regression.py` plus the repinned strict/thaw subgate (alternate-UNIQUE, history/proof replacement, NULL identities, thaw minimality, current-authority/root-head/conflict tests) and compileall from hash-verified published bytes.
-3. Repin the executable snapshot, reconstruct the complete branch-local LAB-080→086 closure, execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
+1. Reconstruct/hash-verify `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, new receipt-NULL regression blob `a66d9ddef2d4a41db937222b875f697c7ff74b75`, and retained strict/thaw regression modules from executable pin `1f90830f...`.
+2. Execute the repinned strict/thaw subgate: receipt NULL identity, alternate-UNIQUE, primary/history/proof replacement, NULL proof identities, transaction-scoped thaw minimality, current-authority/root-head/conflict tests + compileall.
+3. Reconstruct the complete branch-local LAB-080→086 dependency closure from the same pin; execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
 4. Perform final security/reconciliation audit and fresh branch/main compare. Only a completely clean gate may make PR #165 ready/integratable.
-5. Use LAB-091 fallback only if LAB-086 exact write/reconstruction is concretely tool-limited again.
+5. Use LAB-091 fallback only if LAB-086 exact reconstruction/execution is concretely tool-limited again.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; provider-receipt NULL identity blocker confirmed; RED regression + exact patch durable; runtime fix next.
+- #163 / LAB-086 — IN_PROGRESS; provider-receipt NULL identity blocker fixed/published; repinned exact execution gate next.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
