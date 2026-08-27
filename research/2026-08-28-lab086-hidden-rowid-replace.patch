@@ -1,0 +1,140 @@
+diff --git a/experiments/asymmetric_break_glass_history/strict_fence.py b/experiments/asymmetric_break_glass_history/strict_fence.py
+--- a/experiments/asymmetric_break_glass_history/strict_fence.py
++++ b/experiments/asymmetric_break_glass_history/strict_fence.py
+@@
+ def _all_provider_receipt_trigger_names():
+-    return PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
++    insert_name, update_name, delete_name = PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
++    return (
++        insert_name,
++        update_name,
++        delete_name,
++        f"{insert_name}_rowid_sentinel",
++    )
+@@
+ def _all_thaw_insert_history_collision_trigger_names():
+     return tuple(
+-        trigger_name
++        name
+         for _, trigger_name in THAW_INSERT_HISTORY_COLLISION_FENCES.values()
++        for name in (trigger_name, f"{trigger_name}_rowid_sentinel")
+     )
+@@
+ def _install_thaw_insert_history_collision_fences_locked(q):
+@@
+     for table, (key_column, trigger_name) in THAW_INSERT_HISTORY_COLLISION_FENCES.items():
+@@
+         q.execute(
+             f"""CREATE TRIGGER {trigger_name}
+             BEFORE INSERT ON {table}
+             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+              AND (
+                NEW.{key_column} IS NULL
+                OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
++               OR (
++                 NEW.rowid != -1
++                 AND EXISTS(SELECT 1 FROM {table} WHERE rowid IS NEW.rowid)
++               )
+                {semantic_collision}
+              )
+             BEGIN
+               SELECT RAISE(ABORT,'LAB-086 existing authenticated history key cannot be replaced');
+             END"""
+         )
++        q.execute(
++            f"""CREATE TRIGGER {trigger_name}_rowid_sentinel
++            AFTER INSERT ON {table}
++            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
++             AND NEW.rowid = -1
++            BEGIN
++              SELECT RAISE(ABORT,'LAB-086 reserved SQLite rowid cannot be stored in authenticated history');
++            END"""
++        )
+@@
+ def _install_post_cutoff_evidence_freeze_locked(q):
+@@
+         no_replace_name = f"{insert_name}_existing_key_no_replace"
++        rowid_sentinel_name = f"{no_replace_name}_rowid_sentinel"
+         q.execute(f"DROP TRIGGER IF EXISTS {no_replace_name}")
++        q.execute(f"DROP TRIGGER IF EXISTS {rowid_sentinel_name}")
+         q.execute(
+             f"""CREATE TRIGGER {no_replace_name}
+             BEFORE INSERT ON {table}
+             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+              AND (
+                NEW.{key_column} IS NULL
+                OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
++               OR (
++                 NEW.rowid != -1
++                 AND EXISTS(SELECT 1 FROM {table} WHERE rowid IS NEW.rowid)
++               )
+              )
+             BEGIN
+               SELECT RAISE(ABORT,'LAB-086 existing post-cutoff evidence key cannot be replaced');
+             END"""
+         )
++        q.execute(
++            f"""CREATE TRIGGER {rowid_sentinel_name}
++            AFTER INSERT ON {table}
++            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
++             AND NEW.rowid = -1
++            BEGIN
++              SELECT RAISE(ABORT,'LAB-086 reserved SQLite rowid cannot be stored in post-cutoff evidence');
++            END"""
++        )
+@@
+ def _install_provider_receipt_freeze_locked(q):
+@@
+     insert_name, update_name, delete_name = PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
++    rowid_sentinel_name = f"{insert_name}_rowid_sentinel"
+     q.execute(
+         f"""CREATE TRIGGER {insert_name}
+         BEFORE INSERT ON asymmetric_provider_receipts
+@@
+          AND (
+           NEW.request_id IS NULL
+           OR EXISTS(
+             SELECT 1 FROM asymmetric_provider_receipts
+             WHERE request_id IS NEW.request_id
+           )
++          OR (
++            NEW.rowid != -1
++            AND EXISTS(
++              SELECT 1 FROM asymmetric_provider_receipts
++              WHERE rowid IS NEW.rowid
++            )
++          )
+          )
+@@
+         END"""
+     )
++    q.execute(
++        f"""CREATE TRIGGER {rowid_sentinel_name}
++        AFTER INSERT ON asymmetric_provider_receipts
++        WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
++         AND NEW.rowid = -1
++        BEGIN
++          SELECT RAISE(ABORT,'LAB-086 reserved SQLite rowid cannot be stored in provider receipt history');
++        END"""
++    )
+@@
+ def assert_public_mutation_fence_locked(q):
+@@
+     thaw_collision_required = {
+-        trigger_name
++        name
+         for table, (_, trigger_name) in THAW_INSERT_HISTORY_COLLISION_FENCES.items()
+         if table in tables
++        for name in (trigger_name, f"{trigger_name}_rowid_sentinel")
+     }
+@@
+     evidence_required |= {
+         f"{insert_name}_existing_key_no_replace"
+         for table, (_, insert_name, _, _) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items()
+         if table in tables
+     }
++    evidence_required |= {
++        f"{insert_name}_existing_key_no_replace_rowid_sentinel"
++        for table, (_, insert_name, _, _) in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.items()
++        if table in tables
++    }
