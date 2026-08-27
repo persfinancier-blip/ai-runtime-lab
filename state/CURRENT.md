@@ -10,61 +10,64 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current observed PR #165 HEAD: `9b2b08502af0e4230f20b55f4fef9a209dcd2081`; draft=true. Runtime `strict_fence.py` is still published blob `cea0ca3b42723790971ba9415b70a7e9fa0c7368`.
+- Current observed PR #165 HEAD: `bc2cd0fa80eae042cbab93e0f6fd02ad92521318`; draft=true; mergeable=true.
+- Executable LAB-086 gate snapshot is pinned to `4570a19fb92f1222db64cb07f7e4ce6312630879`.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact execution/publication is concretely tool-limited.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact execution is concretely tool-limited.
 
 ## Last completed step
 
-Closed the previous byte-reconstruction bottleneck for the current LAB-086 thaw-key fix. The published `strict_fence.py` was reconstructed locally from connector line ranges and `git hash-object` matched GitHub blob `cea0ca3b42723790971ba9415b70a7e9fa0c7368` exactly.
+Corrected stale durable state after verifying the current PR and branch manifest.
 
-Applied the already-reviewed combined staged change mechanically to those exact bytes:
-
-- NULL-safe proof-key collision semantics: `NEW.key IS NULL OR EXISTS(... key IS NEW.key)`;
-- permanent NULL-safe existing-key collision triggers for all seven other authenticated-history tables whose ordinary INSERT-deny is removed during final-writer thaw;
-- those permanent collision triggers are included in full reinstall cleanup but are never removed by `remove_public_mutation_fence_locked()`;
-- `assert_public_mutation_fence_locked()` requires every applicable collision trigger.
-
-The resulting exact local candidate has Git blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`; `py_compile` passed and the diff is limited to the staged combined change.
-
-Reconstructed four exact published regression files and verified each by `git hash-object` before execution:
+The combined thaw identity hardening is already published in runtime `strict_fence.py` with Git blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce` at executable commit `4570a19fb92f1222db64cb07f7e4ce6312630879`. Exact published regressions previously reconstructed and executed after publication:
 
 - `test_strict_fence.py` `97048a325c4cc1ed78612bdbb4cfec42146a43f6`;
 - `test_thaw_null_proof_key_regression.py` `fce5c57c8cfaa18f6761ae9b47c211813801aae0`;
 - `test_thaw_history_key_collision_regression.py` `88ba35e933c123d10af65597d6bb51f4f11068ec`;
 - `test_thaw_proof_replace_regression.py` `c511ccfc4b88b050910561b3b8f7e99be5f33e93`.
 
-Focused result on candidate `080eb945...`: **14/14 PASS**. Package compileall also passed. New unique non-NULL keys remain creatable by legitimate thaw; existing keys and NULL identities fail closed.
+Result retained: **14/14 PASS + focused compileall PASS**. Existing and NULL identities are denied on every INSERT-thawed authenticated-history/proof surface; legitimate new unique non-NULL successor keys remain creatable by the verified final writer.
 
-Durable verification note added on PR branch: `research/2026-08-27-lab086-combined-thaw-candidate-verification.md`, commit `9b2b08502af0e4230f20b55f4fef9a209dcd2081`. Issue #163 also contains the exact evidence.
+Compared executable pin `4570a19f...` to current branch HEAD `bc2cd0fa...`: the three later commits touch only research/manifest/staging cleanup. No executable or test bytes changed after the pin. Therefore the full gate may safely remain pinned to `4570a19f...`.
+
+Direct shell GitHub transport was re-probed in this run and still fails DNS resolution. Connector exact reads/writes remain healthy. Issue #163 received a verification comment recording the corrected state.
 
 ## Evidence retained
 
-- LAB-086 lower-stack exact evidence: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
+- LAB-080 18/18 PASS.
+- LAB-082 28/28 PASS.
+- LAB-083 24/24 PASS.
+- LAB-084 17/17 PASS.
+- LAB-085 core 12/12 PASS.
+- LAB-085 asymmetric custody 8/8 PASS.
+- LAB-085 public/final 11/11 PASS.
+- Lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
-- Current combined thaw candidate `080eb945...`: exact focused **14/14 PASS** + compileall on byte-verified current runtime source and byte-verified published tests.
+- Current published thaw/fence exact subgate: 14/14 PASS + compileall.
+- Exact-gate manifest is `research/2026-08-27-lab086-exact-gate-manifest.md`, pinned to executable snapshot `4570a19f...`.
+- PR #165 current HEAD `bc2cd0fa...` is three note/manifest-cleanup commits ahead of the executable pin only.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 retained evidence remains fallback only.
 
 ## Known blockers / constraints
 
-- PR #165 must remain draft. The combined candidate is exact and focused-green but runtime `strict_fence.py` has not yet been replaced on GitHub.
-- Available high-level GitHub write action accepts whole UTF-8 text only and exposes no mounted-file/patch parameter. Low-level tree/ref manipulation is prohibited by `AGENTS.md`. Do not hand-transcribe the ~37 KB candidate without an exact transfer path.
-- Focused 14/14 is not the complete branch-local LAB-080→086 real-ledger gate.
-- Direct shell/raw GitHub transport remains unavailable; connector exact reads work.
+- PR #165 must remain draft until the complete branch-local LAB-080→086 real-ledger execution gate is clean.
+- Remaining gate: every normal LAB-086 real-schema test module from pinned snapshot, unsafe legacy-promotion seed separately, full compileall, then one fresh security/reconciliation audit and branch/main integration check.
+- Direct shell/raw GitHub transport is unavailable; connector provides exact UTF-8 blobs but no repository archive/mount into the local executor. Reconstruction therefore remains file-by-file and expensive.
+- Do not mix current `main` lower-layer files with the long-lived PR branch; use only exact blobs from executable snapshot `4570a19f...` and verify each local file with `git hash-object` before counting tests.
 - LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Publish only a byte-identical `strict_fence.py` candidate whose resulting GitHub content blob is `080eb9454437932a8ab419d66a4f2a69ed17c7ce`; immediately re-fetch it and rerun the exact 14-test focused gate.
-2. Repin `research/2026-08-27-lab086-exact-gate-manifest.md` to the post-fix executable commit/blob.
-3. Reconstruct that exact branch-local LAB-080→086 closure and execute every normal LAB-086 real-schema module, then unsafe legacy-promotion seed separately, full compileall and final security/reconciliation audit.
-4. Keep PR #165 draft until the entire post-fix gate is clean; only then mark ready/reconcile/integrate.
-5. If the exact runtime publication path remains unavailable, continue LAB-091 real-stack fallback rather than weakening LAB-086 byte-integrity requirements.
+1. Reconstruct the minimal LAB-080→086 import/test closure from executable snapshot `4570a19fb92f1222db64cb07f7e4ce6312630879` using the exact blob identities in `research/2026-08-27-lab086-exact-gate-manifest.md`; verify every local file with `git hash-object`.
+2. Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/tests` from that pinned snapshot, including cardinality, migration/root-coauthorization/restart, scrubbed-prefix/suffix, orphan/partial-state, public-rotation cross-binding/history, inherited/direct-surface, final single-snapshot, thaw/collision and concurrency/rotation-race regressions.
+3. Execute `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall over the reconstructed closure.
+4. Perform one fresh security/reconciliation audit and branch/main compare. Fix every blocking failure before marking PR #165 ready or integrating it.
+5. If exact reconstruction is concretely tool-limited in a run, continue LAB-091 real-stack fallback rather than weakening LAB-086 byte-integrity requirements.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; exact combined thaw candidate `080eb945...` focused-green 14/14; runtime publication + full gate remain.
+- #163 / LAB-086 — IN_PROGRESS; runtime combined thaw fix published and exact 14/14 subgate green; full pinned real-ledger gate remains.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
