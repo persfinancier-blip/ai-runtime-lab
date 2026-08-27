@@ -10,57 +10,52 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Previously pinned executable/runtime/test snapshot: `95fa5da3c457e3431cd596ec969d5939b0a1d925`; it remains the last fully enumerated snapshot, but a new RED regression and staged fix artifacts were added after it in this run. Do not treat the old 29-module inventory as the final merge gate until the runtime fix is applied and the snapshot is repinned.
-- Current LAB-086 runtime `strict_fence.py` is still blob `5da01e28a9f813a136d138637f855940f04aab46`; the newly discovered thaw/REPLACE blocker is not yet fixed in runtime.
+- Current observed PR #165 HEAD: `968fc36f3423964786f8b9e44ded838bbd55c9c1`; draft=true, mergeable=true.
+- Current LAB-086 runtime `strict_fence.py` remains blob `5da01e28a9f813a136d138637f855940f04aab46`; thaw/REPLACE blocker is not yet fixed in runtime.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; latest branch commit in this run `d8ed5ea12d705d10f9b2de16ab78bf82eabcae27` adds focused UNKNOWN/retry coverage.
 
 ## Last completed step
 
-Resumed LAB-086 first and found a new merge blocker in the transaction-scoped proof-creation thaw. The current fence normally blocks proof INSERT/UPDATE/DELETE, but `remove_public_mutation_fence_locked()` intentionally drops only the proof creation trigger so the verified final writer can append a new proof key. Under SQLite's default `PRAGMA recursive_triggers=OFF`, `INSERT OR REPLACE` on an existing primary key deletes the conflicting row internally without reliably running the DELETE trigger. A focused executable SQLite counterexample observed direct UPDATE=blocked, DELETE=blocked and UPSERT=blocked, while `INSERT OR REPLACE` of an existing proof key succeeded and changed the row from `original` to `tampered` during thaw.
+Resumed LAB-086 first. Reconfirmed the current thaw/REPLACE blocker and exact staged artifacts: RED regression `test_thaw_proof_replace_regression.py` blob `c511ccfc4b88b050910561b3b8f7e99be5f33e93`, research note, and staged patch `research/2026-08-27-lab086-thaw-proof-replace-bypass.patch` blob `d55ded03d8a73f51caf84f1d5085e56b31172a5a`. The required fix keeps a permanent existing-key collision trigger for both post-cutoff proof tables while only the blanket new-key creation deny is removed during verified thaw.
 
-This violates LAB-086's least-privilege claim: existing authenticated proof history must remain immutable even while the final writer is temporarily allowed to create a new proof row.
+Tried an additional safe bulk-reconstruction path before falling back: container download of a GitHub commit archive and the GitHub REST zipball endpoint. Both are unavailable in this runtime. The connector still returns exact blobs/files, but no archive/mount or line-patch endpoint exists; the only runtime write path for the ~34 KB `strict_fence.py` remains whole-file Contents replacement. No risky manual rewrite was performed and no LAB-086 PASS was claimed.
 
-Added a real-schema RED regression `experiments/asymmetric_break_glass_history/tests/test_thaw_proof_replace_regression.py` to PR #165. Its published blob is `c511ccfc4b88b050910561b3b8f7e99be5f33e93`; locally reconstructed bytes matched exactly via `git hash-object` and `py_compile` passed. The test requires, for both `provider_asymmetric_break_glass_proofs` and `provider_asymmetric_recovery_public_root_proofs`, that `INSERT OR REPLACE` of an existing key fail and leave the original row unchanged while plain INSERT of a genuinely new key still succeeds during thaw.
+Per the recorded fallback, advanced LAB-091 UNKNOWN semantics. Added `test_timeout_unknown_convergence.py` to PR #173. Its published blob `0111e30eb73c91c0a0d91e942556a8f718df5bd8` exactly matches the locally executed test bytes. The harness uses exact branch LAB-036 `anchor_attestation/protocol.py` blob `15d8b7cf8ff093490ccb75679030d3a0fe41e401` and exact `convergent_operation_scoped.py` blob `7fe0d682c0be4c6388799dd6b8a6ba87f65dda3`; only the lower SQL parent/confirmation persistence is stubbed.
 
-Saved the finding and minimal fix design as `research/2026-08-27-lab086-thaw-proof-replace-bypass.md` and staged unified patch `research/2026-08-27-lab086-thaw-proof-replace-bypass.patch`. The fix keeps a permanent collision/no-replace BEFORE INSERT trigger per proof table; only the blanket new-key creation deny is removed during verified thaw. `assert_public_mutation_fence_locked()` must require these permanent collision triggers.
-
-Issue #163 was updated with the blocker and exact next action. Runtime `strict_fence.py` was deliberately not rewritten in this run because the available Contents API replaces the whole ~34 KB file; preserve byte discipline and apply the saved patch only against exact blob `5da01e28...`, then verify the resulting published diff/blob before counting tests.
+Focused executed result: 1/1 PASS + compileall PASS. Scenario: provider increment commits, the first post-timeout reconciliation path is unavailable, execute returns `PendingIntent`, provider position remains advanced exactly once, and retry converges the same request to CONFIRMED without a second increment (`increment_calls == 1`). This is focused exact-source evidence, not the remaining full LAB-080/LAB-082 supported-surface gate.
 
 ## Evidence retained
 
 - LAB-086 lower-stack exact evidence: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
-- Last fully enumerated LAB-086 pinned snapshot had 29 normal modules + one unsafe seed; a new RED regression was added after that snapshot, so the post-fix gate must be repinned and re-enumerated.
-- Current key runtime blobs before the new fix remain `migration_guard.py` `1a9209b...`, `strict_fence.py` `5da01e28...`, `suffix.py` `44847bde...`, `final_supported.py` `ceb7f48a...`.
-- New RED regression exact published blob: `c511ccfc4b88b050910561b3b8f7e99be5f33e93`; exact local hash matched and syntax compilation passed.
-- Focused SQLite counterexample: during thaw UPDATE/DELETE existing proof rows were blocked, UPSERT-existing was blocked, but `INSERT OR REPLACE` existing key was allowed with `recursive_triggers=OFF` and replaced the authenticated row. A separate focused candidate trigger (`BEFORE INSERT ... AND EXISTS(existing key)`) blocked REPLACE/UPSERT-existing while allowing a new key.
+- New LAB-086 thaw/REPLACE RED regression exact blob `c511ccfc...`; runtime fix still pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 retained exact evidence from prior runs: one-shot primitive 6/6; mutable-row guards + legacy persistence 12/12; v3 state-machine; v4 deterministic/history binding 9/9; restart 3/3; single-pending 2/2; process concurrency/crash 2/2; LAB-087 composition 2/2.
+- LAB-091 retained exact evidence: one-shot primitive 6/6; mutable-row guards + legacy persistence 12/12; v3 state-machine; v4 deterministic/history binding 9/9; restart 3/3; single-pending 2/2; process concurrency/crash 2/2; LAB-087 composition 2/2.
+- New LAB-091 focused UNKNOWN/retry regression: exact published test blob `0111e30e...`, exact LAB-036 + exact convergent source, 1/1 PASS + compileall; retry after commit-then-lost-reconcile does not re-increment.
 
 ## Known blockers / constraints
 
-- **New LAB-086 merge blocker:** proof history can be overwritten by `INSERT OR REPLACE` during transaction-scoped thaw because the blanket creation trigger is removed and SQLite conflict replacement does not necessarily traverse the DELETE trigger with default recursive triggers disabled.
-- PR #165 must remain draft until the permanent no-replace collision trigger is installed for both post-cutoff proof tables, the new regression is green on exact published runtime, and the complete post-fix real-ledger gate is clean.
-- Connector can return exact tree/blob contents but exposes no repository archive/mount; direct shell/raw GitHub transport remains unavailable. Whole-file Contents API updates are supported but security-critical large-file rewrites must be diff/hash audited.
-- Never count manually reformatted/transcribed files as exact evidence; hash mismatch means discard the run.
-- LAB-091 final candidate still needs full real LAB-080/LAB-082 supported-surface two-worker same-request and provider timeout/UNKNOWN reconciliation.
+- **LAB-086 merge blocker:** during transaction-scoped proof-creation thaw, SQLite `INSERT OR REPLACE` can overwrite an existing authenticated proof key because the blanket proof INSERT deny is temporarily removed and default `recursive_triggers=OFF` does not reliably route REPLACE through DELETE triggers.
+- PR #165 must remain draft until permanent no-replace collision triggers are installed for both proof tables, the new regression is green on exact published runtime, and the complete post-fix real-ledger gate is clean.
+- Connector exact reads work, but no repository archive/mount or patch-application write endpoint is exposed. Whole-file security-critical rewrites require exact source reconstruction and post-write diff/hash audit.
+- Never count manually reformatted/transcribed files as exact evidence.
+- LAB-091 still needs the full real LAB-080/LAB-082 supported-surface two-worker same-request and timeout/UNKNOWN gate; the new 1/1 test is focused evidence only.
 - LAB-090/#169 provider handoff freshness remains separate.
 - Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Reconstruct exact current `strict_fence.py` blob `5da01e28a9f813a136d138637f855940f04aab46`, apply `research/2026-08-27-lab086-thaw-proof-replace-bypass.patch`, and publish through the Contents API only after byte/diff review.
-2. Re-fetch the published `strict_fence.py`; require the PR diff to contain only the permanent proof-key collision triggers + fence assertion change. Execute exact `test_thaw_proof_replace_regression.py` plus existing `test_transaction_scoped_thaw_minimality.py`, `test_post_cutoff_evidence_dml_fence.py`, `test_post_cutoff_evidence_insert_authorization.py` and `test_strict_fence.py`.
-3. Repin the executable snapshot after the runtime fix, regenerate the test inventory (expected previous 29 normal modules plus the new regression), reconstruct the branch-local LAB-080→086 closure and run the entire normal suite, unsafe legacy-promotion seed, full compileall and final security audit.
-4. Only after a clean post-fix gate reconcile branch/main and mark PR #165 ready/merge.
-5. If exact reconstruction is still transport-limited after the blocker fix, continue LAB-091 real supported-surface two-worker and timeout/UNKNOWN work, but LAB-086 remains the first priority.
+1. LAB-086 first: obtain/reconstruct exact `strict_fence.py` blob `5da01e28a9f813a136d138637f855940f04aab46`, apply staged patch `d55ded03...`, and publish only via a byte/diff-auditable Contents update. Re-fetch and verify that the file diff contains only permanent proof-key collision triggers plus fence assertion requirements.
+2. Execute exact `test_thaw_proof_replace_regression.py`, `test_transaction_scoped_thaw_minimality.py`, `test_post_cutoff_evidence_dml_fence.py`, `test_post_cutoff_evidence_insert_authorization.py`, and `test_strict_fence.py` on the published runtime.
+3. Repin the executable snapshot, regenerate the full LAB-086 test inventory, run the complete branch-local LAB-080→086 normal suite, unsafe seed, compileall and final security audit; only then reconcile/merge #165.
+4. If byte-safe LAB-086 publication is still tool-limited, continue LAB-091 with the full real supported surface: two workers sharing one request and timeout-after-commit/UNKNOWN reconciliation with actual LAB-080/LAB-082 persistence, then re-audit restart/reentrancy.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; new thaw `INSERT OR REPLACE` proof-history blocker found; RED exact regression + research note + staged patch durable; runtime fix pending.
+- #163 / LAB-086 — IN_PROGRESS; thaw `INSERT OR REPLACE` blocker remains RED; runtime fix pending.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; real LAB-080/LAB-082 supported-surface concurrency/UNKNOWN gate remains.
+- #170 / LAB-091 — IN_PROGRESS; focused UNKNOWN retry convergence now proven, full real supported-surface gate remains.
