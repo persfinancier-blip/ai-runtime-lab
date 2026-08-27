@@ -7,7 +7,13 @@ from experiments.asymmetric_break_glass_history.strict_fence import (
 )
 
 
-def make_db():
+PROOF_TABLES = (
+    "provider_asymmetric_break_glass_proofs",
+    "provider_asymmetric_recovery_public_root_proofs",
+)
+
+
+def make_db(*, seed_null=False):
     q = sqlite3.connect(":memory:")
     q.executescript(
         """
@@ -37,6 +43,10 @@ def make_db():
         );
         """
     )
+    if seed_null:
+        for table in PROOF_TABLES:
+            q.execute(f"INSERT INTO {table} VALUES(NULL, 'original-null')")
+        q.commit()
     install_public_mutation_fence_locked(q)
     return q
 
@@ -48,10 +58,7 @@ class ThawNullProofKeyRegressionTests(unittest.TestCase):
             q.execute("BEGIN IMMEDIATE")
             remove_public_mutation_fence_locked(q)
 
-            for table in (
-                "provider_asymmetric_break_glass_proofs",
-                "provider_asymmetric_recovery_public_root_proofs",
-            ):
+            for table in PROOF_TABLES:
                 with self.assertRaises(sqlite3.IntegrityError):
                     q.execute(f"INSERT INTO {table} VALUES(NULL, 'null-proof')")
                 self.assertEqual(q.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
@@ -60,29 +67,15 @@ class ThawNullProofKeyRegressionTests(unittest.TestCase):
             q.close()
 
     def test_existing_null_key_cannot_be_replaced_or_duplicated_during_thaw(self):
-        q = make_db()
+        q = make_db(seed_null=True)
         try:
-            # Model out-of-band corruption that predates fence installation semantics.
-            for table in (
-                "provider_asymmetric_break_glass_proofs",
-                "provider_asymmetric_recovery_public_root_proofs",
-            ):
-                q.execute(f"DROP TRIGGER IF EXISTS lab086_break_glass_proof_no_replace_existing_key_no_replace")
-                q.execute(f"DROP TRIGGER IF EXISTS lab086_public_root_proof_no_replace_existing_key_no_replace")
-                q.execute(f"INSERT INTO {table} VALUES(NULL, 'original-null')")
-            q.commit()
-
-            install_public_mutation_fence_locked(q)
             q.execute("BEGIN IMMEDIATE")
             remove_public_mutation_fence_locked(q)
 
-            for table in (
-                "provider_asymmetric_break_glass_proofs",
-                "provider_asymmetric_recovery_public_root_proofs",
-            ):
+            for table in PROOF_TABLES:
                 with self.assertRaises(sqlite3.IntegrityError):
                     q.execute(f"INSERT OR REPLACE INTO {table} VALUES(NULL, 'tampered')")
-                rows = q.execute(f"SELECT marker FROM {table} WHERE rowid IS NOT NULL").fetchall()
+                rows = q.execute(f"SELECT marker FROM {table} ORDER BY rowid").fetchall()
                 self.assertEqual(rows, [("original-null",)])
             q.rollback()
         finally:
