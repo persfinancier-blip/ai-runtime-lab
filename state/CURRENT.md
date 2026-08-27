@@ -10,31 +10,26 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current observed PR #165 HEAD: `91b41d997e7498e45e7c108e70c766f5b447655f`; draft=true; mergeable=true at this observation.
+- Current PR #165 HEAD after non-executable manifest update: `e6bf48d81129914b8dbe3e23a2b1a416fab11e24`; PR is draft and currently mergeable=true.
+- Current executable pin for the exact gate: `05d8e75a636818afcb32e085d464c9fa9171dea5`.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact publication/execution is concretely tool-limited.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only if LAB-086 exact reconstruction/execution is concretely tool-limited.
 
 ## Last completed step
 
-Resumed LAB-086 first and synchronized durable control-plane state with the actual PR blocker.
+Removed the LAB-086 byte-safe publication blocker and published the already-proven alternate-UNIQUE thaw fix to the real runtime.
 
-Current published `experiments/asymmetric_break_glass_history/strict_fence.py` remains exact blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`. The current blocker is the alternate semantic identity on `asymmetric_provider_generations`: `generation_id` is the content PK, but the schema also has `UNIQUE(provider_id,generation)`. During transaction-scoped thaw, SQLite `INSERT OR REPLACE` using a new `generation_id` and an already-authenticated `(provider_id,generation)` can replace history.
+`strict_fence.py` is an addition relative to `main`, so `fetch_pr_file_patch` returns the entire 935-line current file. The full per-file patch was read as a single connector response resource, eliminating the previous risk from manually reconstructing truncated `fetch_file` ranges. The saved minimal semantic-collision patch was applied to that complete payload and written through the normal Contents API.
 
-The corrected published regression is `test_thaw_alternate_unique_collision_regression.py` blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`. Exact RED→GREEN is already established on reconstructed bytes:
-- published runtime `080eb945...`: RED — attack allowed;
-- saved candidate `eb2198354d222ad0ad6b7d751bf5c649157b6b36`: GREEN 1/1, original row unchanged, genuine new successor still insertable;
-- `py_compile` PASS.
+GitHub returned exactly the expected candidate blob:
+- executable commit: `05d8e75a636818afcb32e085d464c9fa9171dea5`;
+- published `strict_fence.py`: `eb2198354d222ad0ad6b7d751bf5c649157b6b36`.
 
-Saved patch: `research/2026-08-27-lab086-thaw-alternate-unique-collision.patch`. The broader inspected INSERT-thawed schemas did not expose another secondary SQL UNIQUE identity, so the fix remains narrowly scoped to `(provider_id,generation)`.
+This is byte-identical to the candidate that had already passed the corrected exact alternate-UNIQUE regression 1/1 and `py_compile`. A post-publication focused SQLite semantic check reconfirmed that same-PK and alternate `(provider_id,generation)` replacement are blocked, the original generation remains unchanged, and a genuinely new successor remains insertable.
 
-This run re-probed the publication path. Connector reads exact file ranges/blobs and Contents API can replace a whole file, but no line-patch/file-upload primitive is available; direct/raw GitHub transport is unavailable. The ~935-line security-critical runtime file was therefore not hand-transcribed. Runtime remains unchanged until a byte-safe complete payload can be supplied and GitHub returns the expected candidate blob.
+Repinned `research/2026-08-27-lab086-exact-gate-manifest.md` to executable snapshot `05d8e75a...` and updated the expected strict-fence blob to `eb219835...`. Issue #163 and PR #165 now reflect publication success rather than the obsolete "candidate not yet published" state.
 
-Because LAB-086 publication is concretely tool-limited, continued the allowed LAB-091 fallback and upgraded a previously non-counted process test to exact published-source evidence. Reconstructed and hash-verified current published bytes:
-- `operation_permit.py` `637784a5cb61a024a1df3e0e983887b6d0a838be` — MATCH;
-- `convergent_operation_scoped.py` `7fe0d682c0be4c6388799dd6b8a6ba87f65dda3b` — MATCH;
-- `test_process_concurrency_and_crash.py` `776ab61e70b062233939a9b0e53045042989a063` — MATCH.
-
-Executed result: LAB-091 process concurrency/crash **2/2 PASS + compileall PASS**. Two independent OS processes converged on one CONFIRMED winner for the same PREPARED request; a worker killed with `os._exit(17)` after an authorized PREPARED→CONFIRMED update but before COMMIT left durable state PREPARED/NULL after reopen. The published test intentionally stubs the parent surface, so this is exact evidence for convergence/transaction semantics, not the remaining full LAB-080/LAB-082 supported-surface gate.
+Fresh branch/main compare: ahead 180 / behind 128; all 75 PR paths remain additions relative to `main`, so the observed divergence is historical rather than a current path-level overlap. Do not use mergeability as a substitute for the execution gate.
 
 ## Evidence retained
 
@@ -47,36 +42,34 @@ Executed result: LAB-091 process concurrency/crash **2/2 PASS + compileall PASS*
 - LAB-085 public/final 11/11 PASS.
 - Lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
-- Published pre-blocker LAB-086 thaw/fence exact subgate: 14/14 PASS + compileall.
-- Alternate-UNIQUE corrected regression blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
-- Current LAB-086 runtime blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`.
-- Exact staged LAB-086 candidate `eb2198354d222ad0ad6b7d751bf5c649157b6b36`; py_compile PASS; corrected regression GREEN 1/1.
+- Predecessor published LAB-086 thaw/fence exact subgate: 14/14 PASS + compileall.
+- Corrected alternate-UNIQUE regression blob: `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
+- Pre-publication exact candidate `eb219835...`: corrected regression 1/1 PASS + `py_compile`.
+- Published runtime now has the identical blob `eb219835...`; focused post-publication semantic check reconfirmed the intended block/allow behavior.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 one-shot/v2/v3/v4/restart/single-pending evidence remains as recorded in #170/#173.
-- LAB-091 current published process convergence/crash evidence: exact hashes matched; 2/2 PASS + compileall.
+- LAB-091 retained evidence remains recorded in #170/#173; do not substitute it for LAB-086 work while the primary gate is unblocked.
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. Current blocker is byte-safe publication of already-proven candidate `eb219835...`, not protocol/design uncertainty.
-- Available GitHub write primitive for existing `strict_fence.py` is whole-file text replacement. Do not hand-transcribe the security-critical file or weaken the Git-blob integrity gate.
-- PR #165 must remain draft until the runtime fix is published, exact thaw/strict tests are green on published bytes, a new executable snapshot is pinned, and the complete branch-local LAB-080→086 real-ledger gate passes.
-- LAB-091 still needs the same process/restart/UNKNOWN properties through the full real LAB-080/LAB-082 supported surface; focused parent-stub evidence does not substitute for that gate.
+- LAB-086 remains first priority. The protocol/design blocker and byte-safe publication blocker are both removed. Remaining work is now the exact published execution gate.
+- The predecessor 14/14 thaw/fence result is useful retained evidence but is not a substitute for rerunning the repinned subgate after the semantic-identity change.
+- Direct shell/raw GitHub transport remains unavailable; exact connector reconstruction is still file-by-file. The per-file PR-patch technique is a valid byte-safe path for PR-added files.
+- PR #165 must remain draft until the repinned strict/thaw subgate, complete branch-local LAB-080→086 real-ledger tests, unsafe seed, compileall and final security/reconciliation audit are all clean.
 - LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. LAB-086 first: publish the already reconstructed `strict_fence.py` candidate only through a byte-safe full-payload path. Expected candidate blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36`; current remote blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`.
-2. Fetch published runtime and require exact Git blob equality; if it differs, repair/revert before counting tests.
-3. Execute corrected alternate-UNIQUE regression with `test_strict_fence.py`, thaw history/null/proof replacement/minimality/conflict suites and compileall; fix every failure.
-4. Repin executable snapshot, reconstruct exact branch-local LAB-080→086 closure, verify every local file with `git hash-object`, execute every normal LAB-086 real-schema test, unsafe expected-failure seed and full compileall.
-5. Perform fresh final security/reconciliation audit and branch/main compare; only a clean full gate may make PR #165 ready/integratable.
-6. If publication remains concretely tool-limited, continue LAB-091 by moving the now-exact process concurrency/crash semantics through `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` with real LAB-080/LAB-082 dependencies, then full UNKNOWN reconciliation.
+1. Reconstruct the published `strict_fence.py` from executable pin `05d8e75a...` and exact current thaw/strict tests; verify every local file with `git hash-object`.
+2. Execute the repinned strict/thaw subgate: corrected alternate-UNIQUE regression plus `test_strict_fence.py`, thaw history-key, NULL proof-key, proof-replace, transaction-scoped thaw minimality and relevant conflict/current-authority fence regressions; run compileall.
+3. Reconstruct the complete branch-local LAB-080→086 dependency closure from the same executable pin, hash-verify every file, execute every normal LAB-086 real-schema test module, unsafe legacy-promotion expected-failure seed and full compileall.
+4. Perform a fresh final security/reconciliation audit and branch/main compare. Only a completely clean gate may make PR #165 ready/integratable.
+5. Use LAB-091 fallback only if the exact LAB-086 reconstruction/execution becomes concretely tool-limited again.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; alternate-UNIQUE blocker exact RED→GREEN candidate proven; byte-safe runtime publication next.
+- #163 / LAB-086 — IN_PROGRESS; alternate-UNIQUE thaw blocker published byte-exact; repinned execution gate next.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; exact published process convergence/crash 2/2 + compileall now proven; full real LAB-080/LAB-082 integration gate remains.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; fallback only while LAB-086 is tool-limited.
