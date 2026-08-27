@@ -10,28 +10,32 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current PR #165 executable pin: `05d8e75a636818afcb32e085d464c9fa9171dea5`; published `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36`.
-- PR #165 remains DRAFT; mergeability must not substitute for the execution gate.
+- Current PR #165 HEAD after RED/research artifacts: `2c8540420f55cd41ccf12c953d2f7521790902b1`.
+- Last executable pin remains `05d8e75a636818afcb32e085d464c9fa9171dea5`; published `strict_fence.py` remains blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36`.
+- PR #165 is draft/mergeable; mergeability does not substitute for the execution gate.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
 - LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact reconstruction/execution is concretely tool-limited.
 
 ## Last completed step
 
-Attempted the repinned LAB-086 strict/thaw execution path again. Direct git/raw GitHub transport is still unavailable. Connector content is byte-exact, but there is still no supported machine stream/mount from connector response bytes into the local executor. A manually reconstructed `strict_fence.py` failed the mandatory Git blob gate (`e57f70530233912302851088a5bb6c44453b745d` != published `eb2198354d222ad0ad6b7d751bf5c649157b6b36`), so no LAB-086 test execution from that file was counted.
+Fresh pinned-source audit found a new LAB-086 merge blocker in the LAB-082 provider-receipt fence.
 
-Because this was a concrete tool-limit, used the allowed LAB-091 fallback and found a real restart defect in the final supported candidate. LAB-080 `SharedAnchorLedger._init()` replays `INSERT OR IGNORE INTO shared_anchor_meta VALUES(1,0)` on every startup. Persistent LAB-091 `BEFORE INSERT` guard `lab091_v2_meta_no_insert` runs before SQLite uniqueness conflict resolution, so a normal reopen aborted before `verify_durable()` even when the singleton already existed. File-backed SQLite execution reproduced `sqlite3.IntegrityError: LAB-091 meta singleton already initialized`.
+Exact pinned LAB-082 schema defines `asymmetric_provider_receipts.request_id` as `TEXT PRIMARY KEY` without explicit `NOT NULL`. Current LAB-086 `lab086_provider_receipt_no_replace` compares `request_id=NEW.request_id` and therefore does not reject `NEW.request_id IS NULL`. A focused SQLite reproduction using the exact table shape/current predicate accepted multiple NULL request IDs.
 
-Fixed PR #173 without weakening the guard:
-- added `restart_safe_schema.py`, which creates LAB-080 tables under `BEGIN IMMEDIATE`, reads the singleton first, and inserts `(1,0)` only on a genuinely fresh database;
-- final `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger._init()` now uses this helper via dynamic dispatch from the LAB-080 base constructor;
-- if a guarded database is missing the singleton, startup remains fail-closed because the persistent insert guard rejects reinitialization.
+This is a real LAB-086 restart blocker, not only LAB-091 arbitrary-writer hardening: exact pinned `IntegratedAsymmetricProviderHistory._verify_durable_locked()` enumerates every persisted receipt, and `SignedReceipt.validate()` requires `request_id`, `kind`, and `challenge` to be non-empty strings. Therefore one post-cutoff NULL receipt accepted by the current fence deterministically makes the next durable verification/restart fail closed.
 
-Exact published blobs:
-- `restart_safe_schema.py` `975610219c710a42c4a8377bd38f9593a8bb23f5`;
-- `test_restart_safe_schema.py` `3112877432a3f575e5624537d4c5180cf0b379d7`;
-- `history_bound_operation_scoped.py` `8d2d511b2ea895c2f680ac495e26c4d694fd047d`.
+Pre-cutoff malformed receipts do not escape migration because LAB-086 verifies inherited LAB-082 durable history before establishing the cutoff.
 
-The helper + regression were reconstructed from published bytes and matched `git hash-object`; executed result: **4/4 PASS + compileall PASS**. The final supported class was separately reconstructed and matched blob `8d2d511b...`, confirming the `_init()` override is wired into the actual candidate. Research note: `research/2026-08-28-lab091-persisted-trigger-restart-constructor.md`.
+Staged minimal predicate:
+`NEW.request_id IS NULL OR EXISTS(SELECT 1 FROM asymmetric_provider_receipts WHERE request_id IS NEW.request_id)`.
+Focused RED→GREEN semantics: current predicate allowed NULL; staged predicate blocked NULL while preserving a genuinely new non-NULL receipt insert.
+
+Durable artifacts on PR #165 branch:
+- RED regression `experiments/asymmetric_break_glass_history/tests/test_provider_receipt_null_identity_regression.py`, commit `20fd52bd6066c158de5464ebc9d5e61bd0563bd3`;
+- exact patch `research/2026-08-28-lab086-provider-receipt-null-identity.patch`, commit `5c09a5ed774072f1c9d68f3c960bf1bc39ebb25a`;
+- research/evidence note `research/2026-08-28-lab086-provider-receipt-null-identity.md`, commit `2c8540420f55cd41ccf12c953d2f7521790902b1`.
+
+Runtime `strict_fence.py` has not yet been rewritten for this blocker, so no post-fix exact-suite PASS is claimed.
 
 ## Evidence retained
 
@@ -39,34 +43,31 @@ The helper + regression were reconstructed from published bytes and matched `git
 - LAB-085 core 12/12 PASS; asymmetric custody 8/8 PASS; public/final 11/11 PASS; lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - Predecessor published LAB-086 thaw/fence exact subgate: 14/14 PASS + compileall.
-- Corrected LAB-086 alternate-UNIQUE regression blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`; published runtime blob `eb219835...` is byte-identical to the focused corrected candidate that passed 1/1 + `py_compile` before publication.
-- Current run: failed LAB-086 reconstruction hash was rejected; zero new LAB-086 PASS claims were added.
+- Alternate-UNIQUE regression blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`; current published runtime `eb219835...` is byte-identical to that focused corrected candidate.
+- New provider-receipt NULL-identity focused counterexample/fix semantics executed as described above; exact post-fix runtime execution is still pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 retained evidence includes one-shot 6/6, guard/persistence 12/12, v4 9/9, restart-trigger 3/3, single-PREPARED 2/2, process concurrency/crash 2/2, and unsafe raw-DML baseline failure as intended.
-- New LAB-091 restart-safe constructor regression: exact published **4/4 PASS + compileall**.
+- LAB-091 retained exact/focused evidence remains durable; it is not the active priority while this LAB-086 blocker is open.
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. Remaining work is the exact published execution gate, not protocol redesign unless a new executable/source blocker appears.
-- The predecessor 14/14 thaw/fence result still must be rerun on repinned snapshot `05d8e75a...`.
-- Direct shell/raw GitHub transport is unavailable. Connector reads are byte-exact but lack a supported stream/mount into the local executor; large manual reconstruction is non-evidence unless the local Git blob hash matches exactly.
-- PR #165 must remain draft until the repinned strict/thaw subgate, complete branch-local LAB-080→086 real-ledger tests, unsafe seed, compileall and final security/reconciliation audit are all clean.
-- PR #173 remains draft. The constructor/restart defect is fixed, but the final supported object still needs full exact LAB-080/LAB-082 two-worker/crash/UNKNOWN execution and retained LAB-087 composition.
+- LAB-086 remains first priority. The new provider-receipt NULL-identity blocker must be fixed before resuming the repinned full execution gate.
+- Direct shell/raw GitHub transport remains unavailable. Connector reads are byte-exact but large source transfer into the local executor is file/chunk oriented; manual reconstruction is non-evidence unless `git hash-object` matches the published blob.
+- PR #165 must remain draft until the NULL receipt fix is published byte-exact, the strict/thaw subgate is rerun on the new pin, the complete branch-local LAB-080→086 real-ledger tests/unsafe seed/compileall are clean, and final security/reconciliation audit passes.
 - LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Resume LAB-086 first: obtain an exact local `strict_fence.py` whose `git hash-object` equals `eb2198354d222ad0ad6b7d751bf5c649157b6b36`; do not execute/count the subgate before that equality holds.
-2. Reconstruct/hash-verify the strict/thaw regression modules and execute the repinned subgate: alternate-UNIQUE, primary/history/proof replacement, NULL identities, transaction-scoped thaw minimality, conflict/current-authority/root-head tests + compileall.
-3. Reconstruct the complete branch-local LAB-080→086 dependency closure from the same executable pin, execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
+1. Apply `research/2026-08-28-lab086-provider-receipt-null-identity.patch` only to current `strict_fence.py` blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` using a byte-safe whole-file Contents API path; verify the returned blob and exact diff before counting the fix.
+2. Execute `test_provider_receipt_null_identity_regression.py` plus the repinned strict/thaw subgate (alternate-UNIQUE, history/proof replacement, NULL identities, thaw minimality, current-authority/root-head/conflict tests) and compileall from hash-verified published bytes.
+3. Repin the executable snapshot, reconstruct the complete branch-local LAB-080→086 closure, execute every normal LAB-086 real-schema module, unsafe legacy-promotion expected-failure seed and full compileall.
 4. Perform final security/reconciliation audit and fresh branch/main compare. Only a completely clean gate may make PR #165 ready/integratable.
-5. If LAB-086 exact transfer remains concretely tool-limited, LAB-091 fallback next target is the full exact `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` against real LAB-080/LAB-082 dependencies, specifically constructor reopen + two-worker/crash + timeout/UNKNOWN.
+5. Use LAB-091 fallback only if LAB-086 exact write/reconstruction is concretely tool-limited again.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; alternate-UNIQUE fix published byte-exact; repinned execution gate next.
+- #163 / LAB-086 — IN_PROGRESS; provider-receipt NULL identity blocker confirmed; RED regression + exact patch durable; runtime fix next.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; persisted-trigger constructor restart defect fixed exact-published 4/4; full real-stack gate remains.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; fallback only while LAB-086 is tool-limited.
