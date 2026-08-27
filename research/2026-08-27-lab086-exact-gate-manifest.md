@@ -1,14 +1,14 @@
 # LAB-086 exact branch-local gate manifest
 
-Date: 2026-08-27
+Date: 2026-08-28
 
 ## Purpose
 
 The remaining merge gate must execute LAB-086 against one coherent source snapshot. Do not mix current `main` with the long-lived PR branch. The pinned executable source snapshot for this gate is now:
 
-`05d8e75a636818afcb32e085d464c9fa9171dea5`
+`1f90830fca21e2f43fc241012cdd34fd187ba96d`
 
-This supersedes the earlier `4570a19f...` pin because the alternate semantic-identity thaw hardening for `asymmetric_provider_generations` was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
+This supersedes the earlier `05d8e75a...` pin because the provider-receipt NULL-identity hardening was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
 
 The GitHub connector can read the recursive tree and exact UTF-8 blobs for this commit. Direct shell/raw GitHub transport is unavailable in the observed runtime, so branch-local connector blobs are the source of truth. A locally reconstructed file counts as exact only when `git hash-object <file>` equals the pinned blob SHA below.
 
@@ -35,7 +35,7 @@ The GitHub connector can read the recursive tree and exact UTF-8 blobs for this 
 - `experiments/provider_recovery_authority_lifecycle/final_supported.py` — `3baf405499c5d996cd5b4f08d8a710c121247daf`
 - `experiments/asymmetric_break_glass_history/protocol.py` — read exact blob from pinned tree
 - `experiments/asymmetric_break_glass_history/migration_guard.py` — `1a9209b16fdb2c3dcae8e4690658a030040f6ca2`
-- `experiments/asymmetric_break_glass_history/strict_fence.py` — `eb2198354d222ad0ad6b7d751bf5c649157b6b36`
+- `experiments/asymmetric_break_glass_history/strict_fence.py` — `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`
 - `experiments/asymmetric_break_glass_history/suffix.py` — `44847bde53b9f7b0e2fbcbab37d36dc992f497b2`
 - `experiments/asymmetric_break_glass_history/final_supported.py` — `ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`
 
@@ -53,6 +53,7 @@ Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/test
 - current authority, root-head, provider-receipt and migration metadata DML fences;
 - post-cutoff proof creation/freeze authorization;
 - transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities, including the alternate SQL identity `(provider_id,generation)` on `asymmetric_provider_generations`;
+- provider-receipt canonical identity: `test_provider_receipt_null_identity_regression.py` blob `a66d9ddef2d4a41db937222b875f697c7ff74b75` must reject post-cutoff `NULL request_id` while preserving a genuinely new non-NULL receipt insert;
 - final single-snapshot verification;
 - stale writer, stale trigger upgrade and rotation/concurrency regressions.
 
@@ -72,9 +73,11 @@ The previous combined candidate was published in executable pin `4570a19fb92f122
 
 A later schema audit found a second identity on `asymmetric_provider_generations`: content PK `generation_id` plus SQL `UNIQUE(provider_id,generation)`. With the transaction-scoped INSERT thaw, `INSERT OR REPLACE` using a fresh `generation_id` and an existing `(provider_id,generation)` could replace authenticated history. Corrected regression `test_thaw_alternate_unique_collision_regression.py` is blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
 
-The saved patch was applied to exact runtime blob `080eb945...`; the resulting candidate blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` had already passed the corrected regression 1/1 and `py_compile`. On 2026-08-27 the complete payload was published through the normal Contents API and GitHub returned exactly the expected runtime blob `eb219835...` in executable commit `05d8e75a636818afcb32e085d464c9fa9171dea5`. A post-publication focused SQLite semantic check reconfirmed that both same-PK and alternate-UNIQUE replacement are blocked, the original generation remains unchanged, and a genuinely new `(generation_id, provider_id, generation)` successor remains insertable.
+The saved alternate-UNIQUE patch was applied to exact runtime blob `080eb945...`; candidate blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` passed the corrected regression 1/1 and `py_compile` before publication. It was published in executable commit `05d8e75a636818afcb32e085d464c9fa9171dea5` and GitHub returned exactly `eb219835...`.
 
-The exact full branch-local gate must still be rerun from this new executable pin; prior 14/14 evidence is retained as predecessor evidence, not substituted for the repinned full gate.
+A subsequent pinned-source audit found that LAB-082 `asymmetric_provider_receipts.request_id` is `TEXT PRIMARY KEY` without explicit `NOT NULL`, while the LAB-086 collision trigger used SQL `=` and allowed a post-cutoff NULL request identity. LAB-082 durable verification enumerates every receipt and `SignedReceipt.validate()` rejects NULL request IDs, so the admitted row deterministically broke later verification/restart. Regression `test_provider_receipt_null_identity_regression.py` is blob `a66d9ddef2d4a41db937222b875f697c7ff74b75`.
+
+The minimal NULL-safe receipt predicate was published through Contents API in executable commit `1f90830fca21e2f43fc241012cdd34fd187ba96d`; GitHub returned runtime blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. Compare against the preceding branch head showed exactly one modified file (`strict_fence.py`, +7/-3), and exact source inspection shows only `NEW.request_id IS NULL` plus NULL-safe `request_id IS NEW.request_id` collision handling. A post-publication focused SQLite semantic check blocked NULL, allowed a genuinely new non-NULL request ID, and blocked reuse of that non-NULL ID. This is publication/source/semantic evidence only; the repinned exact unittest subgate is still required.
 
 ## Fresh audit note
 
