@@ -6,9 +6,9 @@ Date: 2026-08-27
 
 The remaining merge gate must execute LAB-086 against one coherent source snapshot. Do not mix current `main` with the long-lived PR branch. The pinned executable source snapshot for this gate is now:
 
-`3d22efc4c562103e8b0bc18fb8f99559411b55fc`
+`4570a19fb92f1222db64cb07f7e4ce6312630879`
 
-This supersedes the earlier `95fa5da3...` executable pin because the thaw-proof `INSERT OR REPLACE` blocker was fixed in runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
+This supersedes the earlier `3d22efc4...` executable pin because the combined thaw identity hardening was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
 
 The GitHub connector can read the recursive tree and exact UTF-8 blobs for this commit. Direct shell/raw GitHub transport is unavailable in the observed runtime, so branch-local connector blobs are the source of truth. A locally reconstructed file counts as exact only when `git hash-object <file>` equals the pinned blob SHA below.
 
@@ -35,7 +35,7 @@ The GitHub connector can read the recursive tree and exact UTF-8 blobs for this 
 - `experiments/provider_recovery_authority_lifecycle/final_supported.py` — `3baf405499c5d996cd5b4f08d8a710c121247daf`
 - `experiments/asymmetric_break_glass_history/protocol.py` — read exact blob from pinned tree
 - `experiments/asymmetric_break_glass_history/migration_guard.py` — `1a9209b16fdb2c3dcae8e4690658a030040f6ca2`
-- `experiments/asymmetric_break_glass_history/strict_fence.py` — `cea0ca3b42723790971ba9415b70a7e9fa0c7368`
+- `experiments/asymmetric_break_glass_history/strict_fence.py` — `080eb9454437932a8ab419d66a4f2a69ed17c7ce`
 - `experiments/asymmetric_break_glass_history/suffix.py` — `44847bde53b9f7b0e2fbcbab37d36dc992f497b2`
 - `experiments/asymmetric_break_glass_history/final_supported.py` — `ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`
 
@@ -52,7 +52,7 @@ Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/test
 - inherited/direct supported-surface fences;
 - current authority, root-head, provider-receipt and migration metadata DML fences;
 - post-cutoff proof creation/freeze authorization;
-- transaction-scoped thaw minimality and `INSERT OR REPLACE`/UPSERT collision resistance for existing proof keys;
+- transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities;
 - final single-snapshot verification;
 - stale writer, stale trigger upgrade and rotation/concurrency regressions.
 
@@ -63,13 +63,22 @@ Then execute `unsafe_legacy_promotion_expected_failure.py` separately and requir
 1. Read each file from the pinned commit, not a mutable branch name.
 2. Verify `git hash-object` before importing or testing it.
 3. If any byte hash differs, do not count that run as exact evidence.
-4. Do not manually compress/reformat source while reconstructing. A trial manual transcription in the 2026-08-27 runtime produced nonmatching hashes and was discarded.
-5. Keep PR #165 draft until the whole current-head gate is green and a fresh security audit finds no blocker.
+4. Do not manually compress/reformat source while reconstructing.
+5. Keep PR #165 draft until the whole pinned gate is green and a fresh security audit finds no blocker.
 
-## Latest thaw-proof fix evidence
+## Published combined thaw hardening evidence
 
-Commit `3d22efc4c562103e8b0bc18fb8f99559411b55fc` changes only `strict_fence.py` by +16/-0 lines relative to prior HEAD `968fc36...`. The commit diff exactly matches the previously stored research patch: each post-cutoff proof table receives a permanent existing-key/no-replace BEFORE INSERT trigger that is not removed by transaction-scoped thaw, and `assert_public_mutation_fence_locked()` requires those permanent triggers. A focused SQLite execution confirmed REPLACE and UPSERT-existing are blocked for both proof tables while a new unique proof key remains insertable during legitimate thaw. This focused run does not substitute for the full exact branch-local gate.
+The combined candidate was first staged through the normal Contents API. GitHub returned staged blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`. The same payload then replaced runtime `strict_fence.py` in commit `4570a19fb92f1222db64cb07f7e4ce6312630879`, and GitHub returned the same runtime blob `080eb945...`. The staging artifact was removed afterward; that cleanup is non-executable.
+
+Exact published test blobs reconstructed and executed after publication:
+
+- `test_strict_fence.py` — `97048a325c4cc1ed78612bdbb4cfec42146a43f6`;
+- `test_thaw_null_proof_key_regression.py` — `fce5c57c8cfaa18f6761ae9b47c211813801aae0`;
+- `test_thaw_history_key_collision_regression.py` — `88ba35e933c123d10af65597d6bb51f4f11068ec`;
+- `test_thaw_proof_replace_regression.py` — `c511ccfc4b88b050910561b3b8f7e99be5f33e93`.
+
+Result: **14/14 PASS** + focused package compileall PASS. Existing non-NULL keys and NULL identities are blocked on every INSERT-thawed authenticated-history/proof surface, while new unique non-NULL keys remain available to the legitimate final-writer thaw.
 
 ## Fresh audit note
 
-The migration verifier calls public-custody durable verification through a separate read transaction while the outer LAB-086 path holds `BEGIN IMMEDIATE`. The lower verifier uses ordinary `BEGIN`, not a second `BEGIN IMMEDIATE`; the outer transaction excludes concurrent writers across the composed verification interval. No new mixed-writer snapshot blocker was established from this path.
+The migration verifier calls public-custody durable verification through a separate read transaction while the outer LAB-086 path holds `BEGIN IMMEDIATE`. The lower verifier uses ordinary `BEGIN`, not a second `BEGIN IMMEDIATE`; the outer transaction excludes concurrent writers across the composed verification interval. No mixed-writer snapshot blocker was established from this path.
