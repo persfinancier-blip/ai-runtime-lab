@@ -39,6 +39,10 @@ def install_cross_table_guards(q: PermitConnection) -> None:
         """CREATE TRIGGER lab091_v3_intent_requires_current_tail_and_provider
            BEFORE INSERT ON shared_anchor_intents
            WHEN NEW.position != NEW.predecessor_position + 1
+           OR EXISTS(
+             SELECT 1 FROM shared_anchor_intents i
+             WHERE i.status='PREPARED'
+           )
            OR NOT EXISTS(
              SELECT 1 FROM shared_anchor_meta m
              WHERE m.singleton=1 AND m.reserved_position=NEW.predecessor_position
@@ -54,7 +58,7 @@ def install_cross_table_guards(q: PermitConnection) -> None:
                AND g.generation=NEW.provider_generation
            )
            BEGIN
-             SELECT RAISE(ABORT,'LAB-091 intent is not exact next tail/current provider');
+             SELECT RAISE(ABORT,'LAB-091 intent is not exact next tail/current provider or another intent is unresolved');
            END"""
     )
     q.execute(
