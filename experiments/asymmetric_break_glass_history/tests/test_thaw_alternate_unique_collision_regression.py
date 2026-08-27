@@ -17,6 +17,16 @@ class ThawAlternateUniqueCollisionRegressionTests(unittest.TestCase):
             );
             INSERT INTO provider_asymmetric_break_glass_boundary VALUES(1);
 
+            CREATE TABLE provider_recovery_public_authorities(
+              authority_id TEXT PRIMARY KEY
+            );
+            CREATE TABLE provider_recovery_public_transitions(
+              new_authority_id TEXT PRIMARY KEY
+            );
+            CREATE TABLE provider_recovery_public_head(
+              singleton INTEGER PRIMARY KEY
+            );
+
             CREATE TABLE asymmetric_provider_generations(
               generation_id TEXT PRIMARY KEY,
               provider_id TEXT NOT NULL,
