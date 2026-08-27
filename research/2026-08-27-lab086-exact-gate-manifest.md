@@ -6,9 +6,9 @@ Date: 2026-08-27
 
 The remaining merge gate must execute LAB-086 against one coherent source snapshot. Do not mix current `main` with the long-lived PR branch. The pinned executable source snapshot for this gate is now:
 
-`4570a19fb92f1222db64cb07f7e4ce6312630879`
+`05d8e75a636818afcb32e085d464c9fa9171dea5`
 
-This supersedes the earlier `3d22efc4...` executable pin because the combined thaw identity hardening was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
+This supersedes the earlier `4570a19f...` pin because the alternate semantic-identity thaw hardening for `asymmetric_provider_generations` was published to runtime `strict_fence.py`. Commits after this pin may update only non-executable gate notes/evidence; if executable/test code moves again, repin before counting a full gate.
 
 The GitHub connector can read the recursive tree and exact UTF-8 blobs for this commit. Direct shell/raw GitHub transport is unavailable in the observed runtime, so branch-local connector blobs are the source of truth. A locally reconstructed file counts as exact only when `git hash-object <file>` equals the pinned blob SHA below.
 
@@ -35,7 +35,7 @@ The GitHub connector can read the recursive tree and exact UTF-8 blobs for this 
 - `experiments/provider_recovery_authority_lifecycle/final_supported.py` — `3baf405499c5d996cd5b4f08d8a710c121247daf`
 - `experiments/asymmetric_break_glass_history/protocol.py` — read exact blob from pinned tree
 - `experiments/asymmetric_break_glass_history/migration_guard.py` — `1a9209b16fdb2c3dcae8e4690658a030040f6ca2`
-- `experiments/asymmetric_break_glass_history/strict_fence.py` — `080eb9454437932a8ab419d66a4f2a69ed17c7ce`
+- `experiments/asymmetric_break_glass_history/strict_fence.py` — `eb2198354d222ad0ad6b7d751bf5c649157b6b36`
 - `experiments/asymmetric_break_glass_history/suffix.py` — `44847bde53b9f7b0e2fbcbab37d36dc992f497b2`
 - `experiments/asymmetric_break_glass_history/final_supported.py` — `ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`
 
@@ -52,7 +52,7 @@ Execute every `test_*.py` under `experiments/asymmetric_break_glass_history/test
 - inherited/direct supported-surface fences;
 - current authority, root-head, provider-receipt and migration metadata DML fences;
 - post-cutoff proof creation/freeze authorization;
-- transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities;
+- transaction-scoped thaw minimality and NULL/`INSERT OR REPLACE`/UPSERT collision resistance across all INSERT-thawed authenticated-history/proof identities, including the alternate SQL identity `(provider_id,generation)` on `asymmetric_provider_generations`;
 - final single-snapshot verification;
 - stale writer, stale trigger upgrade and rotation/concurrency regressions.
 
@@ -66,18 +66,15 @@ Then execute `unsafe_legacy_promotion_expected_failure.py` separately and requir
 4. Do not manually compress/reformat source while reconstructing.
 5. Keep PR #165 draft until the whole pinned gate is green and a fresh security audit finds no blocker.
 
-## Published combined thaw hardening evidence
+## Published thaw hardening evidence
 
-The combined candidate was first staged through the normal Contents API. GitHub returned staged blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`. The same payload then replaced runtime `strict_fence.py` in commit `4570a19fb92f1222db64cb07f7e4ce6312630879`, and GitHub returned the same runtime blob `080eb945...`. The staging artifact was removed afterward; that cleanup is non-executable.
+The previous combined candidate was published in executable pin `4570a19fb92f1222db64cb07f7e4ce6312630879` as runtime blob `080eb9454437932a8ab419d66a4f2a69ed17c7ce`. Exact published tests at that pin passed 14/14 + compileall for primary-key/NULL/proof/history replacement protection.
 
-Exact published test blobs reconstructed and executed after publication:
+A later schema audit found a second identity on `asymmetric_provider_generations`: content PK `generation_id` plus SQL `UNIQUE(provider_id,generation)`. With the transaction-scoped INSERT thaw, `INSERT OR REPLACE` using a fresh `generation_id` and an existing `(provider_id,generation)` could replace authenticated history. Corrected regression `test_thaw_alternate_unique_collision_regression.py` is blob `a767e6bbb5e164a846c93d04b9c8c3f7980bba38`.
 
-- `test_strict_fence.py` — `97048a325c4cc1ed78612bdbb4cfec42146a43f6`;
-- `test_thaw_null_proof_key_regression.py` — `fce5c57c8cfaa18f6761ae9b47c211813801aae0`;
-- `test_thaw_history_key_collision_regression.py` — `88ba35e933c123d10af65597d6bb51f4f11068ec`;
-- `test_thaw_proof_replace_regression.py` — `c511ccfc4b88b050910561b3b8f7e99be5f33e93`.
+The saved patch was applied to exact runtime blob `080eb945...`; the resulting candidate blob `eb2198354d222ad0ad6b7d751bf5c649157b6b36` had already passed the corrected regression 1/1 and `py_compile`. On 2026-08-27 the complete payload was published through the normal Contents API and GitHub returned exactly the expected runtime blob `eb219835...` in executable commit `05d8e75a636818afcb32e085d464c9fa9171dea5`. A post-publication focused SQLite semantic check reconfirmed that both same-PK and alternate-UNIQUE replacement are blocked, the original generation remains unchanged, and a genuinely new `(generation_id, provider_id, generation)` successor remains insertable.
 
-Result: **14/14 PASS** + focused package compileall PASS. Existing non-NULL keys and NULL identities are blocked on every INSERT-thawed authenticated-history/proof surface, while new unique non-NULL keys remain available to the legitimate final-writer thaw.
+The exact full branch-local gate must still be rerun from this new executable pin; prior 14/14 evidence is retained as predecessor evidence, not substituted for the repinned full gate.
 
 ## Fresh audit note
 
