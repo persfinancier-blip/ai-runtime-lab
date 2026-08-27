@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from experiments.anchor_attestation.protocol import ProviderUnavailable, UnknownOutcome
 from experiments.shared_anchor_intent_ledger.protocol import (
     Intent,
     IntentSubstitution,
@@ -92,7 +93,7 @@ class SupportedConvergentOperationScopedAsymmetricSharedAnchorLedger(
                 timeout_after_commit=timeout_after_commit,
             )
             receipt = self._reauthenticate(entry)
-        except Exception as exc:
+        except (ProviderUnavailable, UnknownOutcome) as exc:
             raise PendingIntent(str(exc)) from exc
 
         return self._commit_confirmation(intent.intent_id, entry, receipt)
