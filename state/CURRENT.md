@@ -10,65 +10,68 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Completed: LAB-001 through LAB-085 and LAB-087.
 - Active priority: #163 / LAB-086 — IN_PROGRESS; draft PR #165, branch `lab/086-asymmetric-break-glass-history`.
-- Current observed PR #165 HEAD: `e07ce4d093dffdf7bc20e8c9068140add87aa702`; draft=true, mergeable=true.
-- Previous pinned executable snapshot `3d22efc4c562103e8b0bc18fb8f99559411b55fc` is now superseded for the eventual full gate because a new NULL proof-key thaw blocker was discovered after it.
-- Current published runtime `strict_fence.py` remains blob `cea0ca3b42723790971ba9415b70a7e9fa0c7368`; NULL-safe fix is staged but not yet applied to runtime.
+- Current observed PR #165 HEAD: `3d23d457e4136e200d152aff75b8436444e01288`; draft=true, mergeable=true.
+- Current published runtime `strict_fence.py` remains blob `cea0ca3b42723790971ba9415b70a7e9fa0c7368` from executable commit `3d22efc4c562103e8b0bc18fb8f99559411b55fc`.
+- That executable snapshot is superseded for the eventual full gate: two adjacent thaw key-identity blockers are now RED on the branch and require one combined `strict_fence.py` fix before repinning.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; fallback only while LAB-086 exact execution is concretely tool-limited.
 
 ## Last completed step
 
-Fresh audit of the post-cutoff proof collision trigger found a SQLite NULL-identity bypass. Both LAB-086 proof tables declare identity as ordinary rowid-table `TEXT PRIMARY KEY` columns without explicit `NOT NULL`:
+Resumed LAB-086 first and obtained the exact published `strict_fence.py` through the connector. The earlier proof REPLACE fix was rechecked with focused current-snapshot SQL semantics: for both LAB-086 proof tables, transaction-scoped thaw still blocks REPLACE of an existing non-NULL key while allowing a new unique key.
 
-- `provider_asymmetric_break_glass_proofs.new_rotation_authority_id`;
-- `provider_asymmetric_recovery_public_root_proofs.new_public_authority_id`.
+The branch already contained a newer RED regression for a NULL identity bypass in those proof collision triggers. Ordinary SQLite rowid tables permit NULL in non-`INTEGER PRIMARY KEY` columns; `NULL = NULL` is not true. The staged proof fix therefore changes the collision predicate to `NEW.key IS NULL OR EXISTS(... key IS NEW.key)`.
 
-The permanent collision trigger compares identity with SQL `=`. SQLite permits NULL in non-`INTEGER PRIMARY KEY` columns of ordinary rowid tables, and `NULL = NULL` is not true. Focused execution reproduced the bypass: a table containing one NULL PK row accepted `INSERT OR REPLACE` with another NULL PK row, leaving two NULL-identity rows. During LAB-086 transaction-scoped proof-creation thaw this can create unexplained durable proof evidence that later verification rejects. This is fail-closed durable-state damage / least-privilege-thaw bypass, not authority escalation.
+A fresh audit then found the same least-privilege-thaw class on seven other authenticated-history tables whose INSERT-deny is intentionally removed for the final writer while UPDATE/DELETE guards remain:
 
-A corrected RED regression is now committed on PR #165:
-`experiments/asymmetric_break_glass_history/tests/test_thaw_null_proof_key_regression.py`, blob `fce5c57c8cfaa18f6761ae9b47c211813801aae0`.
+- `provider_recovery_public_authorities.authority_id`;
+- `provider_recovery_public_transitions.new_authority_id`;
+- `provider_rotation_authorities.authority_id`;
+- `provider_rotation_authority_transitions.new_authority_id`;
+- `provider_rotation_threshold_proofs.new_provider_generation_id`;
+- `asymmetric_provider_generations.generation_id`;
+- `asymmetric_provider_transitions.new_generation_id`.
 
-Research note and staged minimal patch are also durable:
-- `research/2026-08-27-lab086-null-proof-key-thaw.md`;
-- `research/2026-08-27-lab086-null-proof-key-thaw.patch`.
+Exact lower source confirms these are `TEXT PRIMARY KEY` identities. Focused SQLite execution reproduced the bypass: during the current thaw policy, `INSERT OR REPLACE` changed an existing public authority from `original` to `tampered` and changed an existing public transition from `bootstrap/root` to attacker values. The same REPLACE pattern and a NULL identity insert were accepted for all seven modeled INSERT-thawed tables. This is durable fail-closed authenticated-history damage / violation of the least-privilege thaw contract, not authority escalation for a process without access to the final-writer connection.
 
-Required trigger predicate:
+Durable artifacts added to PR #165:
 
-`NEW.key IS NULL OR EXISTS(SELECT 1 FROM proof_table WHERE key IS NEW.key)`.
+- RED regression `experiments/asymmetric_break_glass_history/tests/test_thaw_history_key_collision_regression.py`, blob `88ba35e933c123d10af65597d6bb51f4f11068ec`;
+- `research/2026-08-27-lab086-thaw-history-key-collisions.md`;
+- staged combined patch `research/2026-08-27-lab086-thaw-history-key-collisions.patch`.
 
-Focused SQLite execution of this candidate condition confirmed for both proof-table shapes: new NULL key BLOCKED, new unique non-NULL key ALLOWED, replace existing non-NULL key BLOCKED.
+The combined patch is designed to retain a permanent NULL-safe existing-key collision trigger for every INSERT-thawed authenticated-history table, never remove those triggers in `remove_public_mutation_fence_locked()`, require them in `assert_public_mutation_fence_locked()`, and simultaneously apply the pending NULL-safe predicate to the two LAB-086 proof-table collision triggers. New unique non-NULL keys remain insertable during legitimate final-writer thaw.
 
 ## Evidence retained
 
 - LAB-086 lower-stack exact evidence: LAB-080 18/18, LAB-082 28/28, LAB-083 24/24, LAB-084 17/17, LAB-085 core 12/12, asymmetric custody 8/8, public/final 11/11; lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
-- Previous thaw/REPLACE fix at executable snapshot `3d22efc4...`: focused post-publication REPLACE/UPSERT-existing semantics passed for non-NULL proof identities; that snapshot is no longer sufficient for the final gate because the NULL identity bypass was found afterwards.
-- New NULL bypass was actually reproduced with SQLite using ordinary `TEXT PRIMARY KEY` semantics.
-- Corrected RED regression blob: `fce5c57c8cfaa18f6761ae9b47c211813801aae0`.
-- Staged NULL-safe candidate semantics: NULL proof key blocked; unique non-NULL key allowed; existing non-NULL key replacement blocked.
+- Published proof REPLACE fix at `strict_fence.py` blob `cea0ca3b...`: focused current-snapshot SQL check still blocks existing non-NULL proof-key replacement and permits a new key.
+- NULL proof-key bypass: reproduced; branch RED regression `test_thaw_null_proof_key_regression.py` blob `fce5c57c8cfaa18f6761ae9b47c211813801aae0`.
+- Broader thaw history-key bypass: reproduced for REPLACE-existing and NULL identity across all seven INSERT-thawed history surfaces; branch RED regression blob `88ba35e9...`.
+- Exact source used to confirm key schemas includes LAB-083 `protocol.py` blob `688f3961...`, LAB-082 `protocol.py` blob `a2fc3456...`, and LAB-085 public custody `asymmetric_custody.py` blob `771e2ae8...`.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 retained exact/focused evidence remains as previously recorded; it is fallback only while LAB-086 is tool-limited.
+- LAB-091 retained evidence remains fallback only.
 
 ## Known blockers / constraints
 
-- LAB-086 remains first priority. PR #165 must remain draft until the NULL proof-key runtime blocker is fixed and the complete post-fix exact branch-local LAB-080→086 execution gate is clean.
-- `strict_fence.py` is security-critical and ~872 lines; available GitHub write path is whole-file replacement. Do not hand-rewrite it without byte/diff verification.
-- Connector exact reads work and the full PR file patch is available; direct shell/raw GitHub transport still is not a dependable bulk checkout path.
-- The new NULL-safe run is focused semantic evidence, not the exact full-module/closure regression result.
-- LAB-090/#169 provider handoff freshness remains separate.
-- Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
+- PR #165 must remain draft. The current runtime has two related thaw key-identity blockers: pending NULL-safe proof collision semantics plus missing permanent collision/NULL guards on seven other INSERT-thawed authenticated-history tables.
+- `strict_fence.py` is security-critical and large; the available high-level write operation is whole-file replacement. Do not hand-rewrite it without byte/diff verification. Apply the two staged changes as one reviewed candidate against exact blob `cea0ca3b...`.
+- The new focused SQLite runs are semantic evidence, not the exact full-module/branch-local regression gate.
+- Direct shell/raw GitHub transport remains unavailable; connector exact reads work.
+- LAB-090/#169 provider handoff freshness remains separate. Logical SQL scrubbing is not forensic erasure; whole-store rollback freshness remains delegated to the external monotonic-anchor layer.
 
 ## Exact next action
 
-1. Apply `research/2026-08-27-lab086-null-proof-key-thaw.patch` to the exact current `strict_fence.py` runtime bytes. Verify the resulting GitHub commit diff changes only the intended permanent proof-collision predicate and record the new runtime blob.
-2. Execute the exact published `test_thaw_null_proof_key_regression.py` together with `test_thaw_proof_replace_regression.py`, transaction-scoped thaw minimality, post-cutoff evidence DML/insert authorization and strict-fence conflict-algorithm tests. Fix any failure before proceeding.
-3. Repin `research/2026-08-27-lab086-exact-gate-manifest.md` to the new executable commit/blob.
-4. Reconstruct the minimal branch-local LAB-080→086 closure from that new executable snapshot and execute every normal LAB-086 real-schema module, then the unsafe legacy-promotion seed separately, full compileall and final security audit.
-5. Keep PR #165 draft until the entire gate is clean; only then mark ready/reconcile/integrate. If exact reconstruction is concretely tool-limited after progress, fallback to LAB-091 real supported-worker integration without weakening LAB-086 acceptance criteria.
+1. Build one byte-verified candidate from exact `strict_fence.py` blob `cea0ca3b42723790971ba9415b70a7e9fa0c7368` that applies both staged changes: NULL-safe `IS` collision semantics for post-cutoff proof keys and permanent NULL-safe existing-key collision triggers for every other INSERT-thawed authenticated-history table. Verify the candidate diff contains only those intended changes before publishing runtime.
+2. Execute exact published `test_thaw_null_proof_key_regression.py` and `test_thaw_history_key_collision_regression.py` together with `test_thaw_proof_replace_regression.py`, `test_strict_fence.py`, inherited SQL-fence/direct-surface and conflict-algorithm regressions. New unique non-NULL rows must remain creatable by legitimate thaw; existing/NULL identities must remain blocked.
+3. Repin `research/2026-08-27-lab086-exact-gate-manifest.md` to the post-fix executable commit/blob.
+4. Reconstruct that exact branch-local LAB-080→086 closure and execute every normal LAB-086 real-schema module, then unsafe legacy-promotion seed separately, full compileall and final security/reconciliation audit.
+5. Keep PR #165 draft until the entire post-fix gate is clean; only then mark ready/reconcile/integrate.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; NULL proof-key thaw blocker discovered, RED regression + staged patch durable, runtime fix pending.
+- #163 / LAB-086 — IN_PROGRESS; combined thaw key-identity fix pending runtime publication and exact regressions.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
