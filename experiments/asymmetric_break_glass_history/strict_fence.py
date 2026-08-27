@@ -119,6 +119,30 @@ CURRENT_AUTHORITY_THAW_TRIGGER_NAMES = (
     "lab086_provider_head_update_requires_final_writer",
 )
 
+THAW_INSERT_HISTORY_COLLISION_FENCES = {
+    "provider_recovery_public_authorities": (
+        "authority_id", "lab086_public_authority_existing_key_no_replace"
+    ),
+    "provider_recovery_public_transitions": (
+        "new_authority_id", "lab086_public_transition_existing_key_no_replace"
+    ),
+    "provider_rotation_authorities": (
+        "authority_id", "lab086_root_authority_existing_key_no_replace"
+    ),
+    "provider_rotation_authority_transitions": (
+        "new_authority_id", "lab086_root_transition_existing_key_no_replace"
+    ),
+    "provider_rotation_threshold_proofs": (
+        "new_provider_generation_id", "lab086_threshold_proof_existing_key_no_replace"
+    ),
+    "asymmetric_provider_generations": (
+        "generation_id", "lab086_provider_generation_existing_key_no_replace"
+    ),
+    "asymmetric_provider_transitions": (
+        "new_generation_id", "lab086_provider_transition_existing_key_no_replace"
+    ),
+}
+
 CURRENT_AUTHORITY_HISTORY_TRIGGERS = {
     "provider_rotation_authorities": (
         "lab086_root_authority_is_immutable",
@@ -249,6 +273,13 @@ def _all_provider_receipt_trigger_names():
     return PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
 
 
+def _all_thaw_insert_history_collision_trigger_names():
+    return tuple(
+        trigger_name
+        for _, trigger_name in THAW_INSERT_HISTORY_COLLISION_FENCES.values()
+    )
+
+
 def _assert_no_pre_cutoff_post_cutoff_evidence_locked(q):
     tables = _table_names(q)
     if "provider_asymmetric_break_glass_boundary" not in tables:
@@ -275,6 +306,7 @@ def _remove_all_public_mutation_fence_triggers_locked(q):
         *_all_inherited_trigger_names(),
         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
         *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
+        *_all_thaw_insert_history_collision_trigger_names(),
         *_all_post_cutoff_evidence_creation_trigger_names(),
         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
     ):
@@ -315,6 +347,27 @@ def _install_history_immutability(q, table, update_name, delete_name, label):
           SELECT RAISE(ABORT,'LAB-086 {label} cannot be deleted after cutoff');
         END"""
     )
+
+
+def _install_thaw_insert_history_collision_fences_locked(q):
+    tables = _table_names(q)
+    for name in _all_thaw_insert_history_collision_trigger_names():
+        q.execute(f"DROP TRIGGER IF EXISTS {name}")
+    for table, (key_column, trigger_name) in THAW_INSERT_HISTORY_COLLISION_FENCES.items():
+        if table not in tables:
+            continue
+        q.execute(
+            f"""CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON {table}
+            WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+             AND (
+               NEW.{key_column} IS NULL
+               OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
+             )
+            BEGIN
+              SELECT RAISE(ABORT,'LAB-086 existing authenticated history key cannot be replaced');
+            END"""
+        )
 
 
 def _create_legacy_deny_insert_delete(q, table, names, label):
@@ -576,7 +629,10 @@ def _install_post_cutoff_evidence_freeze_locked(q):
             f"""CREATE TRIGGER {no_replace_name}
             BEFORE INSERT ON {table}
             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
-             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
+             AND (
+               NEW.{key_column} IS NULL
+               OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
+             )
             BEGIN
               SELECT RAISE(ABORT,'LAB-086 existing post-cutoff evidence key cannot be replaced');
             END"""
@@ -626,6 +682,7 @@ def _install_provider_receipt_freeze_locked(q):
 def install_public_mutation_fence_locked(q):
     _assert_no_pre_cutoff_post_cutoff_evidence_locked(q)
     _remove_all_public_mutation_fence_triggers_locked(q)
+    _install_thaw_insert_history_collision_fences_locked(q)
     _install_legacy_projection_freeze_locked(q)
     _install_current_authority_fence_locked(q)
     _install_migration_metadata_fence_locked(q)
@@ -848,6 +905,12 @@ def assert_public_mutation_fence_locked(q):
         } - names
     if "provider_rotation_threshold_enablement" in tables:
         missing |= set(THRESHOLD_ENABLEMENT_FREEZE_TRIGGER_NAMES) - names
+    thaw_collision_required = {
+        trigger_name
+        for table, (_, trigger_name) in THAW_INSERT_HISTORY_COLLISION_FENCES.items()
+        if table in tables
+    }
+    missing |= thaw_collision_required - names
     if set(MIGRATION_METADATA_FENCE_TRIGGERS).issubset(tables):
         missing |= set(_all_migration_metadata_trigger_names()) - names
     evidence_required = {
