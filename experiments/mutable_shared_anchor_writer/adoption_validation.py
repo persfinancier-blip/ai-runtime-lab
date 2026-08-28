@@ -17,6 +17,50 @@ def _is_canonical_sha256(value) -> bool:
     )
 
 
+def _unique_key_sets(q, table: str) -> set[tuple[str, ...]]:
+    keys: set[tuple[str, ...]] = set()
+    table_info = q.execute(f"PRAGMA table_info({table})").fetchall()
+    pk_columns = tuple(
+        row[1] for row in sorted(table_info, key=lambda row: row[5]) if row[5] > 0
+    )
+    if pk_columns:
+        keys.add(pk_columns)
+    for index_row in q.execute(f"PRAGMA index_list({table})").fetchall():
+        if not index_row[2]:
+            continue
+        index_name = index_row[1].replace("'", "''")
+        columns = tuple(
+            row[2]
+            for row in q.execute(f"PRAGMA index_info('{index_name}')").fetchall()
+            if row[2] is not None
+        )
+        if columns:
+            keys.add(columns)
+    return keys
+
+
+def _require_identity_constraints(q) -> None:
+    required = {
+        "shared_anchor_meta": {("singleton",)},
+        "shared_anchor_intents": {
+            ("intent_id",),
+            ("position",),
+            ("request_id",),
+        },
+        "component_anchor_watermarks": {("component_id",)},
+        "asymmetric_provider_receipts": {("request_id",)},
+    }
+    for table, expected_keys in required.items():
+        observed = _unique_key_sets(q, table)
+        missing = expected_keys - observed
+        if missing:
+            rendered = ", ".join("(" + ",".join(key) + ")" for key in sorted(missing))
+            raise AdoptionValidationError(
+                f"LAB-091 legacy schema is missing canonical identity constraint(s) "
+                f"for {table}: {rendered}"
+            )
+
+
 def validate_existing_mutable_state_locked(q) -> bool:
     """Reject pre-LAB-091 rows that could not be created by the supported state machine.
 
@@ -25,15 +69,17 @@ def validate_existing_mutable_state_locked(q) -> bool:
     signatures/provider-generation binding. This validator closes state-machine
     invariants that persistent triggers cannot enforce retroactively.
 
-    Do not rely on legacy table constraints being intact during first adoption:
-    CREATE TABLE IF NOT EXISTS does not prove the preexisting schema still has
-    the LAB-080 primary/unique constraints. Recheck identity cardinality here so
-    a weakened legacy schema cannot import ambiguous canonical identities.
+    CREATE TABLE IF NOT EXISTS does not repair a weakened preexisting schema.
+    Require the canonical PK/UNIQUE identity constraints as well as rechecking
+    current row cardinality, so future guarded writes cannot reintroduce
+    ambiguous identities after a clean first-adoption snapshot.
     """
     if not q.in_transaction:
         raise AdoptionValidationError(
             "LAB-091 adoption validation requires an active transaction"
         )
+
+    _require_identity_constraints(q)
 
     meta_rows = q.execute(
         "SELECT singleton,reserved_position FROM shared_anchor_meta"
