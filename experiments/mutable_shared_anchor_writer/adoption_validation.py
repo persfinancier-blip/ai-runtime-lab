@@ -26,7 +26,10 @@ def _unique_key_sets(q, table: str) -> set[tuple[str, ...]]:
     if pk_columns:
         keys.add(pk_columns)
     for index_row in q.execute(f"PRAGMA index_list({table})").fetchall():
-        if not index_row[2]:
+        # A partial UNIQUE index protects only rows selected by its WHERE clause.
+        # It therefore cannot establish a table-wide identity invariant even if
+        # its indexed column list is identical to the canonical UNIQUE key.
+        if not index_row[2] or index_row[4]:
             continue
         index_name = index_row[1].replace("'", "''")
         columns = tuple(
