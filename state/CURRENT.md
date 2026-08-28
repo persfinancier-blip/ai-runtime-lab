@@ -14,17 +14,17 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Last fully executed published LAB-086 runtime/test pin before the hidden-rowid blocker: `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`; published `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
 - Hidden-rowid candidate remains `b78e7c98e35138719f77c482c7f1aab36b702de7`; runtime is intentionally still unpatched until byte-safe publication is possible.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current HEAD `5c1a3487cb53b7abbdb601e65b97e9b9724717f5`, mergeable=true, draft. Use only as fallback while LAB-086 exact work is concretely tool-limited.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current HEAD `936f3430810e587a6033cfabe77047feb0563082`, mergeable=true, draft. Use only as fallback while LAB-086 exact work is concretely tool-limited.
 
 ## Last completed step
 
-Probed LAB-086 first. Direct shell/raw GitHub transport still fails in this runtime because GitHub hostnames cannot resolve. Connector reads remain exact but ordinary repository blobs are not mounted into the local executor, so the ~40 KB security-critical `strict_fence.py` hidden-rowid candidate was not manually reserialized and no LAB-086 PASS was fabricated.
+Probed LAB-086 first. Local DNS for `github.com`, `raw.githubusercontent.com`, and `api.github.com` still fails, so the executor cannot directly clone/fetch the branch. The GitHub connector can return the complete PR patch for the 949-line `strict_fence.py`, but it still does not mount that payload into the local executor. Manually reserializing the ~40 KB security-critical runtime would weaken the established exact-blob gate, so the hidden-rowid candidate was not published and no LAB-086 PASS was fabricated.
 
-Used the allowed LAB-091 fallback for a fresh constructor/adoption audit. The final `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` inherits `SupportedMutableAsymmetricSharedAnchorLedger.__init__()`, whose order is lower construction -> dynamic `self._install_guards()` -> `self.verify_durable()`. Therefore final v2/v3/v4 persistent guards are committed before the complete lower LAB-082 cryptographic/history verifier runs.
+Used the allowed LAB-091 fallback and re-audited the complete constructor MRO. This invalidated the previous adoption-ordering conclusion. `SupportedMutableAsymmetricSharedAnchorLedger.__init__()` does call `super().__init__() -> self._install_guards() -> self.verify_durable()`, but the inherited `super().__init__()` path itself reaches `SupportedSharedAnchorLedger.__init__()`, which calls `self.verify_durable()` before returning. No LAB-091 subclass overrides that method, so dynamic dispatch resolves to the full `AsymmetricHistoricalSharedAnchorLedger.verify_durable()` LAB-082 history/receipt verifier. Therefore corrupt lower history fails before LAB-091 guard installation.
 
-A focused file-backed SQLite mechanism reproduction confirmed the side effect: install/commit persistent guard -> verification failure left the guard present after reopen; verify-before-install rejected the same invalid state with no trigger persisted. This is mechanism/source evidence, not an exact real-stack regression.
+The earlier dynamic hook is `SharedAnchorLedger.__init__() -> self._init()`, which reaches final LAB-091 `_init()`. Audited `restart_safe_schema.initialize_shared_anchor_schema()` creates/observes only the historical LAB-080 tables and singleton and installs no LAB-091 guard triggers. The prior focused SQLite reproduction modeled a different ordering and is not evidence about the real final constructor.
 
-Recorded the finding in `research/2026-08-28-lab091-adoption-verification-ordering.md`, PR #173 commit `5c1a3487cb53b7abbdb601e65b97e9b9724717f5`, and Issue #170 comment `5448755103`. Runtime was intentionally not reordered without an exact real LAB-080/LAB-082 regression.
+Recorded the correction in `research/2026-08-28-lab091-constructor-ordering-correction.md` (commit `cbcdb58893a63295da9ac354b201dae215cc0d06`) and Issue #170 comment `5449176852`. Added `test_failed_adoption_no_guard_persistence.py`, which seeds a valid LAB-082 confirmed receipt, corrupts its Ed25519 signature, requires first final LAB-091 open to raise `HistoricalVerificationError`, then asserts zero persisted `lab091_%` triggers. Local authored test passed `py_compile`; local `git hash-object` and published GitHub blob both equal `a81c393766df571770962bab1714d34a062b03d5` (commit `936f3430810e587a6033cfabe77047feb0563082`). Full branch-local execution remains pending.
 
 ## Evidence retained
 
@@ -36,24 +36,25 @@ Recorded the finding in `research/2026-08-28-lab091-adoption-verification-orderi
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 adoption-state/domain gate: 23/23 PASS + compileall.
 - LAB-091 alternate lower/legacy connection persistence regression: exact published 2/2 PASS + compileall, blob `365688e0...`.
-- LAB-091 adoption-verification ordering: source audit + focused file-backed SQLite reproduction establishes non-atomic failed-adoption side effect; exact real-stack regression still required before runtime change.
+- LAB-091 constructor-ordering correction is source/MRO evidence: complete LAB-082 `verify_durable()` runs before final LAB-091 `_install_guards()` on first construction.
+- New LAB-091 failed-adoption regression is authored, `py_compile` PASS and byte-exact published as blob `a81c3937...`; do not count it as a test PASS until the real branch-local dependency closure is executed.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Hidden-rowid fix must be published byte-exact before the full real-ledger gate resumes.
 - Direct shell/raw GitHub transport remains unavailable in this run; connector reads do not directly mount repository files into the executor.
-- The available Contents write cannot consume the exact local candidate file by filesystem reference; manually transcribing/reformatting the large security-critical file would weaken the established exact-blob discipline.
+- The available Contents write cannot consume the exact local LAB-086 candidate file by filesystem reference; manually transcribing/reformatting the large security-critical file would weaken the exact-blob discipline.
 - A reconstructed file counts as execution evidence only if `git hash-object` equals the GitHub blob.
 - PR #165 must remain draft until rowid fix publication, repinned strict/thaw subgate, complete real-ledger gate, unsafe seed, compileall and final audit are all clean.
-- PR #173 remains draft. In addition to its full real LAB-080/LAB-082 class-level two-worker/crash/UNKNOWN gate, failed first adoption must be tested for zero persistent LAB-091 schema/trigger side effects before any constructor-ordering fix is published.
+- PR #173 remains draft. The previous proposed constructor reorder is superseded and must not be published on that rationale. Its remaining gate is the full real LAB-080/LAB-082 class-level failed-adoption regression plus two-worker/crash/timeout-UNKNOWN/reentrancy/legacy-surface execution.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
 
 1. LAB-086 first: obtain a byte-safe supported transfer path for exact candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` into `experiments/asymmetric_break_glass_history/strict_fence.py` on PR #165. Publish only if branch predecessor remains `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` and GitHub returns exactly `b78e7c98...`.
-2. Re-fetch/hash-verify the published runtime, execute exact `test_thaw_rowid_collision_regression.py` plus the complete strict/thaw conflict subgate and compileall, then repin only after green evidence.
+2. Re-fetch/hash-verify the published LAB-086 runtime, execute exact `test_thaw_rowid_collision_regression.py` plus the complete strict/thaw conflict subgate and compileall, then repin only after green evidence.
 3. Resume complete branch-local LAB-080→086 real-ledger modules, unsafe legacy-promotion expected-failure seed, full compileall and final security/reconciliation audit.
-4. If LAB-086 publication remains concretely tool-limited, LAB-091 fallback next action is an exact real-stack regression through `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` proving that a lower `verify_durable()` failure during first adoption leaves no LAB-091 triggers/schema side effects. Only after RED reproduction consider minimal `verify_durable() -> _install_guards() -> verify_durable()` constructor ordering, then continue the full two-worker/crash/timeout-UNKNOWN/reentrancy gate.
+4. If LAB-086 publication remains concretely tool-limited, LAB-091 fallback next action is to execute exact published `test_failed_adoption_no_guard_persistence.py` through `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` with the real LAB-080/LAB-082 dependency closure; then continue the full supported-surface two-worker/crash/timeout-UNKNOWN/reentrancy/legacy-write gate. No constructor-order runtime change is currently justified.
 
 ## Backlog
 
@@ -62,4 +63,4 @@ Recorded the finding in `research/2026-08-28-lab091-adoption-verification-orderi
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; new failed-adoption atomicity regression required before constructor-ordering change; full real-stack gate remains.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173 HEAD `936f3430...`; failed-adoption ordering finding corrected, regression published byte-exact but not yet real-stack executed; full real-stack gate remains.
