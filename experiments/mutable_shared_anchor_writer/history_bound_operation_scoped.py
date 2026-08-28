@@ -37,6 +37,13 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
+            # Re-run the complete inherited LAB-082 durable verifier while this
+            # connection holds the SQLite writer reservation. The verifier uses
+            # a sibling read-only transaction, so it sees committed state while
+            # concurrent legacy writers remain blocked until guard commit/rollback.
+            # This closes first-adoption TOCTOU without duplicating a subset of
+            # LAB-082's history/receipt/watermark verification contract here.
+            self.verify_durable()
             install_full_operation_guards(q)
             install_cross_table_guards(q)
             install_history_binding_guards(q)
