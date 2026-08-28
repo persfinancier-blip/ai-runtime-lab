@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from experiments.shared_anchor_intent_ledger.protocol import ALLOWED_INTENT_TYPES
+
 from .state_machine_udfs import expected_request_id
 
 
 class AdoptionValidationError(RuntimeError):
     pass
+
+
+def _is_canonical_sha256(value) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(ch in "0123456789abcdef" for ch in value)
+    )
 
 
 def validate_existing_mutable_state_locked(q) -> bool:
@@ -29,6 +39,7 @@ def validate_existing_mutable_state_locked(q) -> bool:
 
     rows = q.execute(
         "SELECT intent_id,component_id,intent_type,payload_digest,"
+        "provider_id,provider_generation,"
         "predecessor_position,position,request_id,status,receipt_binding "
         "FROM shared_anchor_intents ORDER BY position"
     ).fetchall()
@@ -45,12 +56,33 @@ def validate_existing_mutable_state_locked(q) -> bool:
         component_id,
         intent_type,
         payload_digest,
+        provider_id,
+        provider_generation,
         predecessor_position,
         position,
         request_id,
         status,
         receipt_binding,
     ) in rows:
+        if not all(
+            isinstance(value, str) and value
+            for value in (intent_id, component_id, provider_id)
+        ):
+            raise AdoptionValidationError(
+                "LAB-091 existing intent identity/provider is invalid"
+            )
+        if intent_type not in ALLOWED_INTENT_TYPES:
+            raise AdoptionValidationError(
+                "LAB-091 existing intent type is unsupported"
+            )
+        if not _is_canonical_sha256(payload_digest):
+            raise AdoptionValidationError(
+                "LAB-091 existing intent payload digest is non-canonical"
+            )
+        if type(provider_generation) is not int or provider_generation < 1:
+            raise AdoptionValidationError(
+                "LAB-091 existing intent provider generation is invalid"
+            )
         if position != expected_position or predecessor_position != position - 1:
             raise AdoptionValidationError(
                 "LAB-091 existing intent history is not contiguous"
