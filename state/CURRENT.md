@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 ## Active objective
 
@@ -17,20 +17,20 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs. LAB-086 remains blocked on a byte-preserving publication path for the exact hidden-rowid candidate, and direct shell GitHub access still fails DNS resolution, so the ~40 KB security-critical runtime was not manually reserialized.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs. A new connector capability observation materially narrowed the LAB-086 blocker: `fetch_blob` returned the complete exact ~40 KB `strict_fence.py` content for blob `d4a6a40f...`. However, there is still no supported byte-preserving bridge from that connector response into the executable filesystem / Contents-API whole-file replacement payload, and the raw-download fallback remains unavailable. Therefore the security-critical runtime was still not manually reserialized and candidate `b78e7c98...` was not published.
 
-Under the allowed LAB-091 fallback, audited the remaining SQLite UNIQUE-index semantics. Found a reproduced expression-index false guarantee in `_unique_key_sets()`: `PRAGMA index_info()` reports expression terms as `cid=-2/name=NULL`, while the current collector silently drops NULL names. Therefore `UNIQUE(id, lower(scope))` is incorrectly reduced to `('id',)` even though SQLite admits duplicate `id` rows when the expression differs.
+Under the allowed LAB-091 fallback, applied the already staged expression-UNIQUE hardening through the normal Contents API against exact predecessor blob `bab8366438f266342ab461307c9191c9328653bd`.
 
-Executed an in-memory SQLite counterexample: the current collector returned `{('id',)}` for `UNIQUE(id, lower(scope))`; inserts `('same','A')` and `('same','B')` both committed; assertions proving the false identity guarantee passed.
+Published LAB-091 branch result:
+- commit `8243a85b8c92cbffc6ea335ff11dd394d99db20d`;
+- resulting `experiments/mutable_shared_anchor_writer/adoption_validation.py` blob `2281d8e5ae21817b8eab0f52dc44abe61104c745`;
+- post-write re-fetch matched the returned blob and the intended block.
 
-Durable LAB-091 branch artifacts:
-- red regression `experiments/mutable_shared_anchor_writer/tests/test_adoption_expression_unique_regression.py`, commit `db5b81375f19c7d0e06cc4cc98e992a0f849f1c0`;
-- staged minimal fix `research/2026-08-28-lab091-expression-unique-adoption.patch`, commit `b93eb4b733d2cdf6a6f4b644c0186215f607135c`;
-- current validator remains exact blob `bab8366438f266342ab461307c9191c9328653bd` until the staged fix is applied byte-safely.
+The validator now rejects a UNIQUE index as a canonical named-column identity guarantee when `PRAGMA index_info()` reports any term with `name=NULL` (SQLite expression term). This closes the reproduced false collapse `UNIQUE(id, lower(scope)) -> UNIQUE(id)` while preserving the earlier partial-UNIQUE rejection.
 
-Research note: `research/2026-08-28-lab091-expression-unique-adoption-gap.md`, main commit `7b568c997cf15c6fe194deceb650f82c01301709`. Issue #170 comment `5457349339` and PR #173 comment `5457350290` record the finding.
+Executed a focused in-memory SQLite mechanism gate using the updated collector semantics and the same schema shapes as the durable regressions: expression-UNIQUE counterexample PASS, all five prior partial-UNIQUE targets remain rejected, and canonical global PK/UNIQUE schema remains accepted. This is not represented as the full PR unittest or LAB-080/LAB-082 real-stack gate.
 
-Adjacent audit result: ASC/DESC does not weaken equality uniqueness for the same named column; built-in `NOCASE` is not a reproduced weaker identity guarantee; do not broaden rejection to collation/NOT NULL/CHECK without a concrete future-ambiguity counterexample.
+Research note: `research/2026-08-29-lab091-expression-unique-fix-published.md`, main commit `e6e3fd02cf4c8d330baf78e7a5c72d7d30672e85`. Issue #170 comment `5457859259` and PR #173 comment `5457861059` record the publication/evidence.
 
 ## Evidence retained
 
@@ -40,31 +40,30 @@ Adjacent audit result: ASC/DESC does not weaken equality uniqueness for the same
 - Alternate-UNIQUE and provider-receipt NULL protections are present in live `d4a6a40f...`.
 - Hidden-rowid RED→GREEN evidence retained: exact predecessor `d4a6a40f...` -> candidate `b78e7c98...`; candidate remains unpublished. Rowid collision and explicit `rowid=-1` sentinel regressions are durable on PR #165.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 focused evidence covers adoption lock/WAL behavior, existing-row identity ambiguity, missing canonical identity constraints, partial-UNIQUE false guarantees, and now expression-UNIQUE false guarantees.
+- LAB-091 focused evidence covers adoption lock/WAL behavior, existing-row identity ambiguity, missing canonical identity constraints, partial-UNIQUE false guarantees, expression-UNIQUE false guarantees, and published expression-index rejection at exact blob `2281d8e5...`.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority.
 - Current LAB-086 live security delta is rowid-only hardening. Do not reapply alternate-UNIQUE or provider-receipt NULL patches.
-- Direct shell/raw GitHub transport remains unavailable in this executor.
-- Connector reads are exact but do not mount the complete LAB-086 candidate into the execution filesystem; publication through Contents API is allowed only after exact candidate bytes are materialized and tested. Do not hand-rewrite the security-critical runtime.
+- Full exact LAB-086 source bytes are now readable through the GitHub connector, but no byte-preserving response→filesystem/Contents-API replacement bridge has been observed in this run. Raw GitHub download remains unavailable. Do not hand-rewrite the security-critical runtime.
 - PR #165 remains draft until candidate publication/hash verification, complete strict/thaw gate, LAB-080→086 real-ledger gate, unsafe seed, compileall and final security/reconciliation audit are clean.
-- PR #173 remains draft pending complete real-stack gate. The new expression-UNIQUE regression is durable RED evidence; the staged validator fix is not yet applied.
+- PR #173 remains draft pending complete real-stack gate. Expression-UNIQUE fix is published, but exact branch regression execution and the full supported surface remain open.
 - Do not broaden legacy schema rejection merely for structural similarity. Require a reproduced ambiguity or unsupported transition that survives current row validation.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
 
-1. LAB-086 first: if a supported byte-preserving path exists, publish exact candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` over predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; require returned/re-fetched Git blob equality, then run the four focused regressions + strict/thaw subgate + compileall and resume the LAB-080→086 real-ledger gate.
-2. If LAB-086 remains concretely transport-limited, LAB-091: apply `research/2026-08-28-lab091-expression-unique-adoption.patch` byte-safely to exact validator blob `bab8366438f266342ab461307c9191c9328653bd`.
-3. Execute the expression-UNIQUE regression together with the earlier missing-constraint and partial-UNIQUE regressions; require exact published blobs before promoting evidence.
-4. Then resume the complete LAB-080/LAB-082 supported-surface concurrency/restart/crash/UNKNOWN gate and reentrancy audit. Do not expand to NOT NULL/CHECK rejection without a reproduced future-ambiguity gap.
+1. LAB-086 first: if a supported byte-preserving response→write path exists, publish exact candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` over predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; require returned/re-fetched Git blob equality, then run the four focused regressions + strict/thaw subgate + compileall and resume the LAB-080→086 real-ledger gate.
+2. If LAB-086 remains concretely transport-limited, LAB-091: reconstruct/execute the exact published expression-UNIQUE, partial-UNIQUE and missing-constraint regression suites against validator blob `2281d8e5ae21817b8eab0f52dc44abe61104c745`; do not promote the focused mechanism check to exact branch-test evidence without that reconstruction.
+3. Then resume the complete LAB-080/LAB-082 supported-surface concurrency/restart/crash/UNKNOWN gate and reentrancy audit.
+4. Do not expand to NOT NULL/CHECK/collation/order rejection without a reproduced future-ambiguity gap.
 
 ## Backlog
 
-- #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid candidate tested but unpublished; publication/execution transport remains blocker.
+- #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid candidate tested but unpublished; full exact source is connector-readable but byte-preserving publication/execution transport remains blocker.
 - #166 / LAB-087 — DONE; merged as `65a44cc8d12cf37d04d9cd59398b456d7429cc31`.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; expression-UNIQUE false identity guarantee newly reproduced and staged for fix; full real-stack gate still open.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; expression-UNIQUE false identity guarantee fixed/published at blob `2281d8e5...`; exact branch regression reconstruction + full real-stack gate still open.
