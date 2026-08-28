@@ -18,15 +18,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Probed LAB-086 first. The connector still exposes exact predecessor `strict_fence.py` blob `d4a6a40f...`, the saved hidden-rowid patch, and PR #165's complete per-file patch representation, but candidate blob `b78e7c98...` is still absent from GitHub (`fetch_blob` returned 404). The normal Contents writer still requires complete replacement UTF-8 text rather than a connector/file reference. No manual 40 KB security-critical reconstruction was attempted and no new LAB-086 PASS was claimed.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected the open work and reconfirmed PR #173 is still draft/mergeable at exact HEAD `c095c08f25ec034614c150b104f75f5b1ecfc707`.
 
-Used the allowed LAB-091 fallback and replaced the earlier proposed LAB-082 verifier refactor with a narrower lock-envelope fix. `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger._install_guards()` now executes `BEGIN IMMEDIATE`, then re-runs the complete inherited LAB-082 `verify_durable()` before any LAB-091 guard DDL, followed by the v2/v3/v4 guard installers, retroactive mutable-state validation, and commit. The inherited verifier uses a sibling read-only transaction; the first connection's SQLite writer reservation prevents competing legacy/lower SQL writers from mutating committed state between the verification and guard commit.
+LAB-086 remains first priority, but this run again did not observe a safe byte-exact transfer path for the unpublished hidden-rowid candidate. Direct shell GitHub transport was probed and `git ls-remote` failed with `Could not resolve host: github.com`. A separate supported runtime download helper was also probed as a possible exact branch-archive fallback; it requires the URL to be opened through the web fetch path first, while the GitHub archive URL is disabled there, so it could not acquire the repository bytes. No manual reconstruction of the ~40 KB security-critical `strict_fence.py` was attempted.
 
-Published runtime commit `1d1a4586832a9cf660c14637a279ce1342641a69`, blob `931bd4ad0585607866ae27fabf5d6fd4af3dc35e`. An exact local reconstruction hashed to that same Git blob and `python -m py_compile` passed. A standalone SQLite probe also confirmed the required lock behavior in this executor: a sibling reader succeeded while a competing writer failed with `database is locked` under `BEGIN IMMEDIATE`.
+Used the allowed LAB-091 fallback for a source-level re-audit of the first-adoption lock-envelope fix. `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger._install_guards()` acquires `BEGIN IMMEDIATE`, then invokes the complete inherited LAB-082 `verify_durable()` before any LAB-091 trigger DDL, followed by all guard installers, retroactive mutable-state validation and commit. The inspected LAB-082 verifier is read-only on its sibling connection. The design therefore still matches the intended serialization argument: the first connection holds SQLite's writer reservation across the full committed-state verification and guard installation window, while sibling reads remain permitted and competing lower/legacy writers cannot acquire a write transaction.
 
-Added design/evidence note `research/2026-08-28-lab091-adoption-lock-envelope.md`, commit `c095c08f25ec034614c150b104f75f5b1ecfc707`, and Issue #170 comment `5450213417`. PR #173 remains mergeable=true and draft after the runtime change.
+The published deterministic adoption-TOCTOU regression was re-inspected and still models the relevant race point: it corrupts an authenticated receipt immediately after the constructor's first durable verification; the lock-envelope's second verification should then reject the DB before LAB-091 triggers persist. No real-stack GREEN is claimed because exact dependency checkout remains unavailable in this runtime.
 
-No real-stack unittest PASS is claimed for the new fix in this run. The executor still lacks a working GitHub DNS/network checkout path, so the published deterministic regressions have not yet been executed against the full LAB-080/LAB-082 dependency closure here.
+Recorded this run in Issue #170 comment `5450773227`.
 
 ## Evidence retained
 
@@ -40,15 +40,17 @@ No real-stack unittest PASS is claimed for the new fix in this run. The executor
 - LAB-091 alternate lower/legacy connection persistence regression: exact published 2/2 PASS + compileall, blob `365688e0...`.
 - LAB-091 prior failed-adoption regression is published as blob `a81c3937...`; it covers corruption before the first inherited verifier.
 - LAB-091 adoption-TOCTOU regression is published as blob `262834c3...`; no PASS is claimed yet.
-- LAB-091 lock-envelope runtime blob `931bd4ad...`: exact local hash match + `py_compile` PASS; standalone SQLite serialization premise confirmed (sibling read allowed, competing write blocked).
+- LAB-091 lock-envelope runtime blob `931bd4ad...`: prior exact local hash match + `py_compile` PASS; prior standalone SQLite serialization probe confirmed sibling read allowed and competing write blocked under `BEGIN IMMEDIATE`.
+- Current-run source audit reconfirmed the lock envelope calls the complete inherited LAB-082 verifier before guard DDL and that inspected `verify_durable()` performs reads only.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Hidden-rowid fix must be published byte-exact before the full real-ledger gate resumes.
-- Direct shell/raw GitHub transport remains unavailable in this runtime; connector reads do not mount repository files into the executor.
-- The available Contents write cannot consume the exact local LAB-086 candidate file by filesystem reference; manually transcribing/reformatting the large security-critical file would weaken the exact-blob discipline.
+- Current runtime direct shell/raw GitHub transport is unavailable (`github.com` DNS resolution failed).
+- The runtime download helper cannot currently bootstrap the GitHub branch archive because its required prior web-open path rejects that archive URL.
+- The available GitHub Contents writer requires complete replacement UTF-8 text rather than a connector/file reference; manually transcribing/reformatting the large security-critical LAB-086 file would weaken exact-blob discipline.
 - PR #165 must remain draft until rowid fix publication, repinned strict/thaw subgate, complete real-ledger gate, unsafe seed, compileall and final audit are all clean.
-- PR #173 must remain draft. The first-adoption TOCTOU now has a published lock-envelope runtime fix, but its deterministic regressions still need GREEN execution on exact real LAB-080/LAB-082 dependencies before the blocker is closed.
+- PR #173 must remain draft. The first-adoption TOCTOU has a published lock-envelope runtime fix and a coherent source-level serialization argument, but its deterministic regressions still need GREEN execution on exact real LAB-080/LAB-082 dependencies before the blocker is closed.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
