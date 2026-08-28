@@ -17,17 +17,17 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs and resumed LAB-086 first. The exact branch runtime remains `strict_fence.py` blob `d4a6a40f...`; PR #165 body is stale relative to this handoff and still describes the older `eb219835...` executable snapshot. Hidden-rowid hardening remains unpublished because no supported byte-preserving bridge from the exact connector payload to the execution filesystem/Contents API candidate is available in this run; no manual reserialization of the ~40 KB security-critical file was attempted.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs and resumed LAB-086 first. The LAB-086 byte-preserving publication blocker remains unchanged, so no manual reserialization of the ~40 KB security-critical `strict_fence.py` was attempted.
 
-Per fallback policy, advanced LAB-091 and found a second weakened-schema first-adoption gap. The previous fix rejected duplicate identities already present at adoption, but `CREATE TABLE IF NOT EXISTS` also does not restore missing legacy PK/UNIQUE constraints. A clean snapshot with no current duplicates could therefore be admitted and later reintroduce ambiguous identities under otherwise-authorized transitions.
+Per fallback policy, audited LAB-091 first-adoption schema semantics. Found a concrete gap in `_unique_key_sets()`: SQLite partial UNIQUE indexes (`PRAGMA index_list(...)[4] == 1`) were counted as table-wide identity guarantees even though uniqueness applies only to rows satisfying the index predicate. A clean weakened legacy schema could therefore pass adoption and later admit duplicate identities outside the predicate.
 
 Fixed on branch `lab/091-mutable-shared-anchor-writer`:
-- validator commit `19502cb3a81887732c95f07ed17fb9763d38dd87`, blob `c45142317c405748060a8d7d81587b14be89fc81`;
-- regression commit `059bfc1bf544f683277f8cf5b00b37a84e3249b5`, blob `e87c550282ac455e4ca5bedeb9de4f6626d563a4`.
+- validator commit `7198487c306077724d3d8721e1d1e2b28004288c`, blob `bab8366438f266342ab461307c9191c9328653bd`;
+- regression introduced then syntax-corrected; final commit `affb299bf9810c2bffcde0d6060ebf3e49b9975a`, blob `e77521d839510490a2bea4d92d68d9071241ff35`.
 
-First adoption now requires canonical identity constraints for meta singleton, intent ID, intent position, intent request ID, watermark component ID and provider-receipt request ID before row validation/guard installation. A focused exact-target harness accepted the canonical schema and rejected six clean-looking missing-constraint variants: 2 unittest methods PASS including all six subcases. Exact local Git blobs matched the published branch blobs.
+Executed local SQLite mechanism probe: `UNIQUE(id) WHERE status='CONFIRMED'` accepted two duplicate `PREPARED` rows; the pre-fix collector falsely returned `('id',)`, while the corrected collector ignored the partial index; assertions PASS. This is focused mechanism evidence only, not full PR #173 acceptance.
 
-Durable note: `research/2026-08-28-lab091-adoption-schema-contract.md`, main commit `5b8d3a24bdad44b47861c516e8647d745d1db12f`. Issue #170 comment `5456160878` and PR #173 comment `5456162044` record the same result.
+Durable note: `research/2026-08-28-lab091-partial-unique-adoption-gap.md`, main commit `03093fb5d7816c4ae886d44082354167bfae4702`. Issue #170 comment `5456771737` and PR #173 comment `5456772697` record the same result.
 
 ## Evidence retained
 
@@ -37,25 +37,25 @@ Durable note: `research/2026-08-28-lab091-adoption-schema-contract.md`, main com
 - Alternate-UNIQUE and provider-receipt NULL protections are present in live `d4a6a40f...`.
 - Hidden-rowid RED→GREEN evidence retained: exact predecessor `d4a6a40f...` -> candidate `b78e7c98...`; candidate remains unpublished. Rowid collision regression and explicit `rowid=-1` sentinel regression are durable on PR #165.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 one-shot/state-machine/restart/concurrency focused evidence remains retained; WAL adoption-lock mechanism is verified; weakened-schema existing-row identity ambiguity and missing-identity-constraint admission are both now hardened with focused evidence.
+- LAB-091 focused evidence now covers adoption lock/WAL behavior, existing-row identity ambiguity, missing canonical identity constraints, and partial-UNIQUE false identity guarantees.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority.
 - The current live security delta is rowid-only hardening. Do not reapply alternate-UNIQUE or provider-receipt NULL patches.
 - Direct shell/raw GitHub transport remains unavailable in this executor.
-- Connector reads are exact but do not mount the complete candidate into the execution filesystem; large responses are truncated. Publication through Contents API is allowed only after exact candidate bytes are materialized and tested; do not hand-rewrite the security-critical runtime.
+- Connector reads are exact but do not mount the complete LAB-086 candidate into the execution filesystem; large responses are truncated. Publication through Contents API is allowed only after exact candidate bytes are materialized and tested; do not hand-rewrite the security-critical runtime.
 - PR #165 must remain draft until candidate publication/hash verification, complete strict/thaw gate, LAB-080→086 real-ledger gate, unsafe seed, compileall and final security/reconciliation audit are clean.
-- LAB-091 schema-contract hardening is focused target-file evidence only; PR #173 remains draft pending its complete real-stack gate.
+- PR #173 remains draft pending complete real-stack gate. Current partial-UNIQUE change has mechanism-level evidence; the repository regression itself has not been executed in a complete checkout in this run.
+- Remaining DDL audit should distinguish constraints that merely duplicate supported-writer validation from constraints whose absence permits future ambiguity under otherwise canonical transitions. Do not broaden schema rejection without a reproduced failure.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
 
 1. LAB-086 first: obtain a supported byte-preserving publication path for exact candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` over predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; do not manually reserialize the file.
-2. Require GitHub returned blob == `b78e7c98...`, then re-fetch/hash-verify.
-3. Execute unchanged focused regressions: provider-receipt NULL identity, alternate UNIQUE, hidden-rowid collision, and explicit `rowid=-1` sentinel; then full strict/thaw conflict subgate + compileall and repin.
-4. Resume complete LAB-080→086 real-ledger gate, unsafe legacy-promotion expected-failure seed, full compileall, security/reconciliation audit and branch/main conflict check.
-5. If LAB-086 remains concretely transport-limited, continue LAB-091 complete real-stack integration. Include both weakened-schema regressions in the adoption gate and audit whether any remaining legacy DDL property (NOT NULL/CHECK/type/domain or index semantics) is assumed rather than structurally/semantically revalidated.
+2. Require GitHub returned blob == `b78e7c98...`, then re-fetch/hash-verify and execute the four focused regressions plus strict/thaw subgate + compileall.
+3. Resume complete LAB-080→086 real-ledger gate, unsafe legacy-promotion expected-failure seed, full compileall, security/reconciliation audit and branch/main conflict check.
+4. If LAB-086 remains concretely transport-limited, continue LAB-091 complete real-stack integration. Execute the partial-UNIQUE regression together with both earlier weakened-schema regressions and audit remaining index semantics (collation/expression/order) before considering NOT NULL/CHECK structural rejection.
 
 ## Backlog
 
@@ -64,4 +64,4 @@ Durable note: `research/2026-08-28-lab091-adoption-schema-contract.md`, main com
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; adoption lock + weakened-schema row-cardinality + canonical identity-constraint hardening have focused evidence, full real-stack gate still open.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; adoption lock + weakened-schema row/cardinality + canonical identity + partial-UNIQUE hardening have focused evidence, full real-stack gate still open.
