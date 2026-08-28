@@ -19,6 +19,8 @@ class AdoptionPartialUniqueRegressionTests(unittest.TestCase):
         receipt_id_decl = (
             "request_id TEXT" if partial_target == "receipt" else "request_id TEXT PRIMARY KEY"
         )
+        position_where = "WHERE status='CONFIRMED'" if partial_target == "position" else ""
+        request_where = "WHERE status='CONFIRMED'" if partial_target == "request_id" else ""
         q.executescript(
             f"""
             CREATE TABLE shared_anchor_meta(
@@ -40,11 +42,9 @@ class AdoptionPartialUniqueRegressionTests(unittest.TestCase):
               receipt_binding TEXT
             );
             CREATE UNIQUE INDEX intent_position_unique
-              ON shared_anchor_intents(position)
-              {'WHERE status=\'CONFIRMED\'' if partial_target == 'position' else ''};
+              ON shared_anchor_intents(position) {position_where};
             CREATE UNIQUE INDEX intent_request_unique
-              ON shared_anchor_intents(request_id)
-              {'WHERE status=\'CONFIRMED\'' if partial_target == 'request_id' else ''};
+              ON shared_anchor_intents(request_id) {request_where};
             CREATE TABLE component_anchor_watermarks(
               {watermark_id_decl},
               position INTEGER NOT NULL CHECK(position>=0)
