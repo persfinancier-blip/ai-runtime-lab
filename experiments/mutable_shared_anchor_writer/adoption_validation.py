@@ -24,18 +24,28 @@ def validate_existing_mutable_state_locked(q) -> bool:
     persistent LAB-091 guards. The lower LAB-082 durable verifier owns receipt
     signatures/provider-generation binding. This validator closes state-machine
     invariants that persistent triggers cannot enforce retroactively.
+
+    Do not rely on legacy table constraints being intact during first adoption:
+    CREATE TABLE IF NOT EXISTS does not prove the preexisting schema still has
+    the LAB-080 primary/unique constraints. Recheck identity cardinality here so
+    a weakened legacy schema cannot import ambiguous canonical identities.
     """
     if not q.in_transaction:
         raise AdoptionValidationError(
             "LAB-091 adoption validation requires an active transaction"
         )
 
-    meta = q.execute(
-        "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
-    ).fetchone()
-    if meta is None or type(meta[0]) is not int or meta[0] < 0:
+    meta_rows = q.execute(
+        "SELECT singleton,reserved_position FROM shared_anchor_meta"
+    ).fetchall()
+    if (
+        len(meta_rows) != 1
+        or meta_rows[0][0] != 1
+        or type(meta_rows[0][1]) is not int
+        or meta_rows[0][1] < 0
+    ):
         raise AdoptionValidationError("LAB-091 shared-anchor meta singleton is invalid")
-    reserved_position = meta[0]
+    reserved_position = meta_rows[0][1]
 
     rows = q.execute(
         "SELECT intent_id,component_id,intent_type,payload_digest,"
@@ -51,6 +61,8 @@ def validate_existing_mutable_state_locked(q) -> bool:
 
     prepared_count = 0
     expected_position = 1
+    seen_intent_ids = set()
+    seen_request_ids = set()
     for (
         intent_id,
         component_id,
@@ -71,6 +83,11 @@ def validate_existing_mutable_state_locked(q) -> bool:
             raise AdoptionValidationError(
                 "LAB-091 existing intent identity/provider is invalid"
             )
+        if intent_id in seen_intent_ids:
+            raise AdoptionValidationError(
+                "LAB-091 existing intent identity is duplicated"
+            )
+        seen_intent_ids.add(intent_id)
         if intent_type not in ALLOWED_INTENT_TYPES:
             raise AdoptionValidationError(
                 "LAB-091 existing intent type is unsupported"
@@ -98,6 +115,11 @@ def validate_existing_mutable_state_locked(q) -> bool:
             raise AdoptionValidationError(
                 "LAB-091 existing intent has non-deterministic request_id"
             )
+        if request_id in seen_request_ids:
+            raise AdoptionValidationError(
+                "LAB-091 existing request identity is duplicated"
+            )
+        seen_request_ids.add(request_id)
         if status == "PREPARED":
             prepared_count += 1
             if receipt_binding is not None or position != reserved_position:
@@ -129,12 +151,27 @@ def validate_existing_mutable_state_locked(q) -> bool:
             "LAB-091 existing provider receipt is not owned by a shared-anchor intent"
         )
 
+    duplicate_receipt = q.execute(
+        "SELECT request_id FROM asymmetric_provider_receipts "
+        "GROUP BY request_id HAVING COUNT(*)!=1 LIMIT 1"
+    ).fetchone()
+    if duplicate_receipt is not None:
+        raise AdoptionValidationError(
+            "LAB-091 existing provider receipt identity is duplicated"
+        )
+
     watermarks = q.execute(
         "SELECT component_id,position FROM component_anchor_watermarks"
     ).fetchall()
+    seen_components = set()
     for component_id, position in watermarks:
         if not isinstance(component_id, str) or not component_id:
             raise AdoptionValidationError("LAB-091 existing watermark component is invalid")
+        if component_id in seen_components:
+            raise AdoptionValidationError(
+                "LAB-091 existing watermark component is duplicated"
+            )
+        seen_components.add(component_id)
         if type(position) is not int or position < 0 or position > reserved_position:
             raise AdoptionValidationError("LAB-091 existing watermark position is invalid")
         if position == 0:
