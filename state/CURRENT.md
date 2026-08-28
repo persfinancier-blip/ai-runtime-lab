@@ -14,17 +14,19 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Last fully executed published LAB-086 runtime/test pin before the hidden-rowid blocker: `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`; published `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
 - Hidden-rowid candidate remains `b78e7c98e35138719f77c482c7f1aab36b702de7`; runtime is intentionally still unpatched until byte-safe publication is possible.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
-- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current HEAD `4c1718384778f7a9122fd87fbe67183f50b989ab`, mergeable=true, draft. Use only as fallback while LAB-086 exact work is concretely tool-limited.
+- LAB-091 / #170 remains IN_PROGRESS on draft PR #173; current HEAD `c095c08f25ec034614c150b104f75f5b1ecfc707`, mergeable=true, draft. Use only as fallback while LAB-086 exact work is concretely tool-limited.
 
 ## Last completed step
 
-Probed LAB-086 first. The connector can fetch the exact predecessor `strict_fence.py` blob `d4a6a40f...` and the exact saved hidden-rowid patch, but candidate blob `b78e7c98...` is not already present in GitHub (`fetch_blob` returned 404) and the normal Contents writer still requires complete replacement text rather than a local exact-file reference. Two historical helper branches, `lab086-byte-transfer-20260826` and `lab086-bytegate-20260826-1715`, were inspected; both carry older `strict_fence.py` blob `5da01e28...`, not the hidden-rowid candidate. No unsafe/manual whole-file publication was attempted and no new LAB-086 PASS was claimed.
+Probed LAB-086 first. The connector still exposes exact predecessor `strict_fence.py` blob `d4a6a40f...`, the saved hidden-rowid patch, and PR #165's complete per-file patch representation, but candidate blob `b78e7c98...` is still absent from GitHub (`fetch_blob` returned 404). The normal Contents writer still requires complete replacement UTF-8 text rather than a connector/file reference. No manual 40 KB security-critical reconstruction was attempted and no new LAB-086 PASS was claimed.
 
-Used the allowed LAB-091 fallback and found a first-adoption TOCTOU not covered by the prior failed-adoption regression. The inherited LAB-082 constructor performs a complete `verify_durable()` before LAB-091 `_install_guards()`. LAB-091 then installs v2/v3/v4 guards and runs `validate_existing_mutable_state_locked()` in a separate `BEGIN IMMEDIATE` transaction, commits the triggers, and only afterward the legacy `SupportedMutableAsymmetricSharedAnchorLedger.__init__()` calls full `verify_durable()` again. A lower/legacy writer can therefore corrupt authenticated LAB-082 history after the first verification but before guard installation; the LAB-091 adoption validator intentionally does not verify LAB-082 cryptographic receipt/provider-history semantics. The post-commit verifier then rejects construction while persistent `lab091_%` guards can remain.
+Used the allowed LAB-091 fallback and replaced the earlier proposed LAB-082 verifier refactor with a narrower lock-envelope fix. `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger._install_guards()` now executes `BEGIN IMMEDIATE`, then re-runs the complete inherited LAB-082 `verify_durable()` before any LAB-091 guard DDL, followed by the v2/v3/v4 guard installers, retroactive mutable-state validation, and commit. The inherited verifier uses a sibling read-only transaction; the first connection's SQLite writer reservation prevents competing legacy/lower SQL writers from mutating committed state between the verification and guard commit.
 
-Added deterministic regression `experiments/mutable_shared_anchor_writer/tests/test_adoption_toctou_guard_persistence_regression.py` on PR #173, commit `a569b4ed132f4148816548bcc0d10f11324de621`, published blob `262834c34b6b7be182427e86f78963fc5caafa42`. It corrupts the LAB-082 receipt immediately after the first successful inherited verification, then requires failed construction to leave zero LAB-091 triggers. Added design note `research/2026-08-28-lab091-first-adoption-toctou.md`, commit `4c1718384778f7a9122fd87fbe67183f50b989ab`, and Issue #170 comment `5449642830`.
+Published runtime commit `1d1a4586832a9cf660c14637a279ce1342641a69`, blob `931bd4ad0585607866ae27fabf5d6fd4af3dc35e`. An exact local reconstruction hashed to that same Git blob and `python -m py_compile` passed. A standalone SQLite probe also confirmed the required lock behavior in this executor: a sibling reader succeeded while a competing writer failed with `database is locked` under `BEGIN IMMEDIATE`.
 
-Source audit confirmed a partial fix is insufficient: LAB-082 `AsymmetricHistoricalSharedAnchorLedger.verify_durable()` atomically checks provider history/signatures, shared-anchor tail continuity, PREPARED/CONFIRMED receipt binding, and component watermarks. Only `provider_history._verify_durable_locked(q)` is already factored; using that alone inside adoption would leave lower durable invariants outside the atomic boundary. No runtime fix or test PASS is claimed yet.
+Added design/evidence note `research/2026-08-28-lab091-adoption-lock-envelope.md`, commit `c095c08f25ec034614c150b104f75f5b1ecfc707`, and Issue #170 comment `5450213417`. PR #173 remains mergeable=true and draft after the runtime change.
+
+No real-stack unittest PASS is claimed for the new fix in this run. The executor still lacks a working GitHub DNS/network checkout path, so the published deterministic regressions have not yet been executed against the full LAB-080/LAB-082 dependency closure here.
 
 ## Evidence retained
 
@@ -36,8 +38,9 @@ Source audit confirmed a partial fix is insufficient: LAB-082 `AsymmetricHistori
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 adoption-state/domain gate: 23/23 PASS + compileall.
 - LAB-091 alternate lower/legacy connection persistence regression: exact published 2/2 PASS + compileall, blob `365688e0...`.
-- LAB-091 prior failed-adoption regression is published as blob `a81c3937...`; it covers corruption before the first inherited verifier, not the newly found inter-verification race.
-- LAB-091 adoption-TOCTOU regression is published as blob `262834c3...`; no PASS is claimed. Source ordering predicts current RED with persisted guards after constructor failure.
+- LAB-091 prior failed-adoption regression is published as blob `a81c3937...`; it covers corruption before the first inherited verifier.
+- LAB-091 adoption-TOCTOU regression is published as blob `262834c3...`; no PASS is claimed yet.
+- LAB-091 lock-envelope runtime blob `931bd4ad...`: exact local hash match + `py_compile` PASS; standalone SQLite serialization premise confirmed (sibling read allowed, competing write blocked).
 
 ## Known blockers / constraints
 
@@ -45,16 +48,15 @@ Source audit confirmed a partial fix is insufficient: LAB-082 `AsymmetricHistori
 - Direct shell/raw GitHub transport remains unavailable in this runtime; connector reads do not mount repository files into the executor.
 - The available Contents write cannot consume the exact local LAB-086 candidate file by filesystem reference; manually transcribing/reformatting the large security-critical file would weaken the exact-blob discipline.
 - PR #165 must remain draft until rowid fix publication, repinned strict/thaw subgate, complete real-ledger gate, unsafe seed, compileall and final audit are all clean.
-- PR #173 must remain draft. New adoption TOCTOU is a merge blocker until the complete LAB-082 durable verifier can run inside the same LAB-091 `BEGIN IMMEDIATE` adoption/guard-install transaction and the new regression is GREEN on exact real dependencies.
-- Do not fix the TOCTOU by calling only `provider_history._verify_durable_locked(q)`; that omits ledger/receipt/watermark validity currently owned by the full LAB-082 verifier.
+- PR #173 must remain draft. The first-adoption TOCTOU now has a published lock-envelope runtime fix, but its deterministic regressions still need GREEN execution on exact real LAB-080/LAB-082 dependencies before the blocker is closed.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
 
 1. LAB-086 first: obtain a byte-safe supported transfer path for exact candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` into `experiments/asymmetric_break_glass_history/strict_fence.py` on PR #165. Publish only if branch predecessor remains `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` and GitHub returns exactly `b78e7c98...`.
 2. Re-fetch/hash-verify the published LAB-086 runtime, execute exact `test_thaw_rowid_collision_regression.py` plus the complete strict/thaw conflict subgate and compileall, then repin only after green evidence; resume the complete LAB-080→086 real-ledger gate afterward.
-3. If LAB-086 publication remains concretely tool-limited, LAB-091 fallback: refactor the complete body of `AsymmetricHistoricalSharedAnchorLedger.verify_durable()` into a transaction-accepting locked helper without changing its semantics; keep public `verify_durable()` as a wrapper over that helper.
-4. Invoke that complete locked LAB-082 verifier inside final LAB-091 `_install_guards()` under the same `BEGIN IMMEDIATE`, after LAB-091 retroactive validation and before commit. Then execute `test_adoption_toctou_guard_persistence_regression.py` and the prior `test_failed_adoption_no_guard_persistence.py` on exact real LAB-080/LAB-082 dependencies. Only GREEN evidence permits continuing the two-worker/crash/timeout-UNKNOWN/reentrancy/legacy-write gate.
+3. If LAB-086 publication remains concretely tool-limited, LAB-091 fallback: execute `test_adoption_toctou_guard_persistence_regression.py` and `test_failed_adoption_no_guard_persistence.py` against exact PR #173 HEAD `c095c08f...` and the complete real LAB-080/LAB-082 dependency closure. Require GREEN before claiming the adoption race fixed.
+4. After that GREEN evidence, continue LAB-091's two-worker/crash, timeout-after-commit/UNKNOWN, reentrancy, alternate legacy-write, and LAB-087 composition gates. Keep PR #173 draft until the complete real-stack gate is clean.
 
 ## Backlog
 
@@ -63,4 +65,4 @@ Source audit confirmed a partial fix is insufficient: LAB-082 `AsymmetricHistori
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173 HEAD `4c171838...`; first-adoption TOCTOU regression/design recorded, full atomic-adoption fix + real-stack execution next when LAB-086 remains tool-limited.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173 HEAD `c095c08f...`; first-adoption lock-envelope fix published, exact real-stack regression execution next when LAB-086 remains tool-limited.
