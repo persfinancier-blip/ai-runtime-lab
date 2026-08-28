@@ -24,19 +24,21 @@ Used the allowed LAB-091 fallback and found a real adoption-state integrity gap.
 
 Published LAB-091 fix on PR #173:
 - `adoption_validation.py` commit `fc18282688591839604bf4057be3691cccb719a5`, blob `36551cce4351e9305262d8f3476ad633d3246564`;
-- expanded adoption tests commit `c22b6d88c629ba0bd7f26aa1ac396b07befda656`;
-- focused exact regression `test_adoption_history_regression.py` commit `7ec1fcaf32bef7ba6e9519201592d066644220f5`, blob `9f705187059b577c131535959a347f52a55178e9`.
+- expanded adoption tests commit `c22b6d88c629ba0bd7f26aa1ac396b07befda656`, blob `ef19e3f21994e5d5282eec30a785a1cfe101f3ed`;
+- focused exact regression `test_adoption_history_regression.py` commit `7ec1fcaf32bef7ba6e9519201592d066644220f5`, blob `9f705187059b577c131535959a347f52a55178e9`;
+- research note updated in commit `0df6602a95440253c645c989fe7f0c8e7a4ba7bd`.
 
 The validator now requires a valid meta singleton; reserved tail exactly equal to contiguous intent history; exact predecessor/position chain; deterministic request IDs; at most one PREPARED row and only at the tail; CONFIRMED rows with receipt bindings; no orphan receipts; and inherited component watermarks backed by complete contiguous CONFIRMED history.
 
-Exact execution evidence for the focused fix:
-- `operation_permit.py` blob `637784a5cb61a024a1df3e0e983887b6d0a838be` matched local execution bytes;
+Exact published-source execution evidence:
+- `operation_permit.py` blob `637784a5cb61a024a1df3e0e983887b6d0a838be` matched;
 - `state_machine_udfs.py` blob `8c1d6d0cd075285aed3a90ac337b60b60c1d608b` matched;
 - patched `adoption_validation.py` blob `36551cce4351e9305262d8f3476ad633d3246564` matched;
-- focused regression blob `9f705187059b577c131535959a347f52a55178e9` matched after publication;
-- focused exact regression: **3/3 PASS**; compileall PASS.
+- extended `test_adoption_validation.py` blob `ef19e3f21994e5d5282eec30a785a1cfe101f3ed` matched;
+- focused regression blob `9f705187059b577c131535959a347f52a55178e9` matched;
+- combined exact adoption gate: **15/15 PASS + compileall PASS**.
 
-The larger local extended adoption suite passed 12/12 before publication, but the published test file has a different formatting blob, so 12/12 is retained only as design evidence, not exact-published evidence. Issue #170 comment `5447592284` records the finding/fix/evidence.
+Issue #170 comments `5447592284` and `5447603930` record the finding/fix and exact evidence. PR #173 remains draft.
 
 ## Evidence retained
 
@@ -46,7 +48,7 @@ The larger local extended adoption suite passed 12/12 before publication, but th
 - Previous repinned LAB-086 strict/thaw exact subgate: 31/31 PASS + compileall on pin `1fa85a0e...`; it is not sufficient for merge because hidden-rowid conflict was not covered.
 - Hidden-rowid exact RED→GREEN retained: predecessor RED 3/3, candidate `b78e7c98...` GREEN 3/3 + compileall; fresh independent byte-transition revalidation also matched both hashes.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 adoption validator new focused exact published-source regression: 3/3 PASS + compileall on blobs above.
+- LAB-091 adoption-state fix: exact published-source **15/15 PASS + compileall**.
 
 ## Known blockers / constraints
 
@@ -72,4 +74,4 @@ The larger local extended adoption suite passed 12/12 before publication, but th
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; adoption-state gap fixed with exact focused evidence; full real-stack gate remains.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; adoption-state gap fixed with exact 15/15 evidence; full real-stack gate remains.
