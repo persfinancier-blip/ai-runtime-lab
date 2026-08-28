@@ -32,11 +32,13 @@ def _unique_key_sets(q, table: str) -> set[tuple[str, ...]]:
         if not index_row[2] or index_row[4]:
             continue
         index_name = index_row[1].replace("'", "''")
-        columns = tuple(
-            row[2]
-            for row in q.execute(f"PRAGMA index_info('{index_name}')").fetchall()
-            if row[2] is not None
-        )
+        index_terms = q.execute(f"PRAGMA index_info('{index_name}')").fetchall()
+        # Expression terms are reported as cid=-2/name=NULL.  Silently
+        # dropping them can collapse UNIQUE(id, expression) into a false
+        # table-wide UNIQUE(id) guarantee.
+        if any(row[2] is None for row in index_terms):
+            continue
+        columns = tuple(row[2] for row in index_terms)
         if columns:
             keys.add(columns)
     return keys
