@@ -32,21 +32,22 @@ This is more than a fail-closed availability concern. LAB-080 `verify_component(
 
 ## Published bytes
 
+- `operation_permit.py`: `637784a5cb61a024a1df3e0e983887b6d0a838be`;
+- `state_machine_udfs.py`: `8c1d6d0cd075285aed3a90ac337b60b60c1d608b`;
 - `adoption_validation.py`: `36551cce4351e9305262d8f3476ad633d3246564`;
-- focused regression `test_adoption_history_regression.py`: `9f705187059b577c131535959a347f52a55178e9`.
+- extended `test_adoption_validation.py`: `ef19e3f21994e5d5282eec30a785a1cfe101f3ed`;
+- focused `test_adoption_history_regression.py`: `9f705187059b577c131535959a347f52a55178e9`.
 
 ## Execution evidence
 
-Exact local reconstruction matched the published blobs for:
+All files above were reconstructed locally and accepted only after `git hash-object` matched the published GitHub blob.
 
-- `operation_permit.py` `637784a5cb61a024a1df3e0e983887b6d0a838be`;
-- `state_machine_udfs.py` `8c1d6d0cd075285aed3a90ac337b60b60c1d608b`;
-- patched `adoption_validation.py` `36551cce4351e9305262d8f3476ad633d3246564`;
-- focused regression `9f705187059b577c131535959a347f52a55178e9`.
+Exact published-source result: **15/15 PASS + compileall PASS**:
 
-Focused exact result: **3/3 PASS + compileall PASS**.
+- 12 extended adoption-validation tests;
+- 3 focused tail/watermark regression tests.
 
-A broader local adoption suite passed 12/12 before publication, but its published test file has a different formatting blob; that 12/12 is intentionally retained only as design evidence, not exact-published evidence.
+The earlier design-only qualification for the local 12/12 run is superseded by this exact published execution.
 
 ## Remaining boundary
 
