@@ -19,6 +19,15 @@ _REQUIRED_NOT_NULL = {
         "status",
     ),
     "component_anchor_watermarks": ("position",),
+    "asymmetric_provider_receipts": (
+        "provider_id",
+        "generation",
+        "position",
+        "kind",
+        "challenge",
+        "signature",
+        "stable_binding",
+    ),
 }
 
 _REQUIRED_AFFINITY = {
@@ -42,6 +51,16 @@ _REQUIRED_AFFINITY = {
     "component_anchor_watermarks": {
         "component_id": "TEXT",
         "position": "INTEGER",
+    },
+    "asymmetric_provider_receipts": {
+        "request_id": "TEXT",
+        "provider_id": "TEXT",
+        "generation": "INTEGER",
+        "position": "INTEGER",
+        "kind": "TEXT",
+        "challenge": "TEXT",
+        "signature": "TEXT",
+        "stable_binding": "TEXT",
     },
 }
 
