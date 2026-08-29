@@ -20,10 +20,15 @@ def _is_canonical_sha256(value) -> bool:
 def _unique_key_sets(q, table: str) -> set[tuple[str, ...]]:
     keys: set[tuple[str, ...]] = set()
     table_info = q.execute(f"PRAGMA table_info({table})").fetchall()
-    pk_columns = tuple(
-        row[1] for row in sorted(table_info, key=lambda row: row[5]) if row[5] > 0
-    )
-    if pk_columns:
+    pk_rows = [row for row in sorted(table_info, key=lambda row: row[5]) if row[5] > 0]
+    pk_columns = tuple(row[1] for row in pk_rows)
+    # INTEGER PRIMARY KEY is the rowid identity itself and has no backing index.
+    # Text/composite PKs are accepted only through their backing UNIQUE index below,
+    # where we can also prove canonical BINARY comparison semantics.
+    if (
+        len(pk_rows) == 1
+        and pk_rows[0][2].strip().upper() == "INTEGER"
+    ):
         keys.add(pk_columns)
     for index_row in q.execute(f"PRAGMA index_list({table})").fetchall():
         # A partial UNIQUE index protects only rows selected by its WHERE clause.
@@ -32,11 +37,19 @@ def _unique_key_sets(q, table: str) -> set[tuple[str, ...]]:
         if not index_row[2] or index_row[4]:
             continue
         index_name = index_row[1].replace("'", "''")
-        index_terms = q.execute(f"PRAGMA index_info('{index_name}')").fetchall()
-        # Expression terms are reported as cid=-2/name=NULL.  Silently
-        # dropping them can collapse UNIQUE(id, expression) into a false
-        # table-wide UNIQUE(id) guarantee.
+        index_terms = [
+            row
+            for row in q.execute(f"PRAGMA index_xinfo('{index_name}')").fetchall()
+            if row[5] == 1
+        ]
+        # Expression terms are reported with name=NULL. Silently dropping them
+        # can collapse UNIQUE(id, expression) into a false UNIQUE(id) guarantee.
         if any(row[2] is None for row in index_terms):
+            continue
+        # Canonical LAB-080/LAB-082 identities use SQLite BINARY comparison.
+        # A legacy NOCASE/RTRIM/custom collation can reject otherwise valid,
+        # byte-distinct identifiers and is therefore not schema-compatible.
+        if any((row[4] or "BINARY").upper() != "BINARY" for row in index_terms):
             continue
         columns = tuple(row[2] for row in index_terms)
         if columns:
