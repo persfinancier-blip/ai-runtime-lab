@@ -64,14 +64,14 @@ def install_cross_table_guards(q: PermitConnection) -> None:
     q.execute(
         """CREATE TRIGGER lab091_v3_receipt_requires_matching_prepared_intent
            BEFORE INSERT ON asymmetric_provider_receipts
-           WHEN NEW.kind!='RECONCILE'
+           WHEN NEW.kind COLLATE BINARY != 'RECONCILE' COLLATE BINARY
            OR NOT EXISTS(
              SELECT 1 FROM shared_anchor_intents i
-             WHERE i.request_id=NEW.request_id
-               AND i.provider_id=NEW.provider_id
+             WHERE i.request_id COLLATE BINARY = NEW.request_id COLLATE BINARY
+               AND i.provider_id COLLATE BINARY = NEW.provider_id COLLATE BINARY
                AND i.provider_generation=NEW.generation
                AND i.position=NEW.position
-               AND i.status='PREPARED'
+               AND i.status COLLATE BINARY = 'PREPARED' COLLATE BINARY
                AND i.receipt_binding IS NULL
            )
            BEGIN
