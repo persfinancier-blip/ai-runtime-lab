@@ -69,7 +69,9 @@ def install_full_operation_guards(q: PermitConnection) -> None:
              OR NEW.position!=NEW.predecessor_position+1
              OR EXISTS(
                SELECT 1 FROM shared_anchor_intents
-               WHERE intent_id=NEW.intent_id OR request_id=NEW.request_id OR position=NEW.position
+               WHERE intent_id COLLATE BINARY = NEW.intent_id COLLATE BINARY
+                  OR request_id COLLATE BINARY = NEW.request_id COLLATE BINARY
+                  OR position=NEW.position
              )
              OR lab091_consume_permit(
                'intent-insert',NEW.intent_id,'',
@@ -116,7 +118,8 @@ def install_full_operation_guards(q: PermitConnection) -> None:
            BEFORE INSERT ON component_anchor_watermarks
            WHEN NEW.position<0
              OR EXISTS(
-               SELECT 1 FROM component_anchor_watermarks WHERE component_id=NEW.component_id
+               SELECT 1 FROM component_anchor_watermarks
+               WHERE component_id COLLATE BINARY = NEW.component_id COLLATE BINARY
              )
              OR lab091_consume_permit(
                'watermark-insert',NEW.component_id,'',CAST(NEW.position AS TEXT)
@@ -137,7 +140,8 @@ def install_full_operation_guards(q: PermitConnection) -> None:
         """CREATE TRIGGER lab091_v2_receipt_exact_insert
            BEFORE INSERT ON asymmetric_provider_receipts
            WHEN EXISTS(
-               SELECT 1 FROM asymmetric_provider_receipts WHERE request_id=NEW.request_id
+               SELECT 1 FROM asymmetric_provider_receipts
+               WHERE request_id COLLATE BINARY = NEW.request_id COLLATE BINARY
              )
              OR lab091_consume_permit(
                'receipt-insert',NEW.request_id,'',
