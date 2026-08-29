@@ -16,17 +16,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs #165/#172/#173. Probed local GitHub transport again: `git ls-remote` still fails with `Could not resolve host: github.com`. Connector reads and normal Contents writes remain available; no branch/archive-to-executable-FS bridge appeared.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open work. LAB-086 remains byte-transfer blocked: connector reads/Contents writes are available, but no supported machine-to-machine byte-preserving bridge exists to compose the exact 949-line predecessor with the retained hidden-rowid patch. Do not manually/model-reserialize that security-critical file.
 
-LAB-086 therefore remains byte-transfer blocked: do not model/manual-reserialize the 949-line security-critical `strict_fence.py`.
+Used the LAB-091 fallback and completed the next handoff audit against the protected `asymmetric_provider_receipts` table. Reproduced that a legacy `generation TEXT NOT NULL` declaration causes SQLite to coerce a bound integer generation to string before a `BEFORE INSERT` trigger/UDF sees `NEW.generation`, diverging from the exact one-shot receipt permit/token semantics after an otherwise clean adoption.
 
-Used the LAB-091 fallback and found a new first-adoption schema-contract defect. Existing validation checked NOT NULL and canonical identity constraints but not SQLite column affinity. SQLite applies affinity before BEFORE-trigger `NEW.*`; an integer `1` inserted into a legacy `position TEXT NOT NULL` column is observed by the trigger as string `"1"`, diverging from exact one-shot permit/token semantics after an otherwise clean adoption.
+Published fail-closed receipt schema-domain hardening on `lab/091-mutable-shared-anchor-writer`:
+- `adoption_schema_domains.py` commit `627f7257437f3da2438e32c2e6b7871c0a76a246`, blob `3688066de1ba12bc485a3dcc5846033685cbcb96`;
+- `test_receipt_adoption_affinity_regression.py` commit `d4ad82916a4a4a2cb79ef7ebe6c8466a0e32d820`, blob `35baec3bf65c23b6af2fadae3695fa879c4499f2`.
 
-Published fail-closed fix on `lab/091-mutable-shared-anchor-writer`:
-- `adoption_schema_domains.py` commit `4806c7f0a4d7ea34b239d9a1f639479c1d32bac9`, blob `36a94d721cc627707be89a0ae1ef99d8bbcaa673`;
-- `test_adoption_affinity_regression.py` commit `d18ffff9565ed3ad8c1afeeb672aae09f561975c`, blob `4f1cf3789d6bad0af8943ad612f430f891d3dd90`.
-
-Executed focused candidate before publication: canonical affinity accepted; `position TEXT NOT NULL` rejected; BEFORE-trigger coercion reproduced; **3/3 PASS + compileall PASS**. Post-publication re-fetch confirmed exact tested logic/blobs. Durable evidence: `research/2026-08-29-lab091-legacy-column-affinity-adoption-gap.md`, main commit `81606fb03909273158b1800b31185f5dd5771b0e`. Issue #170 updated.
+The validator now requires canonical LAB-082 receipt affinities (`generation`/`position` INTEGER; text fields TEXT) and canonical NOT NULL receipt domains. Focused semantic SQLite gate covering canonical acceptance, TEXT-generation rejection, nullable-binding rejection, and pre-trigger coercion reproduction: **4/4 PASS**. Exact byte-for-byte branch pytest execution was not claimed because branch-to-executable-FS transport is still unavailable. Durable evidence: `research/2026-08-29-lab091-receipt-affinity-adoption-gap.md`, commit `07acda8e6ac635c31f1b13e310c5556c38326490`. Issue #170 updated.
 
 ## Evidence retained
 
@@ -35,8 +33,9 @@ Executed focused candidate before publication: canonical affinity accepted; `pos
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor `d4a6a40f...` -> candidate `b78e7c98...` previously byte-rederived and focused mechanism-tested; publication/full gate still pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 adoption hardening combined focused gate 17/17 PASS before later affinity fix.
-- LAB-091 missing-singleton 2/2 PASS; persisted-trigger confused-deputy 3/3 PASS + compileall; legacy affinity regression 3/3 PASS + compileall.
+- LAB-091 adoption hardening combined focused gate 17/17 PASS before later affinity fixes.
+- LAB-091 missing-singleton 2/2 PASS; persisted-trigger confused-deputy 3/3 PASS + compileall; legacy intent affinity regression 3/3 PASS + compileall.
+- LAB-091 receipt affinity/domain focused semantic gate 4/4 PASS; exact published pytest execution pending transport.
 - LAB-091 alternate-write REPLACE / UPSERT / multi-row UPDATE all fail closed; no bypass established.
 - LAB-091 published real-stack timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution pending.
 - LAB-091 published process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution pending.
@@ -47,18 +46,19 @@ Executed focused candidate before publication: canonical affinity accepted; `pos
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40f...`, applying only retained hidden-rowid patch through a byte-preserving supported path, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - PR #165 remains draft until exact rowid candidate publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
 - PR #173 remains draft until exact full-stack timeout/UNKNOWN and process concurrency/crash regressions execute GREEN against the actual supported final class and LAB-087 composition is reconfirmed.
-- Do not repeat closed LAB-091 hidden-rowid, exception-taxonomy, or narrow adoption-index audits unless pinned blobs/supported surfaces change.
+- Newly published receipt-affinity pytest also needs exact branch execution when executable transport becomes available; do not represent the focused semantic reproduction as byte-for-byte branch execution.
+- Do not repeat closed LAB-091 hidden-rowid, exception-taxonomy, intent-affinity, receipt-affinity/domain, or narrow adoption-index audits unless pinned blobs/supported surfaces change.
 - Do not add speculative SQLite guards without a reproduced reachable mutation or compatibility failure under actual supported semantics.
 
 ## Exact next action
 
 1. LAB-086 first: if a supported machine-to-machine byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40f...`, apply only retained hidden-rowid patch, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
-2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...` plus process concurrency/crash `93887747...` against the final supported class.
-3. If execution transport still remains unavailable, continue only demonstrably reachable LAB-091 schema/adoption/write-surface audits. The next high-value audit is whether the protected `asymmetric_provider_receipts` legacy schema has the same unverified affinity/domain compatibility problem; reproduce before changing runtime.
+2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...`, process concurrency/crash `93887747...`, and the new receipt-affinity regression `35baec3b...` against the final supported class.
+3. If execution transport still remains unavailable, continue only demonstrably reachable LAB-091 adoption/write-surface audits. Next useful target: verify whether protected receipt schema CHECK/collation semantics beyond affinity/NOT NULL can admit a clean legacy state but alter exact future guarded writes; reproduce before changing runtime.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; two full real-stack behavioral gates pending.
+- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; two full real-stack behavioral gates plus exact receipt-affinity pytest execution pending.
