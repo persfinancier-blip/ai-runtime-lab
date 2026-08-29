@@ -21,15 +21,22 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
 
     def __init__(self, path, attested, bootstrap, signer):
         super().__init__(path, attested, bootstrap, signer)
-        # The inherited LAB-082 helper states receipt identity comparisons using
-        # the column's default collation.  LAB-091 explicitly supports adoption
-        # of a legacy non-BINARY column when a canonical BINARY identity index
-        # exists, so final supported lookups must not inherit that legacy
-        # collation.
-        self.provider_history = BinaryIdentityIntegratedAsymmetricProviderHistory(
-            path, bootstrap
-        )
+        self._ensure_binary_provider_history()
         self._require_runtime_matches_durable_head()
+
+    def _ensure_binary_provider_history(self):
+        # LAB-082 installs IntegratedAsymmetricProviderHistory before entering
+        # LAB-091's parent constructor. Dynamic dispatch then reaches this
+        # class's _install_guards() before this class's __init__ resumes. Upgrade
+        # the helper before adoption/restart verification so receipt identities
+        # never inherit a legacy column's non-BINARY collation.
+        if not isinstance(
+            self.provider_history, BinaryIdentityIntegratedAsymmetricProviderHistory
+        ):
+            self.provider_history = BinaryIdentityIntegratedAsymmetricProviderHistory(
+                self.path, self.provider_history.bootstrap
+            )
+        return self.provider_history
 
     def _con(self):
         q = super()._con()
@@ -76,6 +83,7 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
             q.close()
 
     def _install_guards(self):
+        self._ensure_binary_provider_history()
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
