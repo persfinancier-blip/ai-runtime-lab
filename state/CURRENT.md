@@ -16,13 +16,17 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PR #165. PR #165 remains open, draft and mergeable.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs #165/#172/#173. Probed local GitHub transport again: `git ls-remote` still fails with `Could not resolve host: github.com`. Connector reads and normal Contents writes remain available; no branch/archive-to-executable-FS bridge appeared.
 
-LAB-086 was probed first. Local `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed with `Could not resolve host: github.com`. Connector reads and normal Contents writes are available, but no supported machine-to-machine byte-preserving bridge was observed that can compose the exact 949-line `strict_fence.py` predecessor plus retained patch into `update_file` without model/manual reserialization. No LAB-086 branch mutation was attempted.
+LAB-086 therefore remains byte-transfer blocked: do not model/manual-reserialize the 949-line security-critical `strict_fence.py`.
 
-Used the LAB-091 fallback to inspect exact published timeout regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e` and the final supported inheritance path. The final convergence layer catches only `ProviderUnavailable` and `UnknownOutcome` around provider catch-up / reauthentication and maps only those retryable external-outcome classes to `PendingIntent`; arbitrary integrity, substitution, history, SQL or programming failures are not swallowed. This is the correct real-stack retryability boundary, so no speculative code change was made.
+Used the LAB-091 fallback and found a new first-adoption schema-contract defect. Existing validation checked NOT NULL and canonical identity constraints but not SQLite column affinity. SQLite applies affinity before BEFORE-trigger `NEW.*`; an integer `1` inserted into a legacy `position TEXT NOT NULL` column is observed by the trigger as string `"1"`, diverging from exact one-shot permit/token semantics after an otherwise clean adoption.
 
-Durable evidence: `research/2026-08-29-lab091-real-stack-exception-boundary-audit.md`, main commit `78431a971f37614aab6301e2263a92e50eb8e710`. Issue #170 was updated.
+Published fail-closed fix on `lab/091-mutable-shared-anchor-writer`:
+- `adoption_schema_domains.py` commit `4806c7f0a4d7ea34b239d9a1f639479c1d32bac9`, blob `36a94d721cc627707be89a0ae1ef99d8bbcaa673`;
+- `test_adoption_affinity_regression.py` commit `d18ffff9565ed3ad8c1afeeb672aae09f561975c`, blob `4f1cf3789d6bad0af8943ad612f430f891d3dd90`.
+
+Executed focused candidate before publication: canonical affinity accepted; `position TEXT NOT NULL` rejected; BEFORE-trigger coercion reproduced; **3/3 PASS + compileall PASS**. Post-publication re-fetch confirmed exact tested logic/blobs. Durable evidence: `research/2026-08-29-lab091-legacy-column-affinity-adoption-gap.md`, main commit `81606fb03909273158b1800b31185f5dd5771b0e`. Issue #170 updated.
 
 ## Evidence retained
 
@@ -31,30 +35,26 @@ Durable evidence: `research/2026-08-29-lab091-real-stack-exception-boundary-audi
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor `d4a6a40f...` -> candidate `b78e7c98...` previously byte-rederived and focused mechanism-tested; publication/full gate still pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 adoption hardening combined focused gate 17/17 PASS.
-- LAB-091 missing-singleton regression 2/2 PASS.
-- LAB-091 persisted-trigger confused-deputy regression 3/3 PASS + compileall.
-- LAB-091 alternate-write one-shot probe: REPLACE / UPSERT / multi-row UPDATE all fail closed; no bypass established.
-- LAB-091 hidden-rowid reachability audit: no reachable supported final-writer path; no speculative guard added.
-- LAB-091 exception-boundary audit: final convergence maps only provider-unavailable/unknown outcomes to `PendingIntent`; no new defect found.
-- LAB-091 published real-stack timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution still pending.
-- LAB-091 published process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution still pending.
+- LAB-091 adoption hardening combined focused gate 17/17 PASS before later affinity fix.
+- LAB-091 missing-singleton 2/2 PASS; persisted-trigger confused-deputy 3/3 PASS + compileall; legacy affinity regression 3/3 PASS + compileall.
+- LAB-091 alternate-write REPLACE / UPSERT / multi-row UPDATE all fail closed; no bypass established.
+- LAB-091 published real-stack timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution pending.
+- LAB-091 published process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution pending.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
-- Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40f...`, applying only retained hidden-rowid patch through a byte-preserving supported path, requiring exact target blob `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
-- Range-based connector reads are not by themselves a byte-preserving write bridge unless the exact fetched bytes can be passed machine-to-machine into composition/update without model regeneration.
+- Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40f...`, applying only retained hidden-rowid patch through a byte-preserving supported path, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - PR #165 remains draft until exact rowid candidate publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
 - PR #173 remains draft until exact full-stack timeout/UNKNOWN and process concurrency/crash regressions execute GREEN against the actual supported final class and LAB-087 composition is reconfirmed.
-- Do not repeat narrow LAB-091 adoption/rowid/exception-boundary audits unless pinned blobs or supported surfaces change.
-- Do not add speculative SQLite guards without a reproduced reachable mutation path under actual supported `_con()` semantics.
+- Do not repeat closed LAB-091 hidden-rowid, exception-taxonomy, or narrow adoption-index audits unless pinned blobs/supported surfaces change.
+- Do not add speculative SQLite guards without a reproduced reachable mutation or compatibility failure under actual supported semantics.
 
 ## Exact next action
 
-1. LAB-086 first: re-fetch `strict_fence.py`; if it remains `d4a6a40f...` and a supported machine-to-machine byte-preserving composition/transfer bridge exists, apply only `research/2026-08-28-lab086-hidden-rowid-replace.patch`, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
-2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...` plus process concurrency/crash `93887747...`; fix any real defect without weakening either regression.
-3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for demonstrably reachable SQLite mechanisms under actual final `_con()` configuration; do not repeat already-closed hidden-rowid or exception-taxonomy analysis unless the supported surface changes.
+1. LAB-086 first: if a supported machine-to-machine byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40f...`, apply only retained hidden-rowid patch, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
+2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...` plus process concurrency/crash `93887747...` against the final supported class.
+3. If execution transport still remains unavailable, continue only demonstrably reachable LAB-091 schema/adoption/write-surface audits. The next high-value audit is whether the protected `asymmetric_provider_receipts` legacy schema has the same unverified affinity/domain compatibility problem; reproduce before changing runtime.
 
 ## Backlog
 
