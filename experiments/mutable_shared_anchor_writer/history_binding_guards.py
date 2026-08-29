@@ -77,16 +77,16 @@ def install_history_binding_guards(q: PermitConnection) -> None:
     q.execute(
         """CREATE TRIGGER lab091_v4_confirmation_requires_matching_receipt
            BEFORE UPDATE ON shared_anchor_intents
-           WHEN NEW.status='CONFIRMED' AND (
+           WHEN NEW.status COLLATE BINARY = 'CONFIRMED' COLLATE BINARY AND (
              NEW.receipt_binding IS NULL
              OR NOT EXISTS(
                SELECT 1 FROM asymmetric_provider_receipts r
-               WHERE r.request_id=NEW.request_id
-                 AND r.provider_id=NEW.provider_id
+               WHERE r.request_id COLLATE BINARY = NEW.request_id COLLATE BINARY
+                 AND r.provider_id COLLATE BINARY = NEW.provider_id COLLATE BINARY
                  AND r.generation=NEW.provider_generation
                  AND r.position=NEW.position
-                 AND r.kind='RECONCILE'
-                 AND r.stable_binding=NEW.receipt_binding
+                 AND r.kind COLLATE BINARY = 'RECONCILE' COLLATE BINARY
+                 AND r.stable_binding COLLATE BINARY = NEW.receipt_binding COLLATE BINARY
              )
            )
            BEGIN
