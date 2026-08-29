@@ -16,15 +16,13 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and draft PRs #165/#173.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PR #165. PR #165 remains open, draft and mergeable.
 
-LAB-086 was probed first. `strict_fence.py` was re-fetched from branch `lab/086-asymmetric-break-glass-history` in four non-overlapping ranges covering lines 1-949; every range reported the exact expected predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. This proves complete connector-readable coverage, but the current tool surface still does not provide machine-to-machine byte-preserving composition of those exact chunks plus the retained unified patch into `update_file`. Manual/model reserialization remains prohibited; no LAB-086 branch mutation was attempted.
+LAB-086 was probed first. Local `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed with `Could not resolve host: github.com`. Connector reads and normal Contents writes are available, but no supported machine-to-machine byte-preserving bridge was observed that can compose the exact 949-line `strict_fence.py` predecessor plus retained patch into `update_file` without model/manual reserialization. No LAB-086 branch mutation was attempted.
 
-A fresh local checkout probe also failed: `git clone --depth 1 --branch lab/091-mutable-shared-anchor-writer https://github.com/persfinancier-blip/ai-runtime-lab.git` returned `Could not resolve host: github.com`.
+Used the LAB-091 fallback to inspect exact published timeout regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e` and the final supported inheritance path. The final convergence layer catches only `ProviderUnavailable` and `UnknownOutcome` around provider catch-up / reauthentication and maps only those retryable external-outcome classes to `PendingIntent`; arbitrary integrity, substitution, history, SQL or programming failures are not swallowed. This is the correct real-stack retryability boundary, so no speculative code change was made.
 
-Used the LAB-091 fallback for a new hidden-rowid reachability audit motivated by LAB-086. Inspected exact final `_con()`/writer/adoption files and searched repository code for `recursive_triggers` and `foreign_keys`. No supported LAB-091 final DML exposes explicit SQLite `rowid`; consequential fixed INSERT/UPDATE statements carry exact one-shot permits; arbitrary raw-DML/permit minting would require same-privilege writable-worker execution already owned by LAB-087. No reachable hidden-rowid or cascade bypass was established, so no speculative guard was added.
-
-Durable evidence: `research/2026-08-29-lab091-hidden-rowid-reachability-audit.md`, main commit `4f521ba22d5877a6fdfe9e570ec46929b6952bc2`. Issue #170 was updated.
+Durable evidence: `research/2026-08-29-lab091-real-stack-exception-boundary-audit.md`, main commit `78431a971f37614aab6301e2263a92e50eb8e710`. Issue #170 was updated.
 
 ## Evidence retained
 
@@ -38,6 +36,7 @@ Durable evidence: `research/2026-08-29-lab091-hidden-rowid-reachability-audit.md
 - LAB-091 persisted-trigger confused-deputy regression 3/3 PASS + compileall.
 - LAB-091 alternate-write one-shot probe: REPLACE / UPSERT / multi-row UPDATE all fail closed; no bypass established.
 - LAB-091 hidden-rowid reachability audit: no reachable supported final-writer path; no speculative guard added.
+- LAB-091 exception-boundary audit: final convergence maps only provider-unavailable/unknown outcomes to `PendingIntent`; no new defect found.
 - LAB-091 published real-stack timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution still pending.
 - LAB-091 published process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution still pending.
 
@@ -48,14 +47,14 @@ Durable evidence: `research/2026-08-29-lab091-hidden-rowid-reachability-audit.md
 - Range-based connector reads are not by themselves a byte-preserving write bridge unless the exact fetched bytes can be passed machine-to-machine into composition/update without model regeneration.
 - PR #165 remains draft until exact rowid candidate publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
 - PR #173 remains draft until exact full-stack timeout/UNKNOWN and process concurrency/crash regressions execute GREEN against the actual supported final class and LAB-087 composition is reconfirmed.
-- Do not repeat narrow LAB-091 adoption/rowid gates unless pinned blobs or supported DML surface change.
+- Do not repeat narrow LAB-091 adoption/rowid/exception-boundary audits unless pinned blobs or supported surfaces change.
 - Do not add speculative SQLite guards without a reproduced reachable mutation path under actual supported `_con()` semantics.
 
 ## Exact next action
 
 1. LAB-086 first: re-fetch `strict_fence.py`; if it remains `d4a6a40f...` and a supported machine-to-machine byte-preserving composition/transfer bridge exists, apply only `research/2026-08-28-lab086-hidden-rowid-replace.patch`, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
 2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...` plus process concurrency/crash `93887747...`; fix any real defect without weakening either regression.
-3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for demonstrably reachable SQLite mechanisms under actual final `_con()` configuration; do not repeat hidden-rowid analysis unless the supported DML surface changes.
+3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for demonstrably reachable SQLite mechanisms under actual final `_con()` configuration; do not repeat already-closed hidden-rowid or exception-taxonomy analysis unless the supported surface changes.
 
 ## Backlog
 
