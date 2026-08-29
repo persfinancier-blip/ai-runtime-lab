@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .adoption_schema_domains import validate_required_not_null_contract
+from .adoption_trigger_surface import validate_protected_trigger_surface
 from .adoption_validation import validate_existing_mutable_state_locked
 from .cross_table_guards import install_cross_table_guards
 from .full_operation_guards import install_full_operation_guards
@@ -48,6 +49,10 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
             install_full_operation_guards(q)
             install_cross_table_guards(q)
             install_history_binding_guards(q)
+            # Unknown persisted triggers attached to a protected table execute
+            # inside an otherwise authorized LAB-091 statement. Reject that
+            # confused-deputy surface before accepting first adoption/restart.
+            validate_protected_trigger_surface(q)
             # CREATE TABLE IF NOT EXISTS cannot restore canonical field-domain
             # constraints on an existing legacy table. Reject weakened NOT NULL
             # declarations before accepting the database as LAB-091 protected.
