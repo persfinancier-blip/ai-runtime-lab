@@ -5,6 +5,13 @@ class RestartSchemaError(RuntimeError):
     pass
 
 
+_MUTABLE_SHARED_ANCHOR_TABLES = {
+    "shared_anchor_meta",
+    "shared_anchor_intents",
+    "component_anchor_watermarks",
+}
+
+
 def initialize_shared_anchor_schema(q) -> None:
     """Initialize LAB-080 tables without replaying a guarded singleton INSERT.
 
@@ -15,14 +22,24 @@ def initialize_shared_anchor_schema(q) -> None:
     write lock, observes the singleton first, and inserts it only for a genuinely
     fresh database.
 
-    If the singleton is missing from an already guarded database, the attempted
-    insertion is intentionally left to the persistent guard and fails closed.
+    A preexisting mutable shared-anchor schema with no metadata singleton is not
+    a fresh database. Synthesizing ``(1, 0)`` there would mutate legacy state
+    before first-adoption verification and could erase evidence of an invalid
+    tail. Reject that state fail-closed instead.
     """
     if q.in_transaction:
         raise RestartSchemaError("restart-safe schema initialization requires no active transaction")
 
     q.execute("BEGIN IMMEDIATE")
     try:
+        existing_tables = {
+            row[0]
+            for row in q.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        had_mutable_schema = bool(existing_tables & _MUTABLE_SHARED_ANCHOR_TABLES)
+
         q.execute(
             """CREATE TABLE IF NOT EXISTS shared_anchor_meta(
               singleton INTEGER PRIMARY KEY CHECK(singleton=1),
@@ -55,6 +72,10 @@ def initialize_shared_anchor_schema(q) -> None:
             "SELECT singleton FROM shared_anchor_meta WHERE singleton=1"
         ).fetchone()
         if row is None:
+            if had_mutable_schema:
+                raise RestartSchemaError(
+                    "preexisting mutable shared-anchor schema is missing metadata singleton"
+                )
             q.execute("INSERT INTO shared_anchor_meta VALUES(1,0)")
         q.commit()
     except Exception:
