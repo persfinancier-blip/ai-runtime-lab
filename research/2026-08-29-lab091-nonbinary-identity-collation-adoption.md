@@ -28,7 +28,18 @@ After applying the fix logic, an executed focused probe observed:
 - `asymmetric_provider_receipts.request_id` with NOCASE PK: rejected;
 - Python compile of the focused probe: PASS.
 
-This is focused mechanism evidence; it is not a claim that the complete PR #173 real-stack gate has passed.
+A second combined index-semantics probe checked the new collector against the prior partial/expression cases as well as the new collation case:
+
+- canonical `TEXT UNIQUE`: accepted;
+- canonical `TEXT PRIMARY KEY`: accepted through its BINARY backing index;
+- canonical `INTEGER PRIMARY KEY`: accepted directly despite having no backing index;
+- partial UNIQUE: rejected as a table-wide identity guarantee;
+- expression UNIQUE: rejected as a canonical identity guarantee;
+- NOCASE UNIQUE: rejected;
+- NOCASE text PRIMARY KEY: rejected;
+- `UNIQUE(id DESC)` with BINARY comparison: accepted, because sort direction does not change uniqueness equivalence.
+
+This is focused mechanism evidence; it is not a claim that the complete PR #173 real-stack gate has passed. The previous exact published adoption-index suites must still be re-executed against validator blob `1731648b...` before the branch-wide regression gate can be called green.
 
 ## Fix
 
@@ -51,4 +62,4 @@ Index sort direction does not change uniqueness equivalence, so ASC/DESC is not 
 
 ## Next action
 
-LAB-086 remains priority #1. If its byte-preserving Contents publication path remains unavailable, continue LAB-091 by executing the final `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` against the real LAB-080/LAB-082 dependency closure, starting with timeout-after-commit/UNKNOWN and two-worker/crash tests that currently use stubs rather than the final supported class.
+LAB-086 remains priority #1. If its byte-preserving Contents publication path remains unavailable, continue LAB-091 by executing the final `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` against the real LAB-080/LAB-082 dependency closure, starting with timeout-after-commit/UNKNOWN and two-worker/crash tests that currently use stubs rather than the final supported class. Before counting the collation change as branch-wide safe, re-run the prior expression/partial/missing-constraint adoption suites against validator blob `1731648b...`.
