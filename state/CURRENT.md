@@ -16,15 +16,13 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs/issues. LAB-086 predecessor is still `d4a6a40f...`. This run has a normal Contents API writer, but the exact 40 KB candidate body is still separated from the executable filesystem; shell/raw GitHub DNS remains unavailable. The LAB-086 candidate was therefore not approximated or manually lossy-reserialized.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; re-inspected active PRs. LAB-086 predecessor was re-fetched and is still exact blob `d4a6a40f...`. Shell `git clone` again failed before byte transfer because `github.com` DNS could not resolve, so the exact 40 KB candidate was not approximated or manually lossy-reserialized.
 
-Used the permitted LAB-091 fallback to audit CHECK/type-affinity only for demonstrated reachable-state gaps. Found one: canonical LAB-080 creates `component_anchor_watermarks.position INTEGER NOT NULL CHECK(position>=0)`, but a legacy table missing only that CHECK can accept `position=-1` under the current v2/v4 guard stack when an exact one-shot `watermark-insert` permit is supplied. v4 confirmed-prefix logic runs only for `NEW.position>0`, and v2 previously did not reject negative positions.
+Used the permitted LAB-091 fallback and executed the combined adoption hardening surface against current branch logic after head `210d51dd15ebfcaf4858bb927e2b729765c176b3`. Exact fetched runtime blobs: `adoption_validation.py` `1731648b4e65b1c5984d4f93b78c45d5a066dd95`, `adoption_schema_domains.py` `1abef5360fc57f5a863e8665556cbdb9dee6f012`, `full_operation_guards.py` `529ee8094d04b0cc9bb208f3fce8f85b2bc6db0f`.
 
-Executed a local SQLite RED reproduction: weakened watermark table + current v2/v4 semantics + exact permit admitted `('component-a', -1)`. Published the minimal trigger-level fix on `lab/091-mutable-shared-anchor-writer`: v2 watermark insert now rejects `NEW.position<0` before permit consumption. Runtime commit `568011740f743208314ff2e5c464e1b48bcd4781`; `full_operation_guards.py` blob `529ee8094d04b0cc9bb208f3fce8f85b2bc6db0f`. Added regression commit `210d51dd15ebfcaf4858bb927e2b729765c176b3`, `tests/test_weakened_watermark_check_regression.py`.
+A local SQLite mechanism harness reproduced the exact fetched branch logic for identity/index admission, required-NOT-NULL admission, deterministic request identity and the current v2 watermark insert predicate. Combined result: **17/17 PASS**. Canonical identity + NOT NULL accepted; six missing identity constraints rejected; four NOCASE identity variants rejected; expression and partial UNIQUE do not collapse to false global identity; weakened `component_id` NOT NULL rejected; weakened watermark CHECK still rejects `position=-1` through exact permit while `position=0` remains valid.
 
-Focused supported-path execution after the fix used `PermitConnection`, the one-shot permit UDF/context, and the corrected watermark trigger: negative exact-permit insert rejected; zero exact-permit insert accepted; 2/2 PASS; focused compileall PASS. An initial temporary local harness run had an unterminated triple-quoted string; the harness typo was corrected and rerun. Published branch source did not contain that typo.
-
-Durable note: `research/2026-08-29-lab091-watermark-check-gap.md`, main commit `8e0f5eff31788bc595e30a021314baa83deee4d0`. Issue #170 comment `5459739722`; PR #173 comment `5459740124`.
+This is explicitly a focused mechanism gate over exact fetched branch logic, not execution of every published unittest file and not the full LAB-080/LAB-082 real-stack acceptance gate. Durable note: `research/2026-08-29-lab091-combined-adoption-focused-gate.md`, main commit `ccc1c6ef49f0288cf9fc085710faad94493dc583`; Issue #170 comment `5460010387`; PR #173 comment `5460010753`.
 
 ## Evidence retained
 
@@ -33,9 +31,7 @@ Durable note: `research/2026-08-29-lab091-watermark-check-gap.md`, main commit `
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-086 hidden-rowid RED->GREEN evidence retained; exact predecessor `d4a6a40f...` -> candidate `b78e7c98...` was byte-rederived and focused mechanism-tested.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 expression/partial/missing-constraint adoption-index suites previously 4/4 PASS + compileall; non-BINARY collation focused gate PASS.
-- LAB-091 weakened NOT NULL schema-domain regression 2/2 PASS; NULL-component pre-fix mechanism reproduced.
-- LAB-091 weakened watermark CHECK regression now RED reproduced -> fix published -> focused 2/2 PASS + compileall.
+- LAB-091 adoption hardening now has a combined focused 17/17 PASS over current identity/index/collation + NOT NULL + weakened-watermark-CHECK logic.
 
 ## Known blockers / constraints
 
@@ -43,16 +39,16 @@ Durable note: `research/2026-08-29-lab091-watermark-check-gap.md`, main commit `
 - LAB-086 publication remains blocked by byte-preserving data-plane separation for the exact 40 KB candidate. Do not use low-level blob/tree/ref manipulation, force updates, or manual lossy rewrites.
 - PR #165 remains draft until exact candidate publication/hash verification, four focused regressions, complete strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe seed, compileall and final security/reconciliation audit are clean.
 - PR #173 remains draft. Existing timeout-after-commit and process concurrency/crash tests still use stubs and do not prove the final supported class against exact real LAB-080/LAB-082 dependencies.
+- Do not repeat the narrow LAB-091 combined adoption gate unless one of the pinned source blobs changes.
 - CHECK/type-affinity equivalence is not globally claimed. Only demonstrated behavior gaps should add constraints/guards.
 - LAB-090/#169 provider handoff freshness remains separate.
 
 ## Exact next action
 
-1. LAB-086 first: re-check `strict_fence.py` remains `d4a6a40f...`. If a byte-preserving bridge to the Contents writer becomes available, publish only exact candidate `b78e7c98...`, require returned/re-fetched blob equality, then run four focused regressions + strict/thaw subgate + compileall + LAB-080->086 real-ledger gate.
-2. If LAB-086 publication remains tool-limited, LAB-091: run the combined adoption identity/index/collation + NOT NULL + weakened-watermark-CHECK focused suites against branch head after `210d51dd...`.
-3. Then close the stub-only proof gap with real-stack `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger`: timeout-after-commit/UNKNOWN retry convergence first, then two-worker confirmation/crash semantics, using exact real LAB-080/LAB-082 dependencies.
+1. LAB-086 first: re-check `strict_fence.py` remains `d4a6a40f...`. If a byte-preserving bridge to the normal Contents writer becomes available, publish only exact candidate `b78e7c98...`, require returned/re-fetched blob equality, then run four focused regressions + strict/thaw subgate + compileall + LAB-080->086 real-ledger gate.
+2. If LAB-086 publication remains tool-limited, LAB-091: close the highest-value remaining proof gap with the final `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger` against exact real LAB-080/LAB-082 dependencies. First prove timeout-after-commit/UNKNOWN retry convergence; then prove two-worker confirmation/crash semantics.
+3. Retain/reconfirm LAB-087 restricted-worker composition and audit alternate write surfaces/reentrancy before PR #173 can leave draft.
 4. Continue CHECK/type-affinity audit only where a concrete future reachable-state counterexample can be reproduced.
-5. Keep PRs #165/#173 draft until complete gates are clean.
 
 ## Backlog
 
@@ -61,4 +57,4 @@ Durable note: `research/2026-08-29-lab091-watermark-check-gap.md`, main commit `
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #168 / LAB-089 — CLOSED `not_planned`.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS; draft PR #173; identity/index/collation, NOT NULL, and demonstrated watermark-CHECK hardening published; combined regression re-run and full supported real-stack gate pending.
+- #170 / LAB-091 — IN_PROGRESS; draft PR #173; combined adoption hardening focused gate 17/17 PASS; real-stack timeout/UNKNOWN + two-worker/crash gates pending.
