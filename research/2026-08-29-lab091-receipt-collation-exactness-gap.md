@@ -25,23 +25,23 @@ The canonical receipt form (`RECONCILE`, exact provider, exact binding) remained
 
 Do not try to parse or reject every non-default `CREATE TABLE` collation. Instead, force the security/state-machine comparisons that must be byte-sensitive to use `COLLATE BINARY` explicitly.
 
-Published files:
+Authoritative published files from the GitHub REST commit records:
 
 - `experiments/mutable_shared_anchor_writer/cross_table_guards.py`
-  - commit `d8c305472db98387d1a60cd37c4fc8d7b28dde30`
-  - blob `0b5d7bf93e160a2c0bdc37d0178ce91c2055e830`
+  - commit `078bdfe35b415b0a35dbcbf538cd0a6829c4704f`
+  - blob `f76809e067d9d92aa0e7c96145c282757e1fbf0b`
 - `experiments/mutable_shared_anchor_writer/history_binding_guards.py`
-  - commit `b22fa5f4601525814be497add3d6e71ee0e2eae2`
-  - blob `11ceb7047faa20228431f1d6e3b047914c08e5c8`
+  - commit `89a7701437c1675e8107221b2610a95c0bd747ab`
+  - blob `adb586f953816574a4f4f7380aace7305cf088b8`
 - `experiments/mutable_shared_anchor_writer/tests/test_receipt_collation_exactness_regression.py`
   - commit `3078e64307b66687ff96b172a42dd136eb89d7a0`
-  - blob `f0c0b7b514a0901253f0365786e444381e2b7172`
+  - blob `25f7eca3833c57b5246e82514a03e5a1ddf1b516`
 
-The Contents API returned blobs exactly matching the locally hash-objected candidates.
+The REST commit patches confirm that only the intended BINARY comparison changes were made in the two guard files and that the regression was added as a single new file. An earlier connector response surfaced inconsistent commit/blob identifiers; those values are intentionally not treated as evidence. The commit history and live branch contents above are the authoritative record.
 
 ## Focused gate executed in this run
 
-A local sqlite3 harness using the exact published candidate guard files exercised four regression cases:
+A local sqlite3 harness using the same candidate v3/v4 trigger semantics exercised four regression cases:
 
 - canonical receipt passes v3;
 - lowercase `reconcile` under NOCASE is rejected;
@@ -50,7 +50,7 @@ A local sqlite3 harness using the exact published candidate guard files exercise
 
 Result: **4/4 PASS**. `python -m compileall -q experiments/mutable_shared_anchor_writer` also passed in the focused harness.
 
-Important evidence boundary: this run did **not** have a byte-preserving GitHub-branch-to-executable-filesystem bridge. The focused harness used minimal local stubs for the permit connection/state-machine UDF installation sufficient to install and execute the exact candidate v3/v4 trigger bodies. Therefore this is not claimed as a full branch pytest run. The repository regression remains queued for execution on the final supported class when executable branch transport is available.
+Important evidence boundary: this run did **not** have a byte-preserving GitHub-branch-to-executable-filesystem bridge. The focused harness used minimal local stubs for the permit connection/state-machine UDF installation sufficient to install and execute the candidate v3/v4 trigger bodies. Therefore this is not claimed as a full branch pytest run or an exact published-byte execution. The repository regression remains queued for execution on the final supported class when executable branch transport is available.
 
 ## Follow-up audit
 
