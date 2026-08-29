@@ -114,7 +114,8 @@ def install_full_operation_guards(q: PermitConnection) -> None:
            BEGIN SELECT RAISE(ABORT,'LAB-091 intent history cannot be deleted'); END""",
         """CREATE TRIGGER lab091_v2_watermark_exact_insert
            BEFORE INSERT ON component_anchor_watermarks
-           WHEN EXISTS(
+           WHEN NEW.position<0
+             OR EXISTS(
                SELECT 1 FROM component_anchor_watermarks WHERE component_id=NEW.component_id
              )
              OR lab091_consume_permit(
