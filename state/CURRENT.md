@@ -16,13 +16,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PRs #165/#173.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and draft PRs #165/#173.
 
-LAB-086 was probed first. Current runtime shell transport is still unavailable: `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed with `Could not resolve host: github.com`. No security-critical branch mutation was attempted because the available connector still does not provide a supported byte-preserving composition path from exact fetched predecessor + retained unified patch to a whole-file Contents write.
+LAB-086 was probed first. `strict_fence.py` was re-fetched from branch `lab/086-asymmetric-break-glass-history` in four non-overlapping ranges covering lines 1-949; every range reported the exact expected predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. This proves complete connector-readable coverage, but the current tool surface still does not provide machine-to-machine byte-preserving composition of those exact chunks plus the retained unified patch into `update_file`. Manual/model reserialization remains prohibited; no LAB-086 branch mutation was attempted.
 
-Used the saved LAB-091 fallback to execute a new focused SQLite alternate-write/reentrancy probe using the exact published v2 intent guard predicates and one-shot permit rule. Three mechanisms were tested: (1) `INSERT OR REPLACE` with fresh PK/request but colliding alternate UNIQUE `position`; (2) UPSERT conflict conversion; (3) a multi-row confirmation UPDATE with only one exact permit. All three failed closed. The multi-row statement rolled back completely and both rows remained `PREPARED` with NULL receipt binding. No code change was made because no reachable bypass was reproduced.
+A fresh local checkout probe also failed: `git clone --depth 1 --branch lab/091-mutable-shared-anchor-writer https://github.com/persfinancier-blip/ai-runtime-lab.git` returned `Could not resolve host: github.com`.
 
-Durable evidence: `research/2026-08-29-lab091-alternate-write-one-shot-semantics.md`, main commit `e98e36b54dfa8b58475698292614193955745856`. Issue #170 and PR #173 were updated with the result.
+Used the LAB-091 fallback for a new hidden-rowid reachability audit motivated by LAB-086. Inspected exact final `_con()`/writer/adoption files and searched repository code for `recursive_triggers` and `foreign_keys`. No supported LAB-091 final DML exposes explicit SQLite `rowid`; consequential fixed INSERT/UPDATE statements carry exact one-shot permits; arbitrary raw-DML/permit minting would require same-privilege writable-worker execution already owned by LAB-087. No reachable hidden-rowid or cascade bypass was established, so no speculative guard was added.
+
+Durable evidence: `research/2026-08-29-lab091-hidden-rowid-reachability-audit.md`, main commit `4f521ba22d5877a6fdfe9e570ec46929b6952bc2`. Issue #170 was updated.
 
 ## Evidence retained
 
@@ -35,6 +37,7 @@ Durable evidence: `research/2026-08-29-lab091-alternate-write-one-shot-semantics
 - LAB-091 missing-singleton regression 2/2 PASS.
 - LAB-091 persisted-trigger confused-deputy regression 3/3 PASS + compileall.
 - LAB-091 alternate-write one-shot probe: REPLACE / UPSERT / multi-row UPDATE all fail closed; no bypass established.
+- LAB-091 hidden-rowid reachability audit: no reachable supported final-writer path; no speculative guard added.
 - LAB-091 published real-stack timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution still pending.
 - LAB-091 published process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution still pending.
 
@@ -42,16 +45,17 @@ Durable evidence: `research/2026-08-29-lab091-alternate-write-one-shot-semantics
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40f...`, applying only retained hidden-rowid patch through a byte-preserving supported path, requiring exact target blob `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
+- Range-based connector reads are not by themselves a byte-preserving write bridge unless the exact fetched bytes can be passed machine-to-machine into composition/update without model regeneration.
 - PR #165 remains draft until exact rowid candidate publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
 - PR #173 remains draft until exact full-stack timeout/UNKNOWN and process concurrency/crash regressions execute GREEN against the actual supported final class and LAB-087 composition is reconfirmed.
-- Do not repeat narrow LAB-091 adoption gates unless pinned blobs change.
+- Do not repeat narrow LAB-091 adoption/rowid gates unless pinned blobs or supported DML surface change.
 - Do not add speculative SQLite guards without a reproduced reachable mutation path under actual supported `_con()` semantics.
 
 ## Exact next action
 
-1. LAB-086 first: re-fetch `strict_fence.py`; if it remains `d4a6a40f...` and a supported byte-preserving composition/transfer bridge exists, apply only `research/2026-08-28-lab086-hidden-rowid-replace.patch`, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
+1. LAB-086 first: re-fetch `strict_fence.py`; if it remains `d4a6a40f...` and a supported machine-to-machine byte-preserving composition/transfer bridge exists, apply only `research/2026-08-28-lab086-hidden-rowid-replace.patch`, require exact target `b78e7c98...`, publish via normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
 2. If LAB-086 remains concretely tool-limited, prioritize obtaining a supported branch-to-executable-FS path for LAB-091 and execute exact timeout/UNKNOWN `92133cdc...` plus process concurrency/crash `93887747...`; fix any real defect without weakening either regression.
-3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for demonstrably reachable SQLite mechanisms under actual final `_con()` configuration; no speculative guards.
+3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for demonstrably reachable SQLite mechanisms under actual final `_con()` configuration; do not repeat hidden-rowid analysis unless the supported DML surface changes.
 
 ## Backlog
 
