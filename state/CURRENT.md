@@ -22,9 +22,11 @@ Used the allowed LAB-091 fallback to continue the first-adoption schema audit. F
 
 Published the minimal fix on `lab/091-mutable-shared-anchor-writer`: use `PRAGMA index_xinfo` key terms and require BINARY collation for text/composite identity indexes while retaining partial/expression rejection; bare `INTEGER PRIMARY KEY` remains directly accepted because it is the rowid identity and has no backing index. Validator commit `4d509c028c8b32f36011674cb868374223538069`, blob `1731648b4e65b1c5984d4f93b78c45d5a066dd95`. Added regression commit `715bebe7172e738b15ce126bb2f132645010e9d5`, blob `ad2b3b80bf848f874e300acf6304cb57997f5bca`.
 
-Focused executed mechanism gate PASS: canonical BINARY schema accepted; NOCASE intent ID, intent request ID, watermark component ID, and receipt request ID constraints all rejected; behavioral NOCASE incompatibility reproduced; focused probe compile PASS. This is not the complete PR #173 real-stack gate.
+Focused executed mechanism gate PASS: canonical BINARY schema accepted; NOCASE intent ID, intent request ID, watermark component ID, and receipt request ID constraints all rejected; behavioral NOCASE incompatibility reproduced; focused probe compile PASS. A second combined collector probe retained canonical TEXT/INTEGER PK acceptance, rejected partial/expression/NOCASE UNIQUE, and accepted BINARY DESC unique because ordering does not change uniqueness equivalence. This is not the complete PR #173 real-stack gate.
 
-Durable note: `research/2026-08-29-lab091-nonbinary-identity-collation-adoption.md`, main commit `e7e58dcab84f889227c0d2901bac105281716a29`. Issue #170 comment `5459117184`; PR #173 comment `5459117825`.
+Durable note: `research/2026-08-29-lab091-nonbinary-identity-collation-adoption.md`, latest main commit `691bc054cf5cf125d69b960d87ca72091e2f03f7`. Issue #170 comment `5459117184`; PR #173 comment `5459117825`.
+
+Also rechecked PR #165 mergeability. The normalized connector reported `mergeable=false`, but direct GitHub PR GET immediately returned `mergeable=null`, `rebaseable=null`, `mergeable_state=unknown`. Branch/main compare shows heavy divergence from merge base `d2c9781f...`, but the current main-side changed paths are LAB-087 plus later research/state files while PR #165's 86 changed paths are LAB-086 experiment/tests/research; no overlapping runtime path was identified. Treat mergeability as unresolved/stale computation, not as a proven new source conflict. PR #165 comment `5459137794` records this.
 
 ## Evidence retained
 
@@ -43,6 +45,7 @@ Durable note: `research/2026-08-29-lab091-nonbinary-identity-collation-adoption.
 - Current LAB-086 live security delta is rowid-only hardening. Do not reapply alternate-UNIQUE or provider-receipt NULL patches.
 - Read-side/executable reconstruction for the ~40 KB runtime is no longer a blocker; exact predecessor and candidate hashes are reproducible.
 - Publication remains blocked by data-plane separation: supported GitHub Contents `update_file` requires the complete UTF-8 replacement body and does not accept a mounted-file/file-reference; shell/raw GitHub DNS still fails. Do not bridge with low-level blob/tree/ref manipulation, force updates, or manual unauthenticated rewrites.
+- PR #165 mergeability is currently unresolved (`mergeable_state=unknown` in direct GitHub API), not a demonstrated source conflict.
 - PR #165 remains draft until candidate publication/hash verification, four focused regressions, complete strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe seed, compileall and final security/reconciliation audit are clean.
 - PR #173 remains draft pending its complete real-stack gate. Existing timeout-after-commit and process concurrency/crash tests use stubs; they do not yet prove the final supported class against exact real LAB-080/LAB-082 dependencies.
 - LAB-090/#169 provider handoff freshness remains separate.
@@ -50,7 +53,7 @@ Durable note: `research/2026-08-29-lab091-nonbinary-identity-collation-adoption.
 ## Exact next action
 
 1. LAB-086 first: conflict-check branch `strict_fence.py` is still `d4a6a40f...`. If a newly available supported byte-preserving Contents path can accept the exact local candidate, publish `b78e7c98...`, require returned and re-fetched blob equality, then run the four focused regressions + strict/thaw subgate + compileall and resume the LAB-080->086 real-ledger gate.
-2. Do not repeat LAB-086 predecessor reconstruction unless the live blob changes.
+2. Do not repeat LAB-086 predecessor reconstruction unless the live blob changes. Re-query mergeability only after branch/main state changes; current `unknown` is not actionable evidence by itself.
 3. If LAB-086 publication remains concretely tool-limited, continue LAB-091 by replacing the stub-only proof gap with a real-stack regression around `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger`: first timeout-after-commit/UNKNOWN retry convergence, then two-worker confirmation/crash semantics, using exact real LAB-080/LAB-082 dependencies.
 4. Re-run the prior LAB-091 adoption-index suites against the new validator blob `1731648b...` before counting the collation change as branch-wide regression-safe.
 5. Keep PRs #165/#173 draft until their complete gates are clean.
