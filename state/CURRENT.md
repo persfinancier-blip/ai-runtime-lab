@@ -16,15 +16,13 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PRs #165/#172/#173.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and active PRs #165/#172/#173.
 
-LAB-086 transport was re-audited. `fetch_pr_file_patch` for PR #165 returned `strict_fence.py` as a complete `@@ -0,0 +1,949 @@` addition because the file is new relative to `main`. Therefore the exact 949-line predecessor source is available through an authoritative GitHub PR payload even though ordinary large file responses are display-truncated. The stored hidden-rowid patch was re-fetched unchanged as blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`.
+LAB-086 was rechecked first. The live `strict_fence.py` tail re-fetch confirms blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; the stored hidden-rowid patch remains blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`. `fetch_pr_file_patch` again returns the complete 949-line predecessor because the file is an addition relative to `main`. Local `git ls-remote https://github.com/...` still fails at DNS resolution, and no current connector operation composes `complete PR payload + unified patch` directly into a byte-preserving Contents write. No LAB-086 branch mutation was attempted.
 
-Direct runtime network access still cannot resolve `raw.githubusercontent.com`. More importantly, the current tools still do not expose a byte-preserving composition/transfer operation from `complete PR payload + stored unified patch` into the Contents writer. Manual/model reserialization of a 949-line security-critical file remains outside the acceptance rule, so no LAB-086 branch mutation was attempted.
+LAB-091 fallback reentrancy audit then examined durable schema expressions rather than triggers. Exact current branch blobs inspected: `operation_permit.py` `637784a5...`, `full_operation_guards.py` `529ee809...`, `state_machine_udfs.py` `8c1d6d0c...`, `adoption_validation.py` `1731648b...`. Executed SQLite probes established: `CHECK` expressions run after `BEFORE` triggers; generated columns and expression indexes reject the non-deterministic `lab091_consume_permit` UDF; parenthesized column DEFAULT expressions can run before `BEFORE` triggers. An extra legacy default could therefore consume/clear an already-issued exact permit early, but the subsequent LAB-091 guard then aborts. No unauthorized mutation path was reproduced, so no speculative guard was added.
 
-Durable note: `research/2026-08-29-lab086-pr-patch-byte-source-bridge.md`, main commit `b9b60be2964516acddc9d5c478539729992027ee`.
-
-For LAB-091 fallback audit, rechecked the expected-name persisted-trigger hypothesis. `install_full_operation_guards()` drops/recreates legacy/v2 trigger names before adoption validation, while `validate_protected_trigger_surface()` requires the exact protected trigger-name set. A malicious preexisting v2 trigger under an expected v2 name is therefore overwritten before validation; no new reachable bypass was established and no speculative guard was added.
+Durable note: `research/2026-08-29-lab091-schema-expression-reentrancy-audit.md`, main commit `c40eb4d89d28fcd00a2b120de16dab822ac3bb18`; issue #170 updated.
 
 ## Evidence retained
 
@@ -32,13 +30,14 @@ For LAB-091 fallback audit, rechecked the expected-name persisted-trigger hypoth
 - LAB-085 core 12/12 PASS; asymmetric custody 8/8 PASS; public/final 11/11 PASS; lower unsafe baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-086 hidden-rowid RED->GREEN evidence retained; exact predecessor `d4a6a40f...` -> candidate `b78e7c98...` previously byte-rederived and focused mechanism-tested; publication/full gate still pending.
-- Current runtime additionally proved the full 949-line predecessor is retrievable through PR per-file patch; missing capability is exact composition/transfer, not source retrieval.
+- Current runtime reconfirmed the full 949-line predecessor is retrievable through PR per-file patch; missing capability is exact composition/transfer, not source retrieval. Shell GitHub transport remains DNS-blocked in this run.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 adoption hardening combined focused gate remains 17/17 PASS over identity/index/collation + NOT NULL + weakened-watermark-CHECK logic.
 - LAB-091 missing-singleton adoption-write regression 2/2 PASS on published source.
 - LAB-091 persisted-trigger confused-deputy regression 3/3 PASS + compileall on exact published helper/test blobs.
 - LAB-091 incoming-FK cascade generic mechanism reproduced with FK enforcement enabled, but current supported connection does not enable FKs; no current reachable bypass.
 - LAB-091 expected-name v2 persisted-trigger substitution audited as currently overwritten by installer before surface validation; no bypass established.
+- LAB-091 schema-expression audit: CHECK cannot preempt the BEFORE permit guard; generated/index expressions cannot embed the non-deterministic permit UDF; DEFAULT can preempt but only causes permit consumption followed by fail-closed abort under current UDF set. No authority bypass established.
 - LAB-091 published real-stack timeout/UNKNOWN regression remains blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05e`; full execution still pending.
 - LAB-091 real-stack process concurrency/crash regression remains blob `938877479d4c4b997ea52e8b5857bf89e5c3e246`; full final-ledger execution pending.
 
@@ -57,7 +56,7 @@ For LAB-091 fallback audit, rechecked the expected-name persisted-trigger hypoth
 
 1. LAB-086 first: re-check `strict_fence.py` remains `d4a6a40f...`. If a supported byte-preserving composition/transfer bridge becomes available, combine the exact complete 949-line PR payload with only `research/2026-08-28-lab086-hidden-rowid-replace.patch`, require exact target blob `b78e7c98...`, predecessor conflict-check, publish through normal Contents API, then re-fetch/hash-verify and run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080->086 real-ledger gates.
 2. If LAB-086 remains tool-limited, LAB-091: prioritize obtaining a supported branch-to-executable-FS path to execute exact published timeout/UNKNOWN blob `92133cdc...` and process concurrency/crash blob `93887747...`. Fix any real-stack defect; do not weaken either regression.
-3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for reachable SQLite mechanisms under the actual `_con()` configuration; do not add speculative FK/view/schema-object guards without an executable bypass.
+3. Only if execution transport remains unavailable, continue alternate-write/reentrancy audit for reachable SQLite mechanisms under the actual `_con()` configuration. The schema-expression class has now been narrowed; do not add a DEFAULT/CHECK/generated-expression guard unless a mutation/conformance bypass is actually reproduced.
 4. After both real-stack tests are GREEN, retain/reconfirm LAB-087 restricted-worker composition before PR #173 can leave draft.
 
 ## Backlog
