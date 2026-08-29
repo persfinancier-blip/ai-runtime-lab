@@ -64,6 +64,24 @@ _REQUIRED_AFFINITY = {
     },
 }
 
+# LAB-091 may adopt an older table layout when its effective write semantics are
+# still the same as the canonical schema. Additional UNIQUE constraints are not
+# harmless metadata: they can reject a write that the supported state machine is
+# entitled to make. In particular, a legacy NOCASE primary key plus a separate
+# BINARY UNIQUE index makes identity discovery look canonical while still making
+# `Alpha` and `alpha` mutually exclusive on INSERT. Keep only canonical unique
+# keys, with byte-exact BINARY comparison for indexed text terms.
+_ALLOWED_UNIQUE_KEYS = {
+    "shared_anchor_meta": {("singleton",)},
+    "shared_anchor_intents": {
+        ("intent_id",),
+        ("position",),
+        ("request_id",),
+    },
+    "component_anchor_watermarks": {("component_id",)},
+    "asymmetric_provider_receipts": {("request_id",)},
+}
+
 
 def _sqlite_affinity(declared_type: str) -> str:
     """Return SQLite column affinity using SQLite's documented type-name rules."""
@@ -79,8 +97,48 @@ def _sqlite_affinity(declared_type: str) -> str:
     return "NUMERIC"
 
 
+def _validate_unique_write_contract(q) -> None:
+    for table, allowed_keys in _ALLOWED_UNIQUE_KEYS.items():
+        for index_row in q.execute(f"PRAGMA index_list({table})").fetchall():
+            if not index_row[2]:
+                continue
+            index_name = index_row[1].replace("'", "''")
+            if index_row[4]:
+                raise AdoptionSchemaDomainError(
+                    f"LAB-091 legacy schema has restrictive partial UNIQUE index "
+                    f"on {table}: {index_row[1]}"
+                )
+            terms = [
+                row
+                for row in q.execute(f"PRAGMA index_xinfo('{index_name}')").fetchall()
+                if row[5] == 1
+            ]
+            if not terms or any(row[2] is None for row in terms):
+                raise AdoptionSchemaDomainError(
+                    f"LAB-091 legacy schema has restrictive expression UNIQUE index "
+                    f"on {table}: {index_row[1]}"
+                )
+            columns = tuple(row[2] for row in terms)
+            if columns not in allowed_keys:
+                rendered = ",".join(columns)
+                raise AdoptionSchemaDomainError(
+                    f"LAB-091 legacy schema has extra UNIQUE constraint for {table}: "
+                    f"({rendered})"
+                )
+            nonbinary = [
+                row[2]
+                for row in terms
+                if (row[4] or "BINARY").upper() != "BINARY"
+            ]
+            if nonbinary:
+                raise AdoptionSchemaDomainError(
+                    f"LAB-091 legacy schema has non-BINARY UNIQUE identity for {table}: "
+                    + ", ".join(nonbinary)
+                )
+
+
 def validate_required_not_null_contract(q) -> bool:
-    """Require canonical field-domain guarantees CREATE TABLE IF NOT EXISTS cannot repair."""
+    """Require canonical field/write-domain guarantees CREATE TABLE IF NOT EXISTS cannot repair."""
     if not q.in_transaction:
         raise AdoptionSchemaDomainError(
             "LAB-091 schema-domain validation requires an active transaction"
@@ -125,4 +183,6 @@ def validate_required_not_null_contract(q) -> bool:
                 f"LAB-091 legacy schema has incompatible SQLite affinity for {table}: "
                 + detail
             )
+
+    _validate_unique_write_contract(q)
     return True
