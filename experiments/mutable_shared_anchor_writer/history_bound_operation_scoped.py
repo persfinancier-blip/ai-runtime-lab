@@ -3,6 +3,7 @@ from __future__ import annotations
 from .adoption_schema_domains import validate_required_not_null_contract
 from .adoption_trigger_surface import validate_protected_trigger_surface
 from .adoption_validation import validate_existing_mutable_state_locked
+from .binary_identity_provider_history import BinaryIdentityIntegratedAsymmetricProviderHistory
 from .cross_table_guards import install_cross_table_guards
 from .full_operation_guards import install_full_operation_guards
 from .history_binding_guards import install_history_binding_guards
@@ -18,6 +19,18 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
 ):
     """LAB-091 candidate with deterministic request IDs and history-bound watermarks."""
 
+    def __init__(self, path, attested, bootstrap, signer):
+        super().__init__(path, attested, bootstrap, signer)
+        # The inherited LAB-082 helper states receipt identity comparisons using
+        # the column's default collation.  LAB-091 explicitly supports adoption
+        # of a legacy non-BINARY column when a canonical BINARY identity index
+        # exists, so final supported lookups must not inherit that legacy
+        # collation.
+        self.provider_history = BinaryIdentityIntegratedAsymmetricProviderHistory(
+            path, bootstrap
+        )
+        self._require_runtime_matches_durable_head()
+
     def _con(self):
         q = super()._con()
         install_state_machine_udfs(q)
@@ -32,6 +45,33 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
         q = self._con()
         try:
             initialize_shared_anchor_schema(q)
+        finally:
+            q.close()
+
+    def entry(self, intent_id):
+        q = self._con()
+        try:
+            return self._row_entry(
+                q.execute(
+                    "SELECT intent_id,component_id,intent_type,payload_digest,"
+                    "provider_id,provider_generation,predecessor_position,position,"
+                    "request_id,status,receipt_binding FROM shared_anchor_intents "
+                    "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY",
+                    (intent_id,),
+                ).fetchone()
+            )
+        finally:
+            q.close()
+
+    def watermark(self, component_id):
+        q = self._con()
+        try:
+            row = q.execute(
+                "SELECT position FROM component_anchor_watermarks "
+                "WHERE component_id COLLATE BINARY = ? COLLATE BINARY",
+                (component_id,),
+            ).fetchone()
+            return 0 if row is None else row[0]
         finally:
             q.close()
 
