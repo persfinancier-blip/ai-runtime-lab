@@ -207,7 +207,8 @@ def validate_existing_mutable_state_locked(q) -> bool:
     orphan = q.execute(
         "SELECT r.request_id FROM asymmetric_provider_receipts r "
         "WHERE NOT EXISTS("
-        "SELECT 1 FROM shared_anchor_intents i WHERE i.request_id=r.request_id"
+        "SELECT 1 FROM shared_anchor_intents i "
+        "WHERE i.request_id COLLATE BINARY = r.request_id COLLATE BINARY"
         ") LIMIT 1"
     ).fetchone()
     if orphan is not None:
