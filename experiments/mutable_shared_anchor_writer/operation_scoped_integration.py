@@ -127,8 +127,8 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                 existing = q.execute(
                     "SELECT intent_id,component_id,intent_type,payload_digest,"
                     "provider_id,provider_generation,predecessor_position,position,"
-                    "request_id,status,receipt_binding "
-                    "FROM shared_anchor_intents WHERE intent_id=?",
+                    "request_id,status,receipt_binding FROM shared_anchor_intents "
+                    "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY",
                     (intent.intent_id,),
                 ).fetchone()
                 if existing is not None:
@@ -245,8 +245,8 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                     q.execute(
                         "SELECT intent_id,component_id,intent_type,payload_digest,"
                         "provider_id,provider_generation,predecessor_position,position,"
-                        "request_id,status,receipt_binding "
-                        "FROM shared_anchor_intents WHERE intent_id=?",
+                        "request_id,status,receipt_binding FROM shared_anchor_intents "
+                        "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY",
                         (entry.intent_id,),
                     ).fetchone()
                 )
@@ -304,8 +304,8 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                     q.execute(
                         "SELECT intent_id,component_id,intent_type,payload_digest,"
                         "provider_id,provider_generation,predecessor_position,position,"
-                        "request_id,status,receipt_binding "
-                        "FROM shared_anchor_intents WHERE intent_id=?",
+                        "request_id,status,receipt_binding FROM shared_anchor_intents "
+                        "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY",
                         (intent.intent_id,),
                     ).fetchone()
                 )
@@ -324,7 +324,8 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                 ):
                     changed = q.execute(
                         "UPDATE shared_anchor_intents SET status='CONFIRMED',receipt_binding=? "
-                        "WHERE intent_id=? AND status='PREPARED' AND receipt_binding IS NULL",
+                        "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY "
+                        "AND status='PREPARED' AND receipt_binding IS NULL",
                         (receipt, intent.intent_id),
                     ).rowcount
                 if changed != 1:
@@ -391,7 +392,8 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                 if current_rows != rows:
                     raise IntentSubstitution("ledger changed after external verification")
                 prior = q.execute(
-                    "SELECT position FROM component_anchor_watermarks WHERE component_id=?",
+                    "SELECT position FROM component_anchor_watermarks "
+                    "WHERE component_id COLLATE BINARY = ? COLLATE BINARY",
                     (component_id,),
                 ).fetchone()
                 if prior is None:
@@ -418,7 +420,7 @@ class SupportedOperationScopedAsymmetricSharedAnchorLedger(
                     ):
                         changed = q.execute(
                             "UPDATE component_anchor_watermarks SET position=? "
-                            "WHERE component_id=? AND position=?",
+                            "WHERE component_id COLLATE BINARY = ? COLLATE BINARY AND position=?",
                             (observed.position, component_id, local),
                         ).rowcount
                     if changed != 1:
