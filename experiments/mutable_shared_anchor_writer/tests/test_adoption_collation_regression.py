@@ -5,6 +5,7 @@ from experiments.mutable_shared_anchor_writer.adoption_validation import (
     AdoptionValidationError,
     validate_existing_mutable_state_locked,
 )
+from experiments.mutable_shared_anchor_writer.state_machine_udfs import expected_request_id
 
 
 class AdoptionCollationRegressionTests(unittest.TestCase):
@@ -95,6 +96,82 @@ class AdoptionCollationRegressionTests(unittest.TestCase):
         q.execute("INSERT INTO t VALUES('Intent-A')")
         with self.assertRaises(sqlite3.IntegrityError):
             q.execute("INSERT INTO t VALUES('intent-a')")
+        q.close()
+
+    def test_orphan_check_uses_binary_identity_even_with_binary_unique_overlay(self):
+        q = sqlite3.connect(":memory:", isolation_level=None)
+        q.executescript(
+            """
+            CREATE TABLE shared_anchor_meta(
+              singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+              reserved_position INTEGER NOT NULL CHECK(reserved_position>=0)
+            );
+            INSERT INTO shared_anchor_meta VALUES(1,1);
+            CREATE TABLE shared_anchor_intents(
+              intent_id TEXT PRIMARY KEY,
+              component_id TEXT NOT NULL,
+              intent_type TEXT NOT NULL,
+              payload_digest TEXT NOT NULL,
+              provider_id TEXT NOT NULL,
+              provider_generation INTEGER NOT NULL,
+              predecessor_position INTEGER NOT NULL,
+              position INTEGER NOT NULL UNIQUE,
+              request_id TEXT COLLATE NOCASE NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('PREPARED','CONFIRMED')),
+              receipt_binding TEXT
+            );
+            CREATE UNIQUE INDEX lab091_test_intent_request_binary
+              ON shared_anchor_intents(request_id COLLATE BINARY);
+            CREATE TABLE component_anchor_watermarks(
+              component_id TEXT PRIMARY KEY,
+              position INTEGER NOT NULL CHECK(position>=0)
+            );
+            CREATE TABLE asymmetric_provider_receipts(
+              request_id TEXT COLLATE NOCASE NOT NULL,
+              provider_id TEXT NOT NULL,
+              generation INTEGER NOT NULL,
+              position INTEGER NOT NULL,
+              kind TEXT NOT NULL,
+              challenge TEXT NOT NULL,
+              signature TEXT NOT NULL,
+              stable_binding TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX lab091_test_receipt_request_binary
+              ON asymmetric_provider_receipts(request_id COLLATE BINARY);
+            """
+        )
+        digest = "0" * 64
+        request_id = expected_request_id(1, "intent-a", "component-a", "migration", digest)
+        q.execute(
+            "INSERT INTO shared_anchor_intents VALUES(?,?,?,?,?,?,?,?,?,'CONFIRMED',?)",
+            (
+                "intent-a",
+                "component-a",
+                "migration",
+                digest,
+                "provider-a",
+                1,
+                0,
+                1,
+                request_id,
+                "binding",
+            ),
+        )
+        q.execute(
+            "INSERT INTO asymmetric_provider_receipts VALUES(?,?,?,?,?,?,?,?)",
+            (
+                request_id.upper(),
+                "provider-a",
+                1,
+                1,
+                "RECONCILE",
+                "challenge",
+                "signature",
+                "binding",
+            ),
+        )
+        with self.assertRaises(AdoptionValidationError):
+            self.validate(q)
         q.close()
 
 
