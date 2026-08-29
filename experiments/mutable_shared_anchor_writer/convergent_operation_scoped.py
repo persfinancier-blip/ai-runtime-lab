@@ -31,8 +31,8 @@ class SupportedConvergentOperationScopedAsymmetricSharedAnchorLedger(
                 raw = q.execute(
                     "SELECT intent_id,component_id,intent_type,payload_digest,"
                     "provider_id,provider_generation,predecessor_position,position,"
-                    "request_id,status,receipt_binding "
-                    "FROM shared_anchor_intents WHERE intent_id=?",
+                    "request_id,status,receipt_binding FROM shared_anchor_intents "
+                    "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY",
                     (intent_id,),
                 ).fetchone()
                 if raw is None:
@@ -67,8 +67,8 @@ class SupportedConvergentOperationScopedAsymmetricSharedAnchorLedger(
                     changed = q.execute(
                         "UPDATE shared_anchor_intents "
                         "SET status='CONFIRMED',receipt_binding=? "
-                        "WHERE intent_id=? AND status='PREPARED' "
-                        "AND receipt_binding IS NULL",
+                        "WHERE intent_id COLLATE BINARY = ? COLLATE BINARY "
+                        "AND status='PREPARED' AND receipt_binding IS NULL",
                         (receipt, intent_id),
                     ).rowcount
                 if changed != 1:
