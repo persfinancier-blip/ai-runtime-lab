@@ -51,9 +51,11 @@ class FencedActivationProvider(SignedAnchorProvider):
 
     `prepare_activation` is the external linearization point: it atomically checks
     the exact observed position and installs a monotonically fenced reservation.
-    While the reservation is pending, ordinary increments are rejected. Commit and
-    abort are idempotent by activation_id; status survives coordinator restart when
-    the same provider-owned ActivationState is supplied.
+    `commit_activation` records provider commitment but deliberately keeps the
+    reservation fenced. Only exact-ticket `release_activation`, invoked after the
+    coordinator durably acknowledges COMMITTED, removes that fence. Abort and
+    release are idempotent; status survives coordinator restart when the same
+    provider-owned ActivationState is supplied.
     """
 
     def __init__(self, *args, activation_state: ActivationState | None = None, **kwargs):
@@ -66,6 +68,12 @@ class FencedActivationProvider(SignedAnchorProvider):
             or ticket.generation != self.generation
         ):
             raise ActivationTicketMismatch("activation ticket provider generation mismatch")
+
+    def _committed_ticket(self, ticket: ActivationTicket) -> ActivationTicket | None:
+        committed = self.activation_state.committed.get(ticket.activation_id)
+        if committed is not None and committed != ticket:
+            raise ActivationTicketMismatch("committed activation ticket mismatch")
+        return committed
 
     def prepare_activation(self, *, expected_position: int, activation_id: str) -> ActivationTicket:
         if not self.available:
@@ -106,16 +114,16 @@ class FencedActivationProvider(SignedAnchorProvider):
 
     def activation_status(self, ticket: ActivationTicket) -> str:
         self._ticket_matches_runtime(ticket)
-        committed = self.activation_state.committed.get(ticket.activation_id)
-        if committed is not None:
-            if committed != ticket:
-                raise ActivationTicketMismatch("committed activation ticket mismatch")
-            return "COMMITTED"
+        committed = self._committed_ticket(ticket)
         pending = self.activation_state.pending
+        if pending is not None and pending.activation_id == ticket.activation_id and pending != ticket:
+            raise ActivationTicketMismatch("pending activation ticket mismatch")
+        if committed is not None:
+            if pending == ticket:
+                return "COMMITTED_FENCED"
+            return "RELEASED"
         if pending == ticket:
             return "PREPARED"
-        if pending is not None and pending.activation_id == ticket.activation_id:
-            raise ActivationTicketMismatch("pending activation ticket mismatch")
         return "ABSENT"
 
     def commit_activation(self, ticket: ActivationTicket, *, timeout_after_commit: bool = False) -> str:
@@ -123,7 +131,7 @@ class FencedActivationProvider(SignedAnchorProvider):
             raise ProviderUnavailable("activation path unavailable")
         self._ticket_matches_runtime(ticket)
         status = self.activation_status(ticket)
-        if status == "COMMITTED":
+        if status in {"COMMITTED_FENCED", "RELEASED"}:
             return status
         if status != "PREPARED":
             raise ActivationTicketMismatch("activation is not pending")
@@ -132,15 +140,31 @@ class FencedActivationProvider(SignedAnchorProvider):
                 f"activation position changed: expected={ticket.expected_position} current={self.value}"
             )
         self.activation_state.committed[ticket.activation_id] = ticket
-        self.activation_state.pending = None
+        # Keep pending installed: provider commitment alone must not release the
+        # external fence before the coordinator durably acknowledges this ticket.
         if timeout_after_commit:
             raise UnknownOutcome("activation committed; acknowledgement lost")
-        return "COMMITTED"
+        return "COMMITTED_FENCED"
+
+    def release_activation(self, ticket: ActivationTicket) -> str:
+        if not self.available:
+            raise ProviderUnavailable("activation path unavailable")
+        self._ticket_matches_runtime(ticket)
+        status = self.activation_status(ticket)
+        if status == "RELEASED":
+            return status
+        if status != "COMMITTED_FENCED":
+            raise ActivationTicketMismatch("activation is not committed and fenced")
+        pending = self.activation_state.pending
+        if pending != ticket:
+            raise ActivationTicketMismatch("exact activation ticket is not fenced")
+        self.activation_state.pending = None
+        return "RELEASED"
 
     def abort_activation(self, ticket: ActivationTicket) -> str:
         self._ticket_matches_runtime(ticket)
         status = self.activation_status(ticket)
-        if status == "COMMITTED":
+        if status in {"COMMITTED_FENCED", "RELEASED"}:
             return status
         if status == "ABSENT":
             return status
