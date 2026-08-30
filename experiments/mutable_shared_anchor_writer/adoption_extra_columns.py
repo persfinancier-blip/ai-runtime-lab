@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 class AdoptionExtraColumnError(RuntimeError):
     pass
@@ -33,6 +35,12 @@ _CANONICAL_COLUMNS = {
     },
 }
 
+_FUNCTION_DEFAULT = re.compile(r"(?i)(?:^|[^A-Z0-9_])([A-Z_][A-Z0-9_]*)\s*\(")
+
+
+def _has_function_default(default) -> bool:
+    return isinstance(default, str) and _FUNCTION_DEFAULT.search(default) is not None
+
 
 def validate_no_required_extra_columns(q) -> bool:
     """Reject legacy columns that can make canonical supported DML fail.
@@ -44,10 +52,17 @@ def validate_no_required_extra_columns(q) -> bool:
     evaluated on canonical writes and can raise or otherwise reject values that
     are valid under the LAB-091 contract.
 
+    A legacy extra-column DEFAULT is also evaluated whenever the canonical
+    writer omits that column. Function-call defaults are unsafe to inherit:
+    SQLite stores the expression in the schema, but a function registered only
+    by the legacy application may be absent after reopen and turn an otherwise
+    valid supported INSERT into ``OperationalError: unknown function``. Reject
+    those defaults fail-closed while retaining literal/default-keyword extras.
+
     SQLite ``PRAGMA table_xinfo`` marks generated columns with hidden=2 (VIRTUAL)
     or hidden=3 (STORED). Those generated extras are rejected fail-closed after
-    a reproduced supported-write failure; ordinary nullable/defaulted extras
-    remain accepted.
+    reproduced supported-write failures; ordinary nullable/defaulted extras
+    remain accepted when their defaults do not invoke SQL functions.
     """
     if not q.in_transaction:
         raise AdoptionExtraColumnError(
@@ -63,6 +78,7 @@ def validate_no_required_extra_columns(q) -> bool:
 
         restrictive = []
         generated = []
+        function_defaults = []
         for row in rows:
             name = row[1]
             not_null = bool(row[3])
@@ -74,6 +90,8 @@ def validate_no_required_extra_columns(q) -> bool:
                 generated.append(name)
             elif hidden == 0 and not_null and default is None:
                 restrictive.append(name)
+            elif hidden == 0 and _has_function_default(default):
+                function_defaults.append(name)
 
         if generated:
             raise AdoptionExtraColumnError(
@@ -84,6 +102,11 @@ def validate_no_required_extra_columns(q) -> bool:
             raise AdoptionExtraColumnError(
                 f"LAB-091 legacy schema has required extra column(s) for {table}: "
                 + ", ".join(restrictive)
+            )
+        if function_defaults:
+            raise AdoptionExtraColumnError(
+                f"LAB-091 legacy schema has function-valued extra default(s) for {table}: "
+                + ", ".join(function_defaults)
             )
 
     return True
