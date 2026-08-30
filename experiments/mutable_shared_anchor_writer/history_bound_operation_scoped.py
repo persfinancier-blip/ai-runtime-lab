@@ -3,6 +3,7 @@ from __future__ import annotations
 from .adoption_extra_columns import validate_no_required_extra_columns
 from .adoption_foreign_keys import validate_no_foreign_key_constraints
 from .adoption_schema_domains import validate_required_not_null_contract
+from .adoption_secondary_indexes import validate_secondary_index_collations
 from .adoption_trigger_surface import validate_protected_trigger_surface
 from .adoption_validation import validate_existing_mutable_state_locked
 from .binary_identity_provider_history import BinaryIdentityIntegratedAsymmetricProviderHistory
@@ -115,6 +116,10 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
             # can omit them. A NOT NULL extra column without a DEFAULT otherwise
             # makes adoption succeed and the next supported INSERT fail.
             validate_no_required_extra_columns(q)
+            # Non-UNIQUE indexes still execute on writes. A legacy index using a
+            # custom/non-BINARY collation can make a supported write fail after
+            # restart when that collation is not registered on this connection.
+            validate_secondary_index_collations(q)
             # Persistent triggers can constrain only future statements. Before
             # completing first adoption/restart, reject preexisting rows that
             # could not have been created by the supported LAB-091 state machine.
