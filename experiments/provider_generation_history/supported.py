@@ -44,9 +44,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     LAB-090 additionally requires the candidate provider to atomically reserve its
     exact position before the SQL generation-head transaction. The resulting
     activation ticket is durably bound in the same SQLite commit as the generation
-    rotation, so provider commit can be reconciled after UNKNOWN or restart without
-    relying on a stale pre-transaction read. While that post-SQL provider commit is
-    unresolved, a database trigger blocks new shared-anchor intents on every writer.
+    rotation. Provider commit keeps the external fence installed until the
+    coordinator durably acknowledges COMMITTED and releases that exact ticket.
+    While activation is unresolved, a database trigger blocks new shared-anchor
+    intents on every writer.
     """
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
@@ -140,45 +141,55 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         finally:
             q.close()
 
+    def _release_committed_activation(self, provider: FencedActivationProvider, ticket: ActivationTicket):
+        status = provider.activation_status(ticket)
+        if status == "RELEASED":
+            return
+        if status != "COMMITTED_FENCED":
+            raise HistoricalVerificationError("durably committed activation is not provider-committed")
+        released = provider.release_activation(ticket)
+        if released != "RELEASED":
+            raise HistoricalVerificationError("provider activation fence did not release")
+
     def _commit_or_reconcile_activation(self, provider: FencedActivationProvider, ticket: ActivationTicket):
         try:
             status = provider.commit_activation(ticket)
         except UnknownOutcome:
             status = provider.activation_status(ticket)
-        if status != "COMMITTED":
-            raise HistoricalVerificationError("provider activation did not reconcile COMMITTED")
+        if status not in {"COMMITTED_FENCED", "RELEASED"}:
+            raise HistoricalVerificationError("provider activation did not reconcile committed")
+        # Ordering is security/correctness critical: provider commit does not release
+        # the external fence. Persist exact-ticket acknowledgement first, then release.
         self._mark_activation_committed(ticket)
+        self._release_committed_activation(provider, ticket)
 
     def _recover_pending_activation(self):
-        q = self._con()
-        try:
-            rows = q.execute(
-                "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
-                "FROM provider_generation_activations WHERE status='SQL_COMMITTED'"
-            ).fetchall()
-        finally:
-            q.close()
-        if len(rows) > 1:
-            raise HistoricalVerificationError("multiple unresolved provider activations")
-        if not rows:
+        durable = self.provider_history.current()
+        row = self._activation_row(generation_id=durable.generation_id)
+        if row is None:
             return
-        row = rows[0]
         ticket = self._ticket_from_row(row)
         provider = self.attested.provider
         if not isinstance(provider, FencedActivationProvider):
             raise HistoricalVerificationError("runtime provider cannot reconcile durable activation ticket")
-        durable = self.provider_history.current()
-        if durable.generation_id != row[1]:
-            raise HistoricalVerificationError("pending activation does not bind durable provider head")
         status = provider.activation_status(ticket)
-        if status == "ABSENT":
-            raise HistoricalVerificationError("provider lost durable activation reservation")
-        if status == "PREPARED":
-            self._commit_or_reconcile_activation(provider, ticket)
-        elif status == "COMMITTED":
-            self._mark_activation_committed(ticket)
+        if row[6] == "SQL_COMMITTED":
+            if status == "ABSENT":
+                raise HistoricalVerificationError("provider lost durable activation reservation")
+            if status == "PREPARED":
+                self._commit_or_reconcile_activation(provider, ticket)
+            elif status in {"COMMITTED_FENCED", "RELEASED"}:
+                self._mark_activation_committed(ticket)
+                self._release_committed_activation(provider, ticket)
+            else:
+                raise HistoricalVerificationError("unknown provider activation status")
+        elif row[6] == "COMMITTED":
+            if status == "COMMITTED_FENCED":
+                self._release_committed_activation(provider, ticket)
+            elif status != "RELEASED":
+                raise HistoricalVerificationError("durable committed activation/provider status mismatch")
         else:
-            raise HistoricalVerificationError("unknown provider activation status")
+            raise HistoricalVerificationError("invalid durable activation status")
 
     def _verify_activation_records(self):
         q = self._con()
@@ -228,7 +239,9 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             ticket = self._ticket_from_row(existing)
             if existing[6] == "SQL_COMMITTED":
                 self._commit_or_reconcile_activation(provider, ticket)
-            elif existing[6] != "COMMITTED":
+            elif existing[6] == "COMMITTED":
+                self._release_committed_activation(provider, ticket)
+            else:
                 raise HistoricalVerificationError("invalid durable activation status")
             self.attested = new_attested
             self._require_runtime_matches_durable_head()
