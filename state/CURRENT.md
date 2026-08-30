@@ -12,34 +12,24 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Exact LAB-086 `strict_fence.py` predecessor remains blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` (949 lines).
 - Retained hidden-rowid patch: `research/2026-08-28-lab086-hidden-rowid-replace.patch`, blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; exact previously derived target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-091 / #170 is the allowed fallback while LAB-086 publication/execution is concretely tool-limited; draft PR #173, branch `lab/091-mutable-shared-anchor-writer`.
-- Current LAB-091 branch head after this run: `ff6abe5893b203ebdc978b3db08a1dc8bd950c26`.
+- Current LAB-091 branch head after this run: `7551a6e80c677512da0093bd7ddd083f5189a516`.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172. LAB-090 / #169 remains READY.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PRs. LAB-086 remains first priority, but this run still exposed no supported byte-preserving composition/transfer bridge that can apply the retained hidden-rowid patch to the exact 949-line security-critical predecessor and publish the exact expected target without model/manual reserialization. No LAB-086 mutation was attempted.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active issues/PRs. LAB-086 remains first priority. This run newly confirmed the GitHub connector can return PR #165's complete 949-line `strict_fence.py` per-file patch, but no observed supported operation composes that exact fetched payload with the retained hidden-rowid unified patch and transfers the result into a normal Contents API update without model/manual whole-file reserialization. No LAB-086 mutation was attempted.
 
-Continued the permitted LAB-091 first-adoption compatibility audit. Reproduced two new reachable supported-write defects from inherited non-UNIQUE secondary indexes:
-
-- expression index using a deterministic legacy-only UDF, e.g. `ON shared_anchor_intents(legacy_only(component_id))`;
-- partial index whose predicate uses the same legacy-only UDF.
-
-Both can be created by a legacy connection while the deterministic function is registered. After reopen on the supported LAB-091 connection, which does not register that legacy-only function, the next otherwise-valid supported INSERT fails while SQLite maintains the inherited index with `sqlite3.OperationalError: unknown function: legacy_only()`.
+Continued the permitted LAB-091 first-adoption compatibility audit and reproduced a new reachable supported-write defect: an additive legacy column with `DEFAULT (legacy_only())` can be created while a legacy deterministic UDF is registered; after reopen on the supported LAB-091 connection, which does not register that UDF, the next otherwise-valid canonical INSERT that omits the extra column fails with `sqlite3.OperationalError: unknown function: legacy_only()`.
 
 Published on PR #173 through normal conflict-scoped Contents API writes:
-- `7971901b949884e5218a91f0ce4472584f432822` — extend `adoption_secondary_indexes.py` to reject non-UNIQUE expression and partial indexes on protected mutable tables while retaining ordinary column-only/BINARY secondary indexes;
-- `ff6abe5893b203ebdc978b3db08a1dc8bd950c26` — add `test_adoption_secondary_index_expression_partial_regression.py` (current PR #173 head).
+- `5b9ce523611193120212a0d335edf33054bf8ece` — extend `adoption_extra_columns.py` to reject function-call defaults on non-canonical ordinary columns while retaining literal/default-keyword extras;
+- `7551a6e80c677512da0093bd7ddd083f5189a516` — add `test_adoption_extra_default_regression.py` (current PR #173 head).
 
-Re-fetched published validator/test. Published validator blob is `593a018da8471070e6b0c7606a32623c585b00d4`; regression blob is `b50a92555a0df86c7b589a2123d9d94fd7c411a1`. The validator text was reconstructed locally and its Git object identity recomputed exactly as `593a018da8471070e6b0c7606a32623c585b00d4` before execution.
+Re-fetched published files. Validator blob is `c5e6617bd7abf73864e31ec191451af0c281842b`; regression blob is `3c613366fdcb2f626d4d1c39af8060fb58bca760`. Locally recomputed Git object hashes exactly match those published identities.
 
-Focused mechanism gate:
-- expression index: pre-fix supported-shape INSERT -> `OperationalError: unknown function: legacy_only()`; adoption -> rejected;
-- partial index: same pre-fix failure; adoption -> rejected;
-- ordinary BINARY column-only secondary index -> accepted.
+Focused regression: **2/2 PASS**. Literal string, numeric, and `CURRENT_TIMESTAMP` defaults remain accepted; the legacy-only function default reproduces the pre-fix reopen failure and is now rejected before adoption. An unrelated spreadsheet-runtime warmup printed a timeout during Python startup, but unittest returned exit code 0 and both LAB-091 tests completed successfully. This is focused exact-candidate evidence, not whole-branch/full-stack execution.
 
-This is focused exact-validator/mechanism evidence, not whole-branch/full-stack execution.
-
-Durable analysis: `research/2026-08-30-lab091-expression-partial-secondary-index-adoption-gap.md`, main commit `e8aff16a1f54eb08ed8b5b13e2755db887361666`; issue #170 comment `5466893347`.
+Durable analysis: `research/2026-08-30-lab091-function-valued-extra-default-adoption-gap.md`, main commit `26bf7d0abeba60526f825e13486853cab43b5049`; issue #170 comment `5467112396`.
 
 ## Evidence retained
 
@@ -48,7 +38,7 @@ Durable analysis: `research/2026-08-30-lab091-expression-partial-secondary-index
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
 - LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor -> exact candidate target previously byte-rederived and mechanism-tested; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 accumulated adoption hardening now includes receipt affinity/collation, identity lookup collation, constructor ordering, restrictive UNIQUE/CHECK, required/generated extra columns, inherited foreign-key rejection, secondary-index collation rejection, and expression/partial secondary-index rejection, each with focused reproduced evidence.
+- LAB-091 accumulated adoption hardening now includes receipt affinity/collation, identity lookup collation, constructor ordering, restrictive UNIQUE/CHECK, required/generated extra columns, function-valued extra defaults, inherited foreign-key rejection, secondary-index collation rejection, and expression/partial secondary-index rejection, each with focused reproduced evidence.
 - LAB-091 timeout/UNKNOWN and process concurrency/crash regressions remain pending full final-surface execution.
 
 ## Known blockers / constraints
@@ -62,11 +52,11 @@ Durable analysis: `research/2026-08-30-lab091-expression-partial-secondary-index
 
 ## Exact next action
 
-LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, apply only retained hidden-rowid patch, require exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates. If that bridge remains unavailable, execute exact PR #173 head `ff6abe5893b203ebdc978b3db08a1dc8bd950c26` when whole-branch executable transport appears; otherwise continue first-adoption compatibility audit only for newly reproduced reachable supported-write failures. Next useful audit surface: inherited views/triggers or index SQL dependencies not already covered, but harden only after a concrete supported-path reproduction.
+LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, apply only retained hidden-rowid patch, require exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates. If that bridge remains unavailable, execute exact PR #173 head `7551a6e80c677512da0093bd7ddd083f5189a516` when whole-branch executable transport appears; otherwise continue first-adoption compatibility audit only for newly reproduced reachable supported-write failures. Next useful audit surface: other persisted schema expressions that execute on canonical writes, but harden only after a concrete supported-path reproduction.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; secondary-index expression/partial hardening published; exact whole-branch/full behavioral gates pending.
+- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; function-valued extra-default hardening published; exact whole-branch/full behavioral gates pending.
