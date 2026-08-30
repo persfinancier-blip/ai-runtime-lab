@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from experiments.anchor_attestation.protocol import AttestedCatchup
+from experiments.anchor_attestation.protocol import AttestedCatchup, UnknownOutcome
+from experiments.provider_generation_history.activation import (
+    ActivationTicket,
+    FencedActivationProvider,
+)
 from experiments.provider_generation_history.integration import (
     HistoricalSharedAnchorLedger,
     IntegratedProviderHistory,
 )
 from experiments.provider_generation_history.protocol import (
+    CurrentGenerationRequired,
     GenerationDescriptor,
     HistoricalReceipt,
     HistoricalVerificationError,
+    InvalidTransition,
     PendingRotationBlocked,
 )
 from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution, LedgerEntry, UnexplainedAdvance
@@ -25,7 +31,7 @@ class CoordinatorOnlyProviderHistory(IntegratedProviderHistory):
 
 
 class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
-    """Audited LAB-081 surface.
+    """Audited LAB-081 surface with LAB-090 provider-activation fencing.
 
     The first exact signed provider observation for a confirmed request is immutable
     historical evidence. Later verification never replaces it with a new challenge;
@@ -33,6 +39,12 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
 
     Provider-generation mutation is coordinator-only so a caller cannot bypass the
     shared LAB-080 PREPARED check by invoking the standalone history API directly.
+
+    LAB-090 additionally requires the candidate provider to atomically reserve its
+    exact position before the SQL generation-head transaction. The resulting
+    activation ticket is durably bound in the same SQLite commit as the generation
+    rotation, so provider commit can be reconciled after UNKNOWN or restart without
+    relying on a stale pre-transaction read.
     """
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
@@ -40,7 +52,228 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             raise TypeError("exact LAB-036 AttestedCatchup required")
         self.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
         SupportedSharedAnchorLedger.__init__(self, path, attested)
+        self._init_activation_schema()
         self._require_runtime_matches_durable_head()
+        self._recover_pending_activation()
+        self._verify_activation_records()
+
+    def _init_activation_schema(self):
+        q = self._con()
+        try:
+            q.execute(
+                """
+                CREATE TABLE IF NOT EXISTS provider_generation_activations(
+                  activation_id TEXT PRIMARY KEY,
+                  new_generation_id TEXT NOT NULL UNIQUE,
+                  provider_id TEXT NOT NULL,
+                  generation INTEGER NOT NULL,
+                  expected_position INTEGER NOT NULL,
+                  fence INTEGER NOT NULL,
+                  status TEXT NOT NULL CHECK(status IN ('SQL_COMMITTED','COMMITTED'))
+                )
+                """
+            )
+            q.commit()
+        finally:
+            q.close()
+
+    @staticmethod
+    def _activation_id(new: GenerationDescriptor, expected_position: int) -> str:
+        return f"provider-activation:{new.generation_id}:{int(expected_position)}"
+
+    @staticmethod
+    def _ticket_from_row(row) -> ActivationTicket:
+        return ActivationTicket(row[2], row[3], row[4], row[0], row[5])
+
+    def _activation_row(self, *, activation_id=None, generation_id=None):
+        if (activation_id is None) == (generation_id is None):
+            raise ValueError("select exactly one activation identity")
+        q = self._con()
+        try:
+            if activation_id is not None:
+                return q.execute(
+                    "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
+                    "FROM provider_generation_activations WHERE activation_id=?",
+                    (activation_id,),
+                ).fetchone()
+            return q.execute(
+                "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
+                "FROM provider_generation_activations WHERE new_generation_id=?",
+                (generation_id,),
+            ).fetchone()
+        finally:
+            q.close()
+
+    def _mark_activation_committed(self, ticket: ActivationTicket):
+        q = self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            changed = q.execute(
+                "UPDATE provider_generation_activations SET status='COMMITTED' "
+                "WHERE activation_id=? AND provider_id=? AND generation=? "
+                "AND expected_position=? AND fence=? AND status IN ('SQL_COMMITTED','COMMITTED')",
+                (
+                    ticket.activation_id,
+                    ticket.provider_id,
+                    ticket.generation,
+                    ticket.expected_position,
+                    ticket.fence,
+                ),
+            ).rowcount
+            if changed != 1:
+                raise HistoricalVerificationError("durable activation ticket mismatch")
+            q.commit()
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
+
+    def _commit_or_reconcile_activation(self, provider: FencedActivationProvider, ticket: ActivationTicket):
+        try:
+            status = provider.commit_activation(ticket)
+        except UnknownOutcome:
+            status = provider.activation_status(ticket)
+        if status != "COMMITTED":
+            raise HistoricalVerificationError("provider activation did not reconcile COMMITTED")
+        self._mark_activation_committed(ticket)
+
+    def _recover_pending_activation(self):
+        q = self._con()
+        try:
+            rows = q.execute(
+                "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
+                "FROM provider_generation_activations WHERE status='SQL_COMMITTED'"
+            ).fetchall()
+        finally:
+            q.close()
+        if len(rows) > 1:
+            raise HistoricalVerificationError("multiple unresolved provider activations")
+        if not rows:
+            return
+        row = rows[0]
+        ticket = self._ticket_from_row(row)
+        provider = self.attested.provider
+        if not isinstance(provider, FencedActivationProvider):
+            raise HistoricalVerificationError("runtime provider cannot reconcile durable activation ticket")
+        durable = self.provider_history.current()
+        if durable.generation_id != row[1]:
+            raise HistoricalVerificationError("pending activation does not bind durable provider head")
+        status = provider.activation_status(ticket)
+        if status == "ABSENT":
+            raise HistoricalVerificationError("provider lost durable activation reservation")
+        if status == "PREPARED":
+            self._commit_or_reconcile_activation(provider, ticket)
+        elif status == "COMMITTED":
+            self._mark_activation_committed(ticket)
+        else:
+            raise HistoricalVerificationError("unknown provider activation status")
+
+    def _verify_activation_records(self):
+        q = self._con()
+        try:
+            rows = q.execute(
+                "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
+                "FROM provider_generation_activations ORDER BY generation"
+            ).fetchall()
+        finally:
+            q.close()
+        seen_fences = set()
+        for row in rows:
+            ticket = self._ticket_from_row(row)
+            if row[0] != self._activation_id(
+                GenerationDescriptor(row[2], row[3], self.provider_history._descriptor_for_generation(row[3]).verification_key_hex),
+                row[4],
+            ):
+                raise HistoricalVerificationError("activation identity mismatch")
+            if ticket.fence < 1 or ticket.fence in seen_fences:
+                raise HistoricalVerificationError("invalid or reused activation fence")
+            seen_fences.add(ticket.fence)
+            if row[6] not in {"SQL_COMMITTED", "COMMITTED"}:
+                raise HistoricalVerificationError("invalid activation status")
+        return True
+
+    def rotate_provider(self, new: GenerationDescriptor, proof, new_attested: AttestedCatchup):
+        if type(new_attested) is not AttestedCatchup:
+            raise TypeError("exact LAB-036 AttestedCatchup required")
+        runtime_new = self._descriptor_from_attested(new_attested)
+        if runtime_new.generation_id != new.generation_id:
+            raise InvalidTransition("new runtime verifier does not match generation descriptor")
+        provider = new_attested.provider
+        if not isinstance(provider, FencedActivationProvider):
+            raise TypeError("LAB-090 rotation requires FencedActivationProvider")
+
+        existing = self._activation_row(generation_id=new.generation_id)
+        if existing is not None:
+            ticket = self._ticket_from_row(existing)
+            if existing[6] == "SQL_COMMITTED":
+                self._commit_or_reconcile_activation(provider, ticket)
+            elif existing[6] != "COMMITTED":
+                raise HistoricalVerificationError("invalid durable activation status")
+            self.attested = new_attested
+            self._require_runtime_matches_durable_head()
+            return new
+
+        q = self._con()
+        try:
+            q.execute("BEGIN")
+            expected_position = q.execute(
+                "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
+            ).fetchone()[0]
+            q.commit()
+        finally:
+            q.close()
+
+        activation_id = self._activation_id(new, expected_position)
+        ticket = provider.prepare_activation(
+            expected_position=expected_position,
+            activation_id=activation_id,
+        )
+        sql_committed = False
+        q = self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            pending = q.execute(
+                "SELECT COUNT(*) FROM shared_anchor_intents WHERE status='PREPARED'"
+            ).fetchone()[0]
+            if pending:
+                raise PendingRotationBlocked("unresolved PREPARED anchor intent")
+            reserved = q.execute(
+                "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
+            ).fetchone()[0]
+            if reserved != ticket.expected_position:
+                raise InvalidTransition("shared anchor tail changed after provider activation prepare")
+            q.execute(
+                "INSERT INTO provider_generation_activations VALUES(?,?,?,?,?,?,'SQL_COMMITTED')",
+                (
+                    ticket.activation_id,
+                    new.generation_id,
+                    ticket.provider_id,
+                    ticket.generation,
+                    ticket.expected_position,
+                    ticket.fence,
+                ),
+            )
+            self.provider_history._rotate_locked(q, new, proof)
+            q.commit()
+            sql_committed = True
+        except:
+            if q.in_transaction:
+                q.rollback()
+            row = self._activation_row(activation_id=ticket.activation_id)
+            if row is not None and row[6] in {"SQL_COMMITTED", "COMMITTED"}:
+                sql_committed = True
+            if not sql_committed:
+                provider.abort_activation(ticket)
+                raise
+        finally:
+            q.close()
+
+        self._commit_or_reconcile_activation(provider, ticket)
+        self.attested = new_attested
+        self._require_runtime_matches_durable_head()
+        return new
 
     def _stored_receipt(self, entry: LedgerEntry):
         q = self._con()
