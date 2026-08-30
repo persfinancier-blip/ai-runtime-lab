@@ -51,6 +51,29 @@ class RequiredExtraColumnAdoptionRegression(unittest.TestCase):
         q.execute("BEGIN IMMEDIATE")
         return q
 
+    @staticmethod
+    def _supported_insert(q, *, component_id: str = "component-b"):
+        q.execute(
+            """INSERT INTO shared_anchor_intents(
+              intent_id,component_id,intent_type,payload_digest,provider_id,
+              provider_generation,predecessor_position,position,request_id,
+              status,receipt_binding
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                "intent-1",
+                component_id,
+                "RECONCILE",
+                "0" * 64,
+                "provider-1",
+                1,
+                0,
+                1,
+                "request-1",
+                "PREPARED",
+                None,
+            ),
+        )
+
     def test_canonical_schema_is_accepted(self):
         q = self._schema()
         try:
@@ -59,7 +82,7 @@ class RequiredExtraColumnAdoptionRegression(unittest.TestCase):
             q.rollback()
             q.close()
 
-    def test_omittable_extra_columns_remain_accepted(self):
+    def test_omittable_ordinary_extra_columns_remain_accepted(self):
         for declaration in (", legacy_note TEXT", ", legacy_tag TEXT NOT NULL DEFAULT 'x'"):
             with self.subTest(declaration=declaration):
                 q = self._schema(extra_intent_column=declaration)
@@ -77,26 +100,26 @@ class RequiredExtraColumnAdoptionRegression(unittest.TestCase):
             q.rollback()
 
             with self.assertRaisesRegex(sqlite3.IntegrityError, "extra_tag"):
-                q.execute(
-                    """INSERT INTO shared_anchor_intents(
-                      intent_id,component_id,intent_type,payload_digest,provider_id,
-                      provider_generation,predecessor_position,position,request_id,
-                      status,receipt_binding
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        "intent-1",
-                        "component-b",
-                        "RECONCILE",
-                        "0" * 64,
-                        "provider-1",
-                        1,
-                        0,
-                        1,
-                        "request-1",
-                        "PREPARED",
-                        None,
-                    ),
-                )
+                self._supported_insert(q)
+        finally:
+            if q.in_transaction:
+                q.rollback()
+            q.close()
+
+    def test_generated_extra_column_is_rejected_before_legacy_expression_runs(self):
+        q = self._schema(
+            extra_intent_column=(
+                ", legacy_json TEXT GENERATED ALWAYS AS "
+                "(json_extract(component_id,'$.x')) STORED"
+            )
+        )
+        try:
+            with self.assertRaises(AdoptionExtraColumnError):
+                validate_no_required_extra_columns(q)
+            q.rollback()
+
+            with self.assertRaisesRegex(sqlite3.OperationalError, "malformed JSON"):
+                self._supported_insert(q)
         finally:
             if q.in_transaction:
                 q.rollback()
