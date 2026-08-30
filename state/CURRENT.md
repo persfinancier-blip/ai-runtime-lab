@@ -9,54 +9,53 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 ## Active issue / branch / PR
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
-- Authoritative LAB-086 `strict_fence.py` predecessor: `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
+- Exact LAB-086 `strict_fence.py` predecessor remains blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` (949 lines).
 - Retained hidden-rowid patch: `research/2026-08-28-lab086-hidden-rowid-replace.patch`, blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; exact previously derived target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-091 / #170 is the allowed fallback while LAB-086 publication/execution is concretely tool-limited; draft PR #173, branch `lab/091-mutable-shared-anchor-writer`.
-- Current LAB-091 PR head: `9f999dd9704742d5f929c4d340494d02322b044e` (connector re-fetch confirmed open, mergeable, draft).
+- Current LAB-091 branch head after this run: `eb832145e7e33021b9d03b3269da04d15ca0eae1`.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172. LAB-090 / #169 remains READY.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PRs/issues. No supported byte-preserving composition writer for the exact 949-line LAB-086 `strict_fence.py` predecessor plus retained patch appeared in this run, so no LAB-086 mutation was attempted.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PRs. PR #165 still exposes `strict_fence.py` as an addition relative to `main`, and the per-file PR patch returns the complete current 949-line source. Branch re-fetch confirms the exact predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; the retained hidden-rowid patch re-fetch confirms blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`. However, no supported bridge in this run can automatically transfer the connector-returned full source into local patch application and back into the Contents API without model/manual reserialization. Because this is security-critical, no LAB-086 mutation was attempted.
 
-Continued the allowed LAB-091 first-adoption compatibility audit and reproduced a reachable defect in the prior extra-column validator. An otherwise canonical empty legacy `shared_anchor_intents` table can add a nullable generated column such as `legacy_json TEXT GENERATED ALWAYS AS (json_extract(component_id,'$.x')) STORED`. `PRAGMA table_xinfo` reports the column as hidden/generated, so the prior validator ignored it. Adoption could succeed, but the canonical supported INSERT for a valid ordinary identity such as `component-b` evaluates the inherited expression and fails with `sqlite3.OperationalError: malformed JSON`. A separate mechanism probe also showed that generated `NOT NULL` expressions can reject otherwise valid supported rows, so generated-column nullability alone is insufficient.
+Continued the permitted LAB-091 first-adoption compatibility audit. Reproduced a reachable defect: a canonical-shaped legacy protected table can add a FOREIGN KEY on a canonical column. With `PRAGMA foreign_keys=ON`, `shared_anchor_intents.component_id REFERENCES legacy_components(component_id)` makes the next otherwise-valid supported INSERT fail with `sqlite3.IntegrityError: FOREIGN KEY constraint failed`, while the previous adoption envelope did not inspect `PRAGMA foreign_key_list`.
 
 Published on PR #173 through normal conflict-scoped Contents API writes:
-- `b713c735eca2e8d57115c328088fd16cf3b828d8` — `adoption_extra_columns.py` now rejects non-canonical generated extras (`table_xinfo hidden=2/3`) fail-closed while still accepting ordinary nullable/defaulted extras;
-- `9f999dd9704742d5f929c4d340494d02322b044e` — regression added to `test_adoption_required_extra_column_regression.py`; connector re-fetch confirms this is current draft PR #173 head.
+- `26c2ab079d1b316d0c067782f94c147842b0c5ff` — new `adoption_foreign_keys.py`, rejecting inherited foreign keys on all protected mutable tables fail-closed;
+- `0d7166550d7744c37f5262e0948c41f073f7fe3f` — wire the validator into the final `BEGIN IMMEDIATE` adoption/restart envelope;
+- `eb832145e7e33021b9d03b3269da04d15ca0eae1` — add `test_adoption_foreign_key_regression.py` (current branch head at publication time).
 
-Re-fetched both published files and locally reconstructed/executed their focused unittest surface: **4/4 PASS**. Canonical schema accepted; ordinary nullable/defaulted extras accepted; required ordinary extra rejected with the pre-fix supported INSERT failure reproduced; generated nullable JSON extra rejected with the pre-fix `malformed JSON` supported INSERT failure reproduced. Python emitted an unrelated spreadsheet-runtime warmup traceback before discovery, but unittest completed return code 0 with all four named tests `ok`. This is focused exact-content reconstruction evidence for the two published files, not full PR/full-stack execution.
+Re-fetched published blobs: validator `18cbb38e23b027618b0abec74f1f824ee26faf6a`, regression `6c76d91b389afde1338d86b906313ac58a435fe6`. Reconstructed those exact contents in an isolated temporary package and executed focused unittest: **2/2 PASS**. Canonical no-FK schema accepted; restrictive legacy FK reproduced the pre-fix supported-write failure and is now rejected. Python emitted an unrelated spreadsheet-runtime warmup traceback, but unittest returned 0 and both tests were `ok`. This is focused exact-content evidence, not whole-branch/full-stack execution.
 
-Durable analysis: `research/2026-08-30-lab091-generated-extra-column-adoption-gap.md`, main commit `83f4ea03c3b6a4e1999bf0f50e436f552a8aaf7f`; issue #170 comment `5466205957`.
+Durable analysis: `research/2026-08-30-lab091-foreign-key-adoption-gap.md`, main commit `253f0aff41f8499d2e2b478d007b4b90f1be2ede`; issue #170 comment `5466446078`.
 
 ## Evidence retained
 
 - LAB-080 18/18 PASS; LAB-082 28/28 PASS; LAB-083 24/24 PASS; LAB-084 17/17 PASS.
 - LAB-085 core 12/12 PASS; asymmetric custody 8/8 PASS; public/final 11/11 PASS; unsafe lower baselines failed as intended.
 - Standalone LAB-086 previously 12/12 PASS; unsafe legacy auto-promotion failed as intended.
-- LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` -> candidate `b78e7c98e35138719f77c482c7f1aab36b702de7` previously byte-rederived and mechanism-tested; publication/full gate pending.
+- LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor -> exact candidate target previously byte-rederived and mechanism-tested; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
-- LAB-091 earlier adoption hardening combined focused gate 17/17 PASS before later affinity/collation fixes.
-- LAB-091 receipt affinity, receipt collation, identity lookup, constructor ordering, receipt-orphan collation, restrictive-UNIQUE, restrictive-CHECK, required-extra-column and generated-extra-column defects now have published fixes with focused local semantic/mechanism evidence; latest exact whole-branch regressions remain pending executable transport.
-- LAB-091 generated-extra focused re-fetched-content gate: 4/4 PASS on current validator/regression pair.
-- LAB-091 timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05` and process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246` remain pending full final-surface execution.
+- LAB-091 accumulated adoption hardening now includes receipt affinity/collation, identity lookup collation, constructor ordering, restrictive UNIQUE/CHECK, required/generated extra columns, and inherited foreign-key rejection, each with focused reproduced evidence.
+- LAB-091 timeout/UNKNOWN and process concurrency/crash regressions remain pending full final-surface execution.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, applying only the retained hidden-rowid patch through a byte-preserving supported path, requiring exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, then re-fetch/hash-verify and run the complete security gate.
 - PR #165 remains draft until exact rowid publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
-- PR #173 remains draft. Exact whole-branch regressions, timeout/UNKNOWN, process concurrency/crash, receipt-affinity, receipt-collation and accumulated adoption regressions remain pending executable transport.
+- PR #173 remains draft. Exact whole-branch regressions and full timeout/UNKNOWN + process concurrency/crash behavior remain pending executable transport.
 - Do not represent focused local reconstruction/mechanism execution as byte-for-byte full-branch execution.
 - Do not add speculative SQLite guards without a reproduced reachable supported compatibility/security failure.
 
 ## Exact next action
 
-LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, apply only retained hidden-rowid patch, require exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates. If that bridge is still unavailable, execute exact PR #173 head `9f999dd9704742d5f929c4d340494d02322b044e` when whole-branch executable transport appears, beginning with the accumulated adoption regressions including generated-extra-column coverage; if exact execution remains unavailable, continue first-adoption compatibility audit only for newly reproduced reachable supported-write failures.
+LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, apply only retained hidden-rowid patch, require exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates. If that bridge remains unavailable, execute exact PR #173 head `eb832145e7e33021b9d03b3269da04d15ca0eae1` when whole-branch executable transport appears; otherwise continue first-adoption compatibility audit only for newly reproduced reachable supported-write failures.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; generated-extra-column hardening published; exact whole-branch/full behavioral gates pending.
+- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; foreign-key adoption hardening published; exact whole-branch/full behavioral gates pending.
