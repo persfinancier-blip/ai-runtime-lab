@@ -272,6 +272,11 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
+            unresolved_activation = q.execute(
+                "SELECT 1 FROM provider_generation_activations WHERE status='SQL_COMMITTED' LIMIT 1"
+            ).fetchone()
+            if unresolved_activation is not None:
+                raise PendingRotationBlocked("previous provider activation commit is unresolved")
             pending = q.execute(
                 "SELECT COUNT(*) FROM shared_anchor_intents WHERE status='PREPARED'"
             ).fetchone()[0]
