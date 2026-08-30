@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .adoption_extra_columns import validate_no_required_extra_columns
 from .adoption_schema_domains import validate_required_not_null_contract
 from .adoption_trigger_surface import validate_protected_trigger_surface
 from .adoption_validation import validate_existing_mutable_state_locked
@@ -105,6 +106,10 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
             # constraints on an existing legacy table. Reject weakened NOT NULL
             # declarations before accepting the database as LAB-091 protected.
             validate_required_not_null_contract(q)
+            # Additive legacy columns are harmless only when the canonical writer
+            # can omit them. A NOT NULL extra column without a DEFAULT otherwise
+            # makes adoption succeed and the next supported INSERT fail.
+            validate_no_required_extra_columns(q)
             # Persistent triggers can constrain only future statements. Before
             # completing first adoption/restart, reject preexisting rows that
             # could not have been created by the supported LAB-091 state machine.
