@@ -156,8 +156,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             status = provider.commit_activation(ticket)
         except UnknownOutcome:
             status = provider.activation_status(ticket)
-        if status not in {"COMMITTED_FENCED", "RELEASED"}:
-            raise HistoricalVerificationError("provider activation did not reconcile committed")
+        if status != "COMMITTED_FENCED":
+            raise HistoricalVerificationError(
+                "provider activation must remain fenced until durable acknowledgement"
+            )
         # Ordering is security/correctness critical: provider commit does not release
         # the external fence. Persist exact-ticket acknowledgement first, then release.
         self._mark_activation_committed(ticket)
@@ -174,13 +176,17 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             raise HistoricalVerificationError("runtime provider cannot reconcile durable activation ticket")
         status = provider.activation_status(ticket)
         if row[6] == "SQL_COMMITTED":
-            if status == "ABSENT":
-                raise HistoricalVerificationError("provider lost durable activation reservation")
             if status == "PREPARED":
                 self._commit_or_reconcile_activation(provider, ticket)
-            elif status in {"COMMITTED_FENCED", "RELEASED"}:
+            elif status == "COMMITTED_FENCED":
                 self._mark_activation_committed(ticket)
                 self._release_committed_activation(provider, ticket)
+            elif status == "RELEASED":
+                raise HistoricalVerificationError(
+                    "provider activation released before durable acknowledgement"
+                )
+            elif status == "ABSENT":
+                raise HistoricalVerificationError("provider lost durable activation reservation")
             else:
                 raise HistoricalVerificationError("unknown provider activation status")
         elif row[6] == "COMMITTED":
