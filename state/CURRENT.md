@@ -12,30 +12,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Authoritative LAB-086 `strict_fence.py` predecessor: `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`.
 - Retained hidden-rowid patch: `research/2026-08-28-lab086-hidden-rowid-replace.patch`, blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; exact previously derived target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-091 / #170 is the allowed fallback while LAB-086 publication/execution is concretely tool-limited; draft PR #173, branch `lab/091-mutable-shared-anchor-writer`.
-- Current LAB-091 PR head: `2297ad975b6e4ea03a90efa531a477119fdc301e`.
+- Current LAB-091 PR head: `bb2b3cb49bb2ac05e55a261b26b33f0db3166fc5`.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172. LAB-090 / #169 remains READY.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues/PRs. LAB-086 remains first priority. Current-run executable transport was re-probed and remains unavailable: `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed with `Could not resolve host: github.com`. No supported machine-to-machine byte-preserving composition path for the exact 949-line LAB-086 predecessor plus retained patch was observed, so no LAB-086 mutation was attempted.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues/PRs. LAB-086 remains first priority, but no supported machine-to-machine byte-preserving composition path for the exact 949-line `strict_fence.py` predecessor plus retained patch was observed, so no LAB-086 mutation was attempted.
 
-Continued the LAB-091 fallback static/reproduction audit and found a reachable first-adoption write-compatibility defect. A legacy `intent_id TEXT COLLATE NOCASE PRIMARY KEY` plus a separate BINARY UNIQUE overlay passed the previous canonical-identity check. Final BINARY lookup correctly treats existing `Alpha` and requested `alpha` as distinct, but the retained NOCASE primary key still rejects the supported-shape `alpha` INSERT with `UNIQUE constraint failed`. Adoption therefore accepted a schema unable to implement LAB-091 byte-exact identity semantics.
+Continued the allowed LAB-091 first-adoption compatibility audit and reproduced another reachable write-domain defect: an otherwise canonical legacy `shared_anchor_intents` table with an additional `CHECK(component_id='component-a')` passes the previous affinity/NOT NULL/UNIQUE gate but rejects a supported-shape PREPARED insert for `component-b`. Extra legacy CHECK constraints can therefore narrow the normal supported writer contract after adoption.
 
-Published on PR #173:
-- `bbe3b62858366f1c40bc7364b78596ee15ac2a56` — `adoption_schema_domains.py` blob `db16ee7783e259b7d9f2764f9fae593b8e69c1f7`; schema-domain validation now rejects partial/expression/extra/non-BINARY UNIQUE constraints that can make canonical supported writes fail;
-- `2297ad975b6e4ea03a90efa531a477119fdc301e` — regression `test_adoption_restrictive_unique_regression.py`; PR re-fetch confirms this as current head and PR remains DRAFT.
+Published on PR #173 through conflict-checked normal Contents API writes:
+- `38df1258a3dc17d59efcc66f11db0e48bde05668` — `adoption_schema_domains.py` now extracts/normalizes legacy CHECK expressions and rejects any outside the canonical set; missing canonical CHECKs remain allowed because LAB-091 persisted guards re-impose those protected predicates;
+- `bb2b3cb49bb2ac05e55a261b26b33f0db3166fc5` — added `test_adoption_restrictive_check_regression.py`; re-fetch confirms this is the current draft PR #173 head.
 
-Executed local SQLite mechanism gate:
-- canonical unique contract accepted;
-- NOCASE PK + BINARY overlay rejected;
-- extra UNIQUE payload constraint rejected;
-- `Alpha` followed by otherwise supported-shape `alpha` reproduced the legacy NOCASE uniqueness failure.
+Executed focused local unittest against the exact prepared update/test payload before Contents API publication: **3/3 PASS** — canonical CHECK accepted, omitted canonical CHECK accepted for guard-compatible legacy adoption, restrictive extra CHECK reproduced a normal insert failure and was rejected by the hardened gate. This is focused payload/mechanism evidence, not an exact branch checkout/full pytest claim.
 
-This is mechanism evidence only; exact branch pytest was not executed because executable GitHub transport is unavailable in this run.
-
-Static follow-up on remaining v2/v4 trigger `IS NOT` / default-collation comparisons found case-only differences can inherit NOCASE, but no supported writer path was found that mutates those identity columns; unknown persisted triggers are rejected at adoption. No speculative trigger patch was added.
-
-Durable analysis: `research/2026-08-30-lab091-restrictive-unique-adoption-gap.md`, main commit `fd87538314e9249e87ff163c8f431524aa3c2ad9`; issue #170 comment `5465468023`.
+Durable analysis: `research/2026-08-30-lab091-restrictive-check-adoption-gap.md`, main commit `a6a7d050c798ad9f866513429d1174b07b0cdb0f`; issue #170 comment `5465716237`.
 
 ## Evidence retained
 
@@ -45,8 +37,7 @@ Durable analysis: `research/2026-08-30-lab091-restrictive-unique-adoption-gap.md
 - LAB-086 hidden-rowid RED→GREEN evidence retained; exact predecessor `d4a6a40f...` -> candidate `b78e7c98...` previously byte-rederived and mechanism-tested; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-091 earlier adoption hardening combined focused gate 17/17 PASS before later affinity/collation fixes.
-- LAB-091 receipt affinity, receipt collation, identity lookup, constructor ordering and receipt-orphan collation defects have published fixes with local focused semantic/mechanism evidence; latest exact regressions remain pending executable transport.
-- LAB-091 restrictive UNIQUE adoption gap now reproduced and patched on `2297ad97...`; local SQLite mechanism gate PASS; exact published pytest pending.
+- LAB-091 receipt affinity, receipt collation, identity lookup, constructor ordering, receipt-orphan collation, restrictive-UNIQUE and restrictive-CHECK defects now have published fixes with focused local semantic/mechanism evidence; latest exact branch regressions remain pending executable transport.
 - LAB-091 timeout/UNKNOWN regression blob `92133cdc54fd8b95eb9e3270b5e69d4b85a4b05` and process concurrency/crash regression blob `938877479d4c4b997ea52e8b5857bf89e5c3e246` remain pending full final-surface execution.
 
 ## Known blockers / constraints
@@ -54,19 +45,17 @@ Durable analysis: `research/2026-08-30-lab091-restrictive-unique-adoption-gap.md
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40f...`, applying only the retained hidden-rowid patch through a byte-preserving supported path, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - PR #165 remains draft until exact rowid publication/hash verification and full strict/thaw + LAB-080→086 real-ledger + compileall/security audit pass.
-- PR #173 remains draft. Latest exact pytest regressions, timeout/UNKNOWN, process concurrency/crash, receipt-affinity and receipt-collation final-surface gates remain pending exact branch execution.
-- Do not represent local focused mechanism reproductions as byte-for-byte branch execution.
+- PR #173 remains draft. Exact branch regressions, timeout/UNKNOWN, process concurrency/crash, receipt-affinity and receipt-collation final-surface gates remain pending executable transport.
+- Do not represent focused local payload/mechanism execution as byte-for-byte branch execution.
 - Do not add speculative SQLite guards without a reproduced reachable supported compatibility/security failure.
 
 ## Exact next action
 
-1. LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40f...`, apply only retained hidden-rowid patch, require exact target `b78e7c98...`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates.
-2. If LAB-086 remains tool-limited, execute the exact PR #173 branch gate on head `2297ad975b6e4ea03a90efa531a477119fdc301e` when executable transport is available, starting with `test_adoption_restrictive_unique_regression.py`, then the identity/collation/constructor regressions, timeout/UNKNOWN, process concurrency/crash, receipt-affinity and receipt-collation gates through `SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger`.
-3. If exact execution remains unavailable, continue the LAB-091 first-adoption compatibility audit for accepted legacy schema features that can still reject or reinterpret a normal supported write; patch only after reproducing a reachable failure.
+LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, re-fetch predecessor `d4a6a40f...`, apply only retained hidden-rowid patch, require exact target `b78e7c98...`, publish through normal Contents API, re-fetch/hash-verify, then run rowid + receipt-NULL + alternate-UNIQUE + complete strict/thaw + compileall + LAB-080→086 real-ledger gates. If that bridge is still unavailable, execute exact PR #173 head `bb2b3cb49bb2ac05e55a261b26b33f0db3166fc5` when executable transport appears, beginning with `test_adoption_restrictive_check_regression.py`; if exact execution remains unavailable, continue first-adoption compatibility audit only for reproduced reachable supported-write failures.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; draft PR #172.
 - #169 / LAB-090 — READY; provider-generation handoff freshness/external-anchor race.
-- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; restrictive-UNIQUE hardening published, exact branch/full behavioral gates pending.
+- #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; restrictive-CHECK hardening published; exact branch/full behavioral gates pending.
