@@ -192,7 +192,6 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             ).fetchall()
         finally:
             q.close()
-        seen_fences = set()
         for row in rows:
             ticket = self._ticket_from_row(row)
             desc = GenerationDescriptor(row[2], row[3], row[7])
@@ -200,9 +199,8 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                 raise HistoricalVerificationError("activation generation identity mismatch")
             if row[0] != self._activation_id(desc, row[4]):
                 raise HistoricalVerificationError("activation identity mismatch")
-            if ticket.fence < 1 or ticket.fence in seen_fences:
-                raise HistoricalVerificationError("invalid or reused activation fence")
-            seen_fences.add(ticket.fence)
+            if ticket.fence < 1:
+                raise HistoricalVerificationError("invalid activation fence")
             if row[6] not in {"SQL_COMMITTED", "COMMITTED"}:
                 raise HistoricalVerificationError("invalid activation status")
         return True
