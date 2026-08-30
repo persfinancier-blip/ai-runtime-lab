@@ -82,6 +82,25 @@ _ALLOWED_UNIQUE_KEYS = {
     "asymmetric_provider_receipts": {("request_id",)},
 }
 
+# Missing canonical CHECK constraints are intentionally tolerated here because
+# LAB-091's persisted guards re-impose the protected state-machine predicates.
+# Extra legacy CHECK constraints are different: they can reject a write that the
+# supported state machine is entitled to make. Keep only the canonical CHECK
+# expressions, while permitting a legacy table to omit any of them.
+_ALLOWED_CHECK_EXPRESSIONS = {
+    "shared_anchor_meta": {
+        "SINGLETON=1",
+        "RESERVED_POSITION>=0",
+    },
+    "shared_anchor_intents": {
+        "STATUSIN('PREPARED','CONFIRMED')",
+    },
+    "component_anchor_watermarks": {
+        "POSITION>=0",
+    },
+    "asymmetric_provider_receipts": set(),
+}
+
 
 def _sqlite_affinity(declared_type: str) -> str:
     """Return SQLite column affinity using SQLite's documented type-name rules."""
@@ -95,6 +114,103 @@ def _sqlite_affinity(declared_type: str) -> str:
     if any(token in value for token in ("REAL", "FLOA", "DOUB")):
         return "REAL"
     return "NUMERIC"
+
+
+def _normalize_sql_outside_literals(sql: str) -> str:
+    """Normalize SQL syntax while preserving quoted literal/identifier bytes."""
+    out = []
+    quote = None
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if quote is None:
+            if char in ("'", '"', "`"):
+                quote = char
+                out.append(char)
+            elif char == "[":
+                quote = "]"
+                out.append(char)
+            elif not char.isspace():
+                out.append(char.upper())
+        else:
+            out.append(char)
+            if char == quote:
+                if (
+                    quote in ("'", '"', "`")
+                    and index + 1 < len(sql)
+                    and sql[index + 1] == quote
+                ):
+                    out.append(sql[index + 1])
+                    index += 1
+                else:
+                    quote = None
+        index += 1
+    return "".join(out)
+
+
+def _extract_check_expressions(create_sql: str) -> list[str]:
+    """Return normalized CHECK bodies from one SQLite CREATE TABLE statement."""
+    sql = _normalize_sql_outside_literals(create_sql)
+    expressions = []
+    offset = 0
+    marker = "CHECK("
+    while True:
+        start = sql.find(marker, offset)
+        if start < 0:
+            return expressions
+
+        body_start = start + len(marker)
+        depth = 1
+        quote = None
+        index = body_start
+        while index < len(sql):
+            char = sql[index]
+            if quote is None:
+                if char in ("'", '"', "`"):
+                    quote = char
+                elif char == "[":
+                    quote = "]"
+                elif char == "(":
+                    depth += 1
+                elif char == ")":
+                    depth -= 1
+                    if depth == 0:
+                        expressions.append(sql[body_start:index])
+                        offset = index + 1
+                        break
+            elif char == quote:
+                if (
+                    quote in ("'", '"', "`")
+                    and index + 1 < len(sql)
+                    and sql[index + 1] == quote
+                ):
+                    index += 1
+                else:
+                    quote = None
+            index += 1
+        else:
+            raise AdoptionSchemaDomainError(
+                "LAB-091 legacy schema has malformed CHECK constraint"
+            )
+
+
+def _validate_check_write_contract(q) -> None:
+    for table, allowed_checks in _ALLOWED_CHECK_EXPRESSIONS.items():
+        row = q.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            raise AdoptionSchemaDomainError(
+                f"LAB-091 legacy schema is missing required table: {table}"
+            )
+        observed_checks = _extract_check_expressions(row[0])
+        restrictive = [check for check in observed_checks if check not in allowed_checks]
+        if restrictive:
+            raise AdoptionSchemaDomainError(
+                f"LAB-091 legacy schema has restrictive CHECK constraint(s) for {table}: "
+                + ", ".join(restrictive)
+            )
 
 
 def _validate_unique_write_contract(q) -> None:
@@ -185,4 +301,5 @@ def validate_required_not_null_contract(q) -> bool:
             )
 
     _validate_unique_write_contract(q)
+    _validate_check_write_contract(q)
     return True
