@@ -16,13 +16,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues and active PRs. LAB-086 remains blocked on the same byte-preserving publication requirement, and direct git checkout again failed before repository code execution because `github.com` could not be resolved.
+Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues and active PR state. Direct git transport was probed again and failed before repository-code execution with `Could not resolve host: github.com`, so no exact-head unittest/downstream PASS is claimed.
 
-Resumed LAB-090 PR #175 and fixed the previously audited premature-release fail-open. `_commit_or_reconcile_activation()` now accepts only provider `COMMITTED_FENCED` before durable SQLite acknowledgement. `_recover_pending_activation()` with durable `SQL_COMMITTED` now accepts only `PREPARED` or `COMMITTED_FENCED`; provider `RELEASED` at that stage raises `HistoricalVerificationError` instead of being promoted to durable `COMMITTED`. `RELEASED` remains idempotently accepted only when SQLite already says `COMMITTED`.
+Resumed LAB-090 PR #175 according to the prior handoff and performed the explicit divergence/conflict audit. Current refs observed: PR head `9e53c6ed0340c8a3c77c22b23eb7c0340240294e`, main before the audit note `df316786015eb5abcc0d285b6ae13ce9ba0bf210`, merge-base `6cc7a04496187075db1c02f3e27c1d394da53026`. The PR is 15 commits ahead and 12 behind current main.
 
-Added dedicated regression `experiments/provider_generation_history/tests/test_activation_premature_release.py`, modeling a faulty provider that commits and immediately releases before coordinator acknowledgement. Published fix commit `3f6c7a32e12ee57d82fca87abab27dbe1d3fe2dc`; regression/head commit `9e53c6ed0340c8a3c77c22b23eb7c0340240294e`. Durable evidence: `research/2026-08-30-lab090-premature-release-fail-closed-fix.md`, main commit `150c7799474c8564d4b6cdf693a1104c7fc360a6`; issue #169 comment `5469837124`.
+Compared merge-base -> current main. All 12 main-side commits touch only LAB-090 `research/*` notes and `state/CURRENT.md`; none touches the six PR #175 implementation/test paths. Therefore there is no direct file-content overlap/conflict introduced by those main-side commits. GitHub currently reports PR #175 `mergeable=false`, but that signal is not evidence of a semantic LAB-090 code conflict.
 
-Fresh GitHub metadata reports PR #175 `mergeable=true`, but explicit compare against current main still reports divergence: 15 commits ahead, 10 behind, merge-base `6cc7a04496187075db1c02f3e27c1d394da53026`. No exact-head unittest PASS is claimed because direct checkout remained DNS-blocked.
+Fresh source audit of branch `activation.py` and `supported.py` reconfirmed the required protocol ordering: provider `PREPARED` fence -> durable SQL `SQL_COMMITTED` exact ticket -> provider `COMMITTED_FENCED` -> durable exact-ticket `COMMITTED` -> release. Restart rejects `SQL_COMMITTED + RELEASED` and completes `COMMITTED + COMMITTED_FENCED` idempotently. No new source-level defect was established in this pass; executable validation remains required.
+
+Durable evidence: `research/2026-08-30-lab090-main-divergence-conflict-audit.md`, main commit `aae5be540b29ffa0f4a3a19684c481b8e33fdf74`; issue #169 comment `5470130013`.
 
 ## Evidence retained
 
@@ -32,22 +34,22 @@ Fresh GitHub metadata reports PR #175 `mergeable=true`, but explicit compare aga
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact published signer-noise/core evidence remains 22/22 PASS + compileall; supported/downstream execution pending.
 - LAB-091 accumulated adoption hardening/focused reproduced evidence retained; whole-branch timeout/UNKNOWN and process concurrency/crash gates pending.
-- LAB-090 prior provider primitive focused mechanism gate 6/6 PASS is retained. Latest premature-release fail-closed source correction and regression are published, but exact-head executable validation remains pending.
+- LAB-090 prior provider primitive focused mechanism gate 6/6 PASS is retained. Premature-release fail-closed source correction/regression is published. Fresh divergence audit proves no post-merge-base main-side file overlap with PR #175; exact-head executable validation is still pending.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, applying only the retained patch through a byte-preserving supported path, requiring exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, then re-fetch/hash-verify and run the complete security gate.
 - Direct git/network transport remains unavailable due DNS in this run; treat this as a per-run observation.
-- PR #175 remains draft. The premature-release predicate is fixed in source, but exact-head tests and downstream suites have not executed; branch remains diverged from main despite GitHub currently reporting mergeable=true.
+- PR #175 remains draft. Main-side divergence has no direct path overlap with the PR implementation/test files, but exact-head tests and downstream suites have not executed; do not mark ready or merge from source audit alone.
 
 ## Exact next action
 
-LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, publish and full-gate the exact hidden-rowid target. Otherwise resume LAB-090 PR #175 and retry exact-head execution of `test_activation.py`, `test_activation_integration.py`, `test_activation_premature_release.py`, existing provider-generation integration, and downstream shared-anchor/provider-history suites. If direct git transport remains blocked, perform a fresh source audit of the newly fixed head and inspect the 10 main-side commits since merge-base for semantic/file conflicts with the five LAB-090 touched paths; do not mark PR ready or merge without executable gates.
+LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, publish and full-gate the exact hidden-rowid target. Otherwise resume LAB-090 PR #175 and retry exact-head execution of `test_activation.py`, `test_activation_integration.py`, `test_activation_premature_release.py`, existing provider-generation integration, and downstream shared-anchor/provider-history suites. If direct git transport remains blocked, continue a narrowly scoped source audit for a concretely reproducible restart/concurrency defect; do not speculatively expand the protocol and do not attempt low-level ref/tree or force-update operations merely to remove branch divergence.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending on draft PR #172.
-- #169 / LAB-090 — IN_PROGRESS; premature-release fail-open fixed and regression published on draft PR #175; exact-head/downstream execution + divergence audit pending.
+- #169 / LAB-090 — IN_PROGRESS; premature-release fail-open fixed; current-main divergence has no direct file overlap; exact-head/downstream execution pending on draft PR #175.
 - #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; exact whole-branch/full behavioral gates pending.
