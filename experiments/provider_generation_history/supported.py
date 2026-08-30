@@ -242,6 +242,9 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
 
         existing = self._activation_row(generation_id=new.generation_id)
         if existing is not None:
+            durable = self.provider_history.current()
+            if new.generation_id != durable.generation_id:
+                raise InvalidTransition("activation retry is not durable current generation")
             ticket = self._ticket_from_row(existing)
             if existing[6] == "SQL_COMMITTED":
                 self._commit_or_reconcile_activation(provider, ticket)
