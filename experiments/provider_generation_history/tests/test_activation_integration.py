@@ -188,6 +188,8 @@ class ActivationIntegrationTests(unittest.TestCase):
                 q.close()
             self.assertEqual(row, ("SQL_COMMITTED",))
             self.assertEqual(ledger.provider_history.current().generation, 2)
+            with self.assertRaises(PendingRotationBlocked):
+                ledger.reserve(Intent("blocked", "component-A", "migration", {"x": 2}))
 
             restarted_provider = FencedActivationProvider(
                 "anchor-A", 2, self.k2, value=0, activation_state=state
