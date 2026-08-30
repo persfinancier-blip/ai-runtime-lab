@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 from experiments.anchor_attestation.protocol import AttestedCatchup, UnknownOutcome
 from experiments.provider_generation_history.activation import (
     ActivationTicket,
@@ -43,7 +45,8 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     exact position before the SQL generation-head transaction. The resulting
     activation ticket is durably bound in the same SQLite commit as the generation
     rotation, so provider commit can be reconciled after UNKNOWN or restart without
-    relying on a stale pre-transaction read.
+    relying on a stale pre-transaction read. While that post-SQL provider commit is
+    unresolved, a database trigger blocks new shared-anchor intents on every writer.
     """
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
@@ -59,7 +62,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     def _init_activation_schema(self):
         q = self._con()
         try:
-            q.execute(
+            q.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS provider_generation_activations(
                   activation_id TEXT PRIMARY KEY,
@@ -69,7 +72,15 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                   expected_position INTEGER NOT NULL,
                   fence INTEGER NOT NULL,
                   status TEXT NOT NULL CHECK(status IN ('SQL_COMMITTED','COMMITTED'))
+                );
+                CREATE TRIGGER IF NOT EXISTS block_intent_during_provider_activation
+                BEFORE INSERT ON shared_anchor_intents
+                WHEN EXISTS(
+                  SELECT 1 FROM provider_generation_activations WHERE status='SQL_COMMITTED'
                 )
+                BEGIN
+                  SELECT RAISE(ABORT, 'provider activation unresolved');
+                END;
                 """
             )
             q.commit()
@@ -195,6 +206,14 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             if row[6] not in {"SQL_COMMITTED", "COMMITTED"}:
                 raise HistoricalVerificationError("invalid activation status")
         return True
+
+    def reserve(self, intent):
+        try:
+            return super().reserve(intent)
+        except sqlite3.IntegrityError as exc:
+            if "provider activation unresolved" in str(exc):
+                raise PendingRotationBlocked("provider activation commit is unresolved") from exc
+            raise
 
     def rotate_provider(self, new: GenerationDescriptor, proof, new_attested: AttestedCatchup):
         if type(new_attested) is not AttestedCatchup:
