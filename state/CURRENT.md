@@ -10,21 +10,17 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 `strict_fence.py` predecessor remains blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch `research/2026-08-28-lab086-hidden-rowid-replace.patch`, blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the current allowed fallback while LAB-086 byte-preserving publication is tool-limited. Draft PR #175; branch `lab-090-provider-activation-fencing`; head `348b279d979600e4a03333bc6ed729922705ff5b`.
+- LAB-090 / #169 is the current allowed fallback while LAB-086 byte-preserving publication is tool-limited. Draft PR #175; branch `lab-090-provider-activation-fencing`; observed head `348b279d979600e4a03333bc6ed729922705ff5b`.
 - LAB-091 / #170 remains IN_PROGRESS fallback on draft PR #173.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues and active PRs. LAB-086 still has no supported byte-preserving composition path for its 949-line security-critical file, so resumed the exact LAB-090 next action.
+Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues and active PRs. Explicit compare now confirms PR #175 is diverged from `main`: 13 commits ahead, 8 behind, merge-base `6cc7a04496187075db1c02f3e27c1d394da53026`. This establishes stale-base divergence but does not by itself prove a semantic/file conflict.
 
-Fixed the concrete PR #175 post-provider-commit race. Provider activation now has explicit `PREPARED -> COMMITTED_FENCED -> RELEASED` semantics: `commit_activation()` durably records provider commitment but keeps the exact activation ticket installed as the external increment fence. Coordinator `_mark_activation_committed()` durably acknowledges the exact ticket in SQLite first; only then does exact-ticket `release_activation()` remove the provider fence. Restart reconciliation now also handles durable SQLite `COMMITTED` with provider still `COMMITTED_FENCED`, completing a lost release.
+Fresh source audit found a concrete LAB-090 fail-open after the `COMMITTED_FENCED -> RELEASED` correction. Current `_commit_or_reconcile_activation()` accepts provider status `RELEASED` before durable SQLite acknowledgement, and `_recover_pending_activation()` likewise accepts `SQLite=SQL_COMMITTED + provider=RELEASED`, then promotes the durable row to `COMMITTED`. That violates the protocol ordering: provider fence must remain installed until the exact ticket is durably acknowledged as `COMMITTED`; therefore `SQL_COMMITTED + RELEASED` is a protocol violation and must fail closed.
 
-Added provider and integration regressions for external advance immediately after provider commit/before SQL acknowledgement, stale/different release ticket, committed-fenced state across coordinator restart, and outage after durable SQL acknowledgement but before provider release. Fresh PR diff audit confirmed the intended ordering in published source.
-
-Published LAB-090 head: `348b279d979600e4a03333bc6ed729922705ff5b`. Durable evidence: `research/2026-08-30-lab090-committed-fenced-release-protocol.md`, main commit `22ca89fdff401e8e4d9c24ed00020642cb9fef38`; issue #169 comment `5469216388`.
-
-Direct exact-branch execution was probed again with a fresh shallow clone and failed before repository code execution with `Could not resolve host: github.com`. No whole-branch unittest result is claimed.
+Durable evidence: `research/2026-08-30-lab090-premature-release-fail-open-audit.md`, main commit `3548b5c73ccc6246689b7c53fcb4fc02101b6a8c`; issue #169 comment `5469541730`. A minimal state-machine reproduction confirmed the current acceptance predicate admits the invalid state. No whole-branch execution is claimed.
 
 ## Evidence retained
 
@@ -34,23 +30,22 @@ Direct exact-branch execution was probed again with a fresh shallow clone and fa
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact published signer-noise/core evidence remains 22/22 PASS + compileall; supported/downstream execution pending.
 - LAB-091 accumulated adoption hardening/focused reproduced evidence retained; whole-branch timeout/UNKNOWN and process concurrency/crash gates pending.
-- LAB-090 prior provider primitive focused mechanism gate 6/6 PASS is retained. New committed-fenced/release code and regressions are published and source-audited, but exact executable validation of this new head remains pending.
+- LAB-090 prior provider primitive focused mechanism gate 6/6 PASS is retained. Current PR #175 source audit has identified the premature-release fail-open; exact executable validation of the latest branch remains pending.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only by conflict-checking exact predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, applying only the retained patch through a byte-preserving supported path, requiring exact target `b78e7c98e35138719f77c482c7f1aab36b702de7`, then re-fetch/hash-verify and run the complete security gate.
-- Direct git/network transport is currently unavailable due DNS; treat this as a per-run observation.
-- PR #175 remains draft until exact published-branch and downstream tests execute and a fresh concurrency/restart audit is clean.
-- PR metadata after the latest update reported `mergeable: false`; do not infer a semantic conflict without an explicit compare/conflict check. No merge is attempted while the PR is draft and ungated.
+- Direct git/network transport has been unavailable due DNS in recent runs; treat this as a per-run observation.
+- PR #175 remains draft. It is stale/diverged from main and has a concrete source-level fail-open: `SQL_COMMITTED + provider RELEASED` is currently accepted. Do not mark ready or merge until corrected and executable gates pass.
 
 ## Exact next action
 
-LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, publish and full-gate the exact hidden-rowid target. Otherwise resume LAB-090 PR #175: attempt exact published-head execution of `test_activation`, `test_activation_integration`, existing provider-generation integration, and downstream shared-anchor/provider-history suites. If direct transport remains unavailable, perform a supported explicit base/head conflict check and source-level audit of the new `COMMITTED_FENCED -> RELEASED` restart/idempotency paths; fix only concrete defects. Do not mark PR ready or merge until executable gates pass.
+LAB-086 first: if a supported byte-preserving composition/transfer bridge appears, publish and full-gate the exact hidden-rowid target. Otherwise resume LAB-090 PR #175 and make the smallest fail-closed correction: `_commit_or_reconcile_activation()` must accept only `COMMITTED_FENCED` before durable acknowledgement; `_recover_pending_activation()` with durable `SQL_COMMITTED` must accept only `PREPARED` or `COMMITTED_FENCED` and reject `RELEASED`; retain `RELEASED` idempotency only for durable `COMMITTED`. Add a regression for premature exact-ticket release before SQLite acknowledgement, then attempt exact published-head `test_activation`, `test_activation_integration`, existing provider-generation integration, and downstream shared-anchor/provider-history suites. Re-check base/head divergence after the fix. Do not mark PR ready or merge until executable gates pass.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending on draft PR #172.
-- #169 / LAB-090 — IN_PROGRESS; post-provider-commit race corrected on draft PR #175; exact new-head execution/downstream gate pending.
+- #169 / LAB-090 — IN_PROGRESS; premature-release fail-open identified on draft PR #175; fail-closed fix + regression + exact execution pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; draft PR #173; exact whole-branch/full behavioral gates pending.
