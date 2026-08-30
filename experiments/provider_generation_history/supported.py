@@ -198,6 +198,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             raise HistoricalVerificationError("invalid durable activation status")
 
     def _verify_activation_records(self):
+        durable = self.provider_history.current()
         q = self._con()
         try:
             rows = q.execute(
@@ -220,6 +221,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                 raise HistoricalVerificationError("invalid activation fence")
             if row[6] not in {"SQL_COMMITTED", "COMMITTED"}:
                 raise HistoricalVerificationError("invalid activation status")
+            if row[6] == "SQL_COMMITTED" and row[1] != durable.generation_id:
+                raise HistoricalVerificationError(
+                    "historical provider activation remains unresolved"
+                )
         return True
 
     def reserve(self, intent):
