@@ -205,12 +205,14 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                 "SELECT a.activation_id,a.new_generation_id,a.provider_id,a.generation,"
                 "a.expected_position,a.fence,a.status,g.verification_key_hex "
                 "FROM provider_generation_activations AS a "
-                "JOIN provider_generations AS g ON g.generation_id=a.new_generation_id "
+                "LEFT JOIN provider_generations AS g ON g.generation_id=a.new_generation_id "
                 "ORDER BY a.generation"
             ).fetchall()
         finally:
             q.close()
         for row in rows:
+            if row[7] is None:
+                raise HistoricalVerificationError("activation references missing provider generation")
             ticket = self._ticket_from_row(row)
             desc = GenerationDescriptor(row[2], row[3], row[7])
             if desc.generation_id != row[1]:
