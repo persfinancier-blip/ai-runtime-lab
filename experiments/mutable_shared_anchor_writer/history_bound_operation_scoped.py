@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .adoption_column_collations import validate_resolvable_column_collations
 from .adoption_extra_columns import validate_no_required_extra_columns
 from .adoption_foreign_keys import validate_no_foreign_key_constraints
 from .adoption_schema_domains import validate_required_not_null_contract
@@ -116,6 +117,11 @@ class SupportedHistoryBoundOperationScopedAsymmetricSharedAnchorLedger(
             # can omit them. A NOT NULL extra column without a DEFAULT otherwise
             # makes adoption succeed and the next supported INSERT fail.
             validate_no_required_extra_columns(q)
+            # Canonical TEXT columns may inherit a persisted custom collation.
+            # Reopen does not restore application-defined collations, so prepare
+            # zero-row comparisons now and reject an unavailable sequence before
+            # an authorized trigger/query can fail during a supported write.
+            validate_resolvable_column_collations(q)
             # Non-UNIQUE indexes still execute on writes. A legacy index using a
             # custom/non-BINARY collation can make a supported write fail after
             # restart when that collation is not registered on this connection.
