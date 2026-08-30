@@ -53,6 +53,27 @@ class AttemptAdvanceDuringPrepare(FencedActivationProvider):
         return ticket
 
 
+class AttemptAdvanceAfterProviderCommit(FencedActivationProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.advance_result = None
+
+    def commit_activation(self, ticket, *, timeout_after_commit=False):
+        status = super().commit_activation(
+            ticket, timeout_after_commit=timeout_after_commit
+        )
+        try:
+            self.increment(
+                expected=ticket.expected_position,
+                challenge="post-provider-commit-race",
+                request_id="post-provider-commit-race",
+            )
+            self.advance_result = "advanced"
+        except Exception as exc:
+            self.advance_result = type(exc).__name__
+        return status
+
+
 class UnknownAfterCommitProvider(FencedActivationProvider):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,6 +96,18 @@ class UnavailableOnFirstCommitProvider(FencedActivationProvider):
             self.fail_once = False
             raise ProviderUnavailable("simulated post-SQL provider outage")
         return super().commit_activation(ticket, timeout_after_commit=timeout_after_commit)
+
+
+class UnavailableOnFirstReleaseProvider(FencedActivationProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fail_release_once = True
+
+    def release_activation(self, ticket):
+        if self.fail_release_once:
+            self.fail_release_once = False
+            raise ProviderUnavailable("simulated outage after durable coordinator acknowledgement")
+        return super().release_activation(ticket)
 
 
 class ActivationIntegrationTests(unittest.TestCase):
@@ -107,6 +140,26 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(ledger.provider_history.current().generation, 2)
             row = ledger._activation_row(generation_id=self.g2.generation_id)
             self.assertEqual(row[6], "COMMITTED")
+
+    def test_provider_commit_remains_fenced_until_durable_sql_ack(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.ledger(path, p1, 1, self.k1)
+            p2 = AttemptAdvanceAfterProviderCommit("anchor-A", 2, self.k2, value=0)
+
+            ledger.rotate_provider(
+                self.g2,
+                ledger.provider_history.make_transition(self.g1, self.g2),
+                attested(p2, 2, self.k2),
+            )
+
+            self.assertEqual(p2.advance_result, ActivationFenced.__name__)
+            self.assertEqual(p2.value, 0)
+            row = ledger._activation_row(generation_id=self.g2.generation_id)
+            self.assertEqual(row[6], "COMMITTED")
+            ticket = ledger._ticket_from_row(row)
+            self.assertEqual(p2.activation_status(ticket), "RELEASED")
 
     def test_stale_candidate_is_rejected_before_sql_generation_commit(self):
         with tempfile.TemporaryDirectory() as td:
@@ -159,7 +212,7 @@ class ActivationIntegrationTests(unittest.TestCase):
             row = ledger._activation_row(generation_id=self.g2.generation_id)
             self.assertEqual(row[6], "COMMITTED")
             ticket = ledger._ticket_from_row(row)
-            self.assertEqual(p2.activation_status(ticket), "COMMITTED")
+            self.assertEqual(p2.activation_status(ticket), "RELEASED")
 
     def test_restart_reconciles_sql_committed_ticket(self):
         with tempfile.TemporaryDirectory() as td:
@@ -197,7 +250,46 @@ class ActivationIntegrationTests(unittest.TestCase):
             restarted = self.ledger(path, restarted_provider, 2, self.k2)
             row = restarted._activation_row(generation_id=self.g2.generation_id)
             self.assertEqual(row[6], "COMMITTED")
+            ticket = restarted._ticket_from_row(row)
+            self.assertEqual(restarted_provider.activation_status(ticket), "RELEASED")
             self.assertEqual(restarted.provider_history.current().generation, 2)
+
+    def test_restart_releases_fence_after_sql_ack_if_release_was_lost(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.ledger(path, p1, 1, self.k1)
+            state = ActivationState()
+            p2 = UnavailableOnFirstReleaseProvider(
+                "anchor-A", 2, self.k2, value=0, activation_state=state
+            )
+
+            with self.assertRaises(ProviderUnavailable):
+                ledger.rotate_provider(
+                    self.g2,
+                    ledger.provider_history.make_transition(self.g1, self.g2),
+                    attested(p2, 2, self.k2),
+                )
+
+            row = ledger._activation_row(generation_id=self.g2.generation_id)
+            self.assertEqual(row[6], "COMMITTED")
+            ticket = ledger._ticket_from_row(row)
+            self.assertEqual(p2.activation_status(ticket), "COMMITTED_FENCED")
+            with self.assertRaises(ActivationFenced):
+                p2.increment(expected=0, challenge="still-fenced", request_id="still-fenced")
+
+            restarted_provider = FencedActivationProvider(
+                "anchor-A", 2, self.k2, value=0, activation_state=state
+            )
+            restarted = self.ledger(path, restarted_provider, 2, self.k2)
+            row = restarted._activation_row(generation_id=self.g2.generation_id)
+            self.assertEqual(row[6], "COMMITTED")
+            ticket = restarted._ticket_from_row(row)
+            self.assertEqual(restarted_provider.activation_status(ticket), "RELEASED")
+            restarted_provider.increment(
+                expected=0, challenge="after-recovery", request_id="after-recovery"
+            )
+            self.assertEqual(restarted_provider.value, 1)
 
 
 if __name__ == "__main__":
