@@ -35,17 +35,19 @@ _CANONICAL_COLUMNS = {
 
 
 def validate_no_required_extra_columns(q) -> bool:
-    """Reject legacy columns that make a canonical supported INSERT impossible.
+    """Reject legacy columns that can make canonical supported DML fail.
 
-    LAB-091 can safely ignore some additive legacy metadata, but an ordinary
-    extra column declared NOT NULL without a DEFAULT requires every INSERT to
-    provide a value. The supported writer intentionally emits only the
-    canonical column set, so accepting such a table would make adoption succeed
-    while later supported DML fails.
+    LAB-091 can safely ignore ordinary additive metadata when callers may omit
+    it. An ordinary extra column declared NOT NULL without a DEFAULT requires
+    every INSERT to provide a value. A generated extra column is also unsafe to
+    adopt: even though callers do not supply it, its legacy expression is
+    evaluated on canonical writes and can raise or otherwise reject values that
+    are valid under the LAB-091 contract.
 
-    Generated/hidden columns are not caller-supplied values and are outside this
-    narrow reproduced defect; they are therefore not rejected here without a
-    separate reachable counterexample.
+    SQLite ``PRAGMA table_xinfo`` marks generated columns with hidden=2 (VIRTUAL)
+    or hidden=3 (STORED). Those generated extras are rejected fail-closed after
+    a reproduced supported-write failure; ordinary nullable/defaulted extras
+    remain accepted.
     """
     if not q.in_transaction:
         raise AdoptionExtraColumnError(
@@ -60,19 +62,24 @@ def validate_no_required_extra_columns(q) -> bool:
             )
 
         restrictive = []
+        generated = []
         for row in rows:
             name = row[1]
             not_null = bool(row[3])
             default = row[4]
             hidden = row[6] if len(row) > 6 else 0
-            if (
-                name not in canonical
-                and hidden == 0
-                and not_null
-                and default is None
-            ):
+            if name in canonical:
+                continue
+            if hidden in (2, 3):
+                generated.append(name)
+            elif hidden == 0 and not_null and default is None:
                 restrictive.append(name)
 
+        if generated:
+            raise AdoptionExtraColumnError(
+                f"LAB-091 legacy schema has generated extra column(s) for {table}: "
+                + ", ".join(generated)
+            )
         if restrictive:
             raise AdoptionExtraColumnError(
                 f"LAB-091 legacy schema has required extra column(s) for {table}: "
