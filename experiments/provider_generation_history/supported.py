@@ -10,7 +10,6 @@ from experiments.provider_generation_history.integration import (
     IntegratedProviderHistory,
 )
 from experiments.provider_generation_history.protocol import (
-    CurrentGenerationRequired,
     GenerationDescriptor,
     HistoricalReceipt,
     HistoricalVerificationError,
@@ -174,18 +173,21 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         q = self._con()
         try:
             rows = q.execute(
-                "SELECT activation_id,new_generation_id,provider_id,generation,expected_position,fence,status "
-                "FROM provider_generation_activations ORDER BY generation"
+                "SELECT a.activation_id,a.new_generation_id,a.provider_id,a.generation,"
+                "a.expected_position,a.fence,a.status,g.verification_key_hex "
+                "FROM provider_generation_activations AS a "
+                "JOIN provider_generations AS g ON g.generation_id=a.new_generation_id "
+                "ORDER BY a.generation"
             ).fetchall()
         finally:
             q.close()
         seen_fences = set()
         for row in rows:
             ticket = self._ticket_from_row(row)
-            if row[0] != self._activation_id(
-                GenerationDescriptor(row[2], row[3], self.provider_history._descriptor_for_generation(row[3]).verification_key_hex),
-                row[4],
-            ):
+            desc = GenerationDescriptor(row[2], row[3], row[7])
+            if desc.generation_id != row[1]:
+                raise HistoricalVerificationError("activation generation identity mismatch")
+            if row[0] != self._activation_id(desc, row[4]):
                 raise HistoricalVerificationError("activation identity mismatch")
             if ticket.fence < 1 or ticket.fence in seen_fences:
                 raise HistoricalVerificationError("invalid or reused activation fence")
