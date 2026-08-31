@@ -92,11 +92,11 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     def _init_activation_schema(self):
         q = self._con()
         try:
-            q.executescript(
+            q.execute("BEGIN IMMEDIATE")
+            q.execute(
                 _ACTIVATION_TABLE_SQL.replace(
                     "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1
                 )
-                + ";"
             )
             table_row = q.execute(
                 "SELECT type,sql FROM sqlite_master WHERE name=?",
@@ -111,11 +111,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                 raise HistoricalVerificationError(
                     "activation relation schema definition mismatch"
                 )
-            q.executescript(
+            q.execute(
                 _ACTIVATION_TRIGGER_SQL.replace(
                     "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1
                 )
-                + ";"
             )
             trigger_row = q.execute(
                 "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
