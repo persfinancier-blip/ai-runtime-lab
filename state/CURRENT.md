@@ -10,29 +10,29 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; current head `8aa12d35e3dc397543193e098ab51017cf09ffc8`.
+- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; latest production commit `71c22a2054b983839b760edf21ceedc77ad0bc6b`, `supported.py` blob `fb2bab4a262f295ef6a9b87cee459547038a0da9`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs.
 
-LAB-086 was probed first again. The exact predecessor/retained-patch/required-target contract is unchanged. No supported operation observed can server-side compose the retained unified patch with the exact predecessor bytes and feed that result directly into a normal Contents write. Manual/model reserialization of the 949-line security-critical `strict_fence.py` remains prohibited. No LAB-086 mutation was attempted.
+LAB-086 was checked first again. Its exact predecessor/retained-patch/required-target publication contract is unchanged. No supported byte-preserving server-side composition path was observed, so the 949-line security-critical `strict_fence.py` was not reserialized or mutated.
 
-Resumed LAB-090 fallback. The previously published deterministic regression `test_activation_ticket_binding.py` showed that `rotate_provider()` trusted the candidate provider's returned `ActivationTicket` before proving exact binding.
+Resumed LAB-090 fallback and audited durable activation-record verification. Found that SQLite INTEGER affinity can persist non-integral REAL values and the historical verifier accepted them: `expected_position` was normalized through `int()` for activation ID reconstruction and `fence` was only checked with `< 1`. Historical `COMMITTED` rows for older generations are not reconciled against a live provider, so this could let restart accept a record that cannot represent an exact integer provider ticket.
 
-Published the minimal production guard on PR #175:
-- commit `8aa12d35e3dc397543193e098ab51017cf09ffc8`;
-- `experiments/provider_generation_history/supported.py` blob `f9f4975001fa691b415cbbd488897d8c44499c49`;
-- optimistic-concurrency predecessor blob `6aee4eaec6d34563ea82c2a3216a82fb1d157c00`.
+Published deterministic regression:
+- commit `c39bb4f89042f3c8171e534f3c389716f80da5f8`;
+- `experiments/provider_generation_history/tests/test_activation_historical_numeric_types.py`.
 
-Immediately after `prepare_activation()` and before coordinator `BEGIN IMMEDIATE`, the returned ticket must now be exact `ActivationTicket`, bind provider/generation/observed tail/deterministic activation ID, carry a positive integer fence, and be provider-`PREPARED` for that exact ticket. Binding failures raise `HistoricalVerificationError` before coordinator SQL mutation.
+Published minimal production guard:
+- commit `71c22a2054b983839b760edf21ceedc77ad0bc6b`;
+- `supported.py` blob `fb2bab4a262f295ef6a9b87cee459547038a0da9`;
+- verifier now requires exact `int` `expected_position >= 0` and exact `int` `fence >= 1`.
 
-GitHub commit diff confirms the guard is inserted before SQL mutation. The only incidental change is newline-at-EOF normalization. Direct Git/raw transport was probed again and remains unavailable due DNS resolution failure, so no exact branch behavioral GREEN/full downstream unittest gate is claimed.
+GitHub commit diff confirms only those verifier checks changed. A local file-backed SQLite mechanism check confirmed `INTEGER NOT NULL` stores `0.5`/`1.5` as storage class REAL. Exact branch behavioral/full downstream unittest GREEN is not claimed because direct repository execution transport remains unavailable.
 
-Durable note: `research/2026-08-31-lab090-pre-sql-activation-ticket-validation.md`, main commit `35d404291f397938bc32377d5b4f4446b3d9974a`; issue #169 comment `5474563697`.
-
-PR #175 is open, draft, and reports mergeable=true at head `8aa12d35...`.
+Durable note: `research/2026-08-31-lab090-historical-activation-numeric-type-verification.md`, main commit `e10e200146f88abcfe207de59a043b55e6f42bf2`; issue #169 comment `5475130297`.
 
 ## Evidence retained
 
@@ -41,25 +41,24 @@ PR #175 is open, draft, and reports mergeable=true at head `8aa12d35...`.
 - Standalone LAB-086 previously 12/12 PASS; hidden-rowid RED→GREEN evidence and exact predecessor/target derivation retained; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
-- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component hardening is published; broader exact execution remains pending.
-- LAB-090 activation-ticket binding regression source hash/`py_compile` PASS from the prior run; pre-SQL production guard is now published; behavioral result for the guard remains pending exact execution.
+- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published; broader exact execution remains pending.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
-- Direct Git/raw network transport remains unavailable in this run; GitHub connector read/write operations are available.
-- PR #175 stays draft; do not claim behavioral GREEN for activation-ticket binding without exact execution.
+- Direct Git/raw repository execution transport remains unavailable; GitHub connector read/write operations are available.
+- PR #175 stays draft; do not claim behavioral GREEN for newly published LAB-090 regressions/guards without exact execution.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable, resume LAB-090 PR #175. Re-fetch/hash-audit the new `supported.py` head and execute `test_activation_ticket_binding.py` plus activation integration/restart/downstream gates when exact repository execution becomes available. If execution remains unavailable, continue the narrow provider/coordinator boundary audit and persist only defects with deterministic regressions; do not expand protocol scope speculatively.
+If still unavailable, resume LAB-090 PR #175. Re-fetch/hash-audit head `supported.py` and execute `test_activation_historical_numeric_types.py`, `test_activation_ticket_binding.py`, activation integration/restart regressions, and downstream gates when exact repository execution becomes available. If execution remains unavailable, continue only the narrow activation durability/provider-coordinator audit and publish deterministic regressions plus minimal fail-closed fixes.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; pre-SQL activation-ticket guard published; exact behavioral/full gate pending.
+- #169 / LAB-090 — IN_PROGRESS; historical numeric-type verifier guard published; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
