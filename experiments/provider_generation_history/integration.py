@@ -186,6 +186,11 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                 raise PendingIntent("another anchor intent is unresolved")
 
             durable = self.provider_history._current_locked(q)
+            runtime = self._descriptor_from_attested(self.attested)
+            if runtime.generation_id != durable.generation_id:
+                raise CurrentGenerationRequired(
+                    "runtime provider is stale relative to durable history"
+                )
             predecessor = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
             ).fetchone()[0]
