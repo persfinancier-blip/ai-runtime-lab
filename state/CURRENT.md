@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ## Active objective
 
@@ -11,7 +11,7 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-090 / #169 fallback remains draft PR #175; branch `lab-090-provider-activation-fencing`; atomic source fix head `d9a381dd4607a928cd1315adef6431e239995bc1`, `supported.py` blob `8140d6e180c3e97085830b872cea7d87f8433144`.
-- LAB-092 / #176 is IN_PROGRESS on branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Latest regression head `86d501cb2879a684c72201ae94f348a2931ee0a4`; implementation remains `ce6fcbedeb838473d68071321df449d339ede290`.
+- LAB-092 / #176 is IN_PROGRESS on branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Latest head `5f6d2beda547d4395f7c149b7bd5bbf9ce05f3d9`; implementation commit remains `ce6fcbedeb838473d68071321df449d339ede290`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
@@ -20,12 +20,12 @@ Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open P
 
 Re-probed exact source execution with a fresh git clone of PR #177; transport failed before repository execution with `Could not resolve host: github.com`. No branch-level GREEN is claimed.
 
-Advanced the explicitly allowed LAB-092 fallback without changing LAB-090. Added two fail-closed regressions to PR #177 at commit `86d501cb2879a684c72201ae94f348a2931ee0a4`, test blob `17f37a6a34dfc8caf26ee37a7e019afc6a744fc4`:
-- confirmed migration followed by trigger-only deletion must fail closed on both startup and explicit migration, with no repair;
-- unmarked partial activation DDL (exact table, missing trigger) must fail closed on both paths and remain unrepaired.
-Published bytes were re-fetched and contain the intended tests.
+Advanced the allowed LAB-092 fallback without changing LAB-090. Added `test_activation_schema_provenance_recovery.py` on PR #177, current blob `f7e69087525f74bc7ed2a8e1d6acbb8bf30b5b40`, branch commit `5f6d2beda547d4395f7c149b7bd5bbf9ce05f3d9`, covering:
+- unmarked same-name mismatched activation trigger -> startup and explicit migration fail closed, no repair;
+- completed provenance followed by same-name mismatched trigger -> startup and explicit migration fail closed, no repair;
+- deterministic completion marker left PREPARED -> ordinary startup raises specifically `ActivationSchemaMigrationRequired` and leaves it PREPARED; only explicit migration may resume it to CONFIRMED.
 
-Durable evidence: `research/2026-08-31-lab092-trigger-and-partial-ddl-regressions.md`, main commit `4f23a71abb0c3cd3f35704e24e12b17ba1f5109e`; #176 comment `5484009806`.
+Durable evidence: `research/2026-09-01-lab092-mismatched-ddl-and-prepared-recovery.md`, main commit `343dd73caca8351723f654f89c9641d7d7aedcaa`; #176 comment `5484728877`.
 
 ## Evidence retained
 
@@ -35,7 +35,7 @@ Durable evidence: `research/2026-08-31-lab092-trigger-and-partial-ddl-regression
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
 - LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall; atomic installation fix published, exact branch behavioral/full-suite execution pending.
-- LAB-092 authored implementation `py_compile` PASS from prior run. Standalone file-backed SQLite classifier probe produced expected `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, `DDL_INSTALLED_PREPARED`, `COMPLETE`, and post-completion-deletion `FAIL_CLOSED` states. Exact branch unit tests are not yet GREEN because repository checkout transport still fails before execution.
+- LAB-092 authored implementation `py_compile` PASS from prior run. Standalone file-backed SQLite classifier probe produced expected `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, `DDL_INSTALLED_PREPARED`, `COMPLETE`, and post-completion-deletion `FAIL_CLOSED` states. Current mismatch/PREPARED recovery regressions are published but not branch-executed because checkout transport still fails before code execution.
 
 ## Known blockers / constraints
 
@@ -44,16 +44,16 @@ Durable evidence: `research/2026-08-31-lab092-trigger-and-partial-ddl-regression
 - GitHub connector read/write is available, but no supported byte-preserving server-side patch-composition write is exposed.
 - Direct git transport was probed again in this run and failed before repository execution with `Could not resolve host: github.com`.
 - Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute.
-- Keep PR #177 draft until exact LAB-092 behavioral tests execute; mechanism-level/classifier evidence and authored regressions are not branch-level GREEN.
-- Do not solve LAB-092 with unauthenticated local markers, marker-before-DDL ordering, or post-confirmation auto-repair.
+- Keep PR #177 draft until exact LAB-092 behavioral tests execute; authored regressions and mechanism-level probes are not branch-level GREEN.
+- Do not solve LAB-092 with unauthenticated local markers, marker-before-DDL ordering, post-confirmation auto-repair, or broad exception assertions that can mask unrelated failures.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable and exact source execution becomes available, execute PR #175 `test_activation_schema_installation_race.py` first on source blob `8140d6e1...`, then the remaining LAB-090 activation restart/tamper/integration/downstream gates.
+If still unavailable and exact source execution becomes available, execute PR #175 `test_activation_schema_installation_race.py` first on source blob `8140d6e1...`, then the remaining LAB-090 activation restart/tamper/integration/downstream gates; then execute all PR #177 provenance regressions on exact published head.
 
-If execution remains unavailable, continue LAB-092 on PR #177 without changing LAB-090: add mismatched-DDL regressions, then PREPARED-marker recovery, then a concurrent-writer explicit-migration regression. Audit explicit migration against an unresolved LAB-090 activation record and require fail-closed behavior/no provenance confirmation if an unresolved activation blocks the marker intent. Keep all claims below branch-level GREEN until exact published-head execution succeeds.
+If execution remains unavailable, continue LAB-092 on PR #177 without changing LAB-090: add a concurrent-writer explicit-migration regression, then audit/regress explicit migration with an unresolved LAB-090 activation record. Require fail-closed behavior and no provenance confirmation when LAB-090's trigger blocks the migration marker intent. Keep all claims below branch-level GREEN until exact published-head execution succeeds.
 
 ## Backlog
 
@@ -61,4 +61,4 @@ If execution remains unavailable, continue LAB-092 on PR #177 without changing L
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; atomic installation source fix published; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; explicit provenance candidate in draft PR #177; trigger-deletion and unmarked partial-DDL regressions published; exact behavioral gate plus mismatched/PREPARED/concurrency regressions pending.
+- #176 / LAB-092 — IN_PROGRESS; explicit provenance candidate in draft PR #177; deletion/partial/mismatch/PREPARED recovery regressions published; exact behavioral gate plus concurrency/unresolved-activation regressions pending.
