@@ -22,6 +22,21 @@ from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution,
 from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
 
 
+_ACTIVATION_TRIGGER_NAME = "block_intent_during_provider_activation"
+_ACTIVATION_TRIGGER_SQL = """CREATE TRIGGER block_intent_during_provider_activation
+BEFORE INSERT ON shared_anchor_intents
+WHEN EXISTS(
+  SELECT 1 FROM provider_generation_activations WHERE status='SQL_COMMITTED'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'provider activation unresolved');
+END"""
+
+
+def _normalized_sql(sql: str) -> str:
+    return " ".join(sql.split())
+
+
 class CoordinatorOnlyProviderHistory(IntegratedProviderHistory):
     """Provider history whose authority-changing API is only the shared-ledger coordinator."""
 
@@ -78,17 +93,31 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
                   fence INTEGER NOT NULL,
                   status TEXT NOT NULL CHECK(status IN ('SQL_COMMITTED','COMMITTED'))
                 );
-                CREATE TRIGGER IF NOT EXISTS block_intent_during_provider_activation
-                BEFORE INSERT ON shared_anchor_intents
-                WHEN EXISTS(
-                  SELECT 1 FROM provider_generation_activations WHERE status='SQL_COMMITTED'
-                )
-                BEGIN
-                  SELECT RAISE(ABORT, 'provider activation unresolved');
-                END;
                 """
             )
+            q.executescript(
+                _ACTIVATION_TRIGGER_SQL.replace(
+                    "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1
+                )
+                + ";"
+            )
+            trigger_row = q.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
+                (_ACTIVATION_TRIGGER_NAME,),
+            ).fetchone()
+            if (
+                trigger_row is None
+                or trigger_row[0] is None
+                or _normalized_sql(trigger_row[0]) != _normalized_sql(_ACTIVATION_TRIGGER_SQL)
+            ):
+                raise HistoricalVerificationError(
+                    "activation intent fence trigger definition mismatch"
+                )
             q.commit()
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
         finally:
             q.close()
 
