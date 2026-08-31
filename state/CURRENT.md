@@ -10,26 +10,26 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; latest production commit remains `71c22a2054b983839b760edf21ceedc77ad0bc6b`, `supported.py` blob `fb2bab4a262f295ef6a9b87cee459547038a0da9`; latest regression commit `23087e48fbc99229e194e15620fa35d13f8a1e86`.
+- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; current head `5101eba17df411d194ef1194d23d2c3ec130d923`; `supported.py` blob `d80a6015df8b39a43a1d3674ff7fc65263f1de7b`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs.
 
-LAB-086 was checked first. The GitHub connector can now fetch exact blobs by SHA and successfully returned predecessor `d4a6a40f...` plus retained patch `61841b58...`. Conflict check also confirmed branch `lab/086-asymmetric-break-glass-history` still has exact predecessor blob `d4a6a40f...` at `strict_fence.py`. However, no supported high-level server-side apply-patch/composition operation is exposed. The Contents API requires full replacement UTF-8 content, so using it would still require prohibited manual/model reserialization of the 949-line security-critical file. LAB-086 was not mutated.
+LAB-086 remains first priority. No safe supported byte-preserving server-side composition/write bridge is exposed for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`; do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
 
-Resumed LAB-090 fallback and audited the durable activation intent fence. Found that `_init_activation_schema()` uses `CREATE TRIGGER IF NOT EXISTS block_intent_during_provider_activation`; an already-persisted same-name no-op/tampered trigger therefore survives restart unchanged, while `_verify_activation_records()` does not authenticate the trigger definition. This can remove the durable fence that must block new intents while an activation remains `SQL_COMMITTED`.
+Resumed LAB-090 fallback. The previously published RED regression proved that same-name `CREATE TRIGGER IF NOT EXISTS` preserves a tampered/no-op `block_intent_during_provider_activation` trigger across restart. Implemented fail-closed persisted-trigger authentication in PR #175 commit `5101eba17df411d194ef1194d23d2c3ec130d923`.
 
-Published deterministic RED regression:
-- commit `23087e48fbc99229e194e15620fa35d13f8a1e86`;
-- `experiments/provider_generation_history/tests/test_activation_trigger_tamper_restart.py`;
-- exact remotely re-fetched blob `3b6efe53d3cef505ef78a4fadf9d283aa88deac7`;
-- independent `py_compile` PASS.
+The implementation now keeps one canonical `_ACTIVATION_TRIGGER_SQL`, derives the idempotent install statement from it, reads persisted `sqlite_master.sql`, normalizes whitespace only, and raises `HistoricalVerificationError` on absence or mismatch. It does not drop/recreate the trigger, avoiding a fence-removal concurrency window.
 
-A separate file-backed SQLite mechanism check confirmed that same-name `CREATE TRIGGER IF NOT EXISTS` preserves a tampered `WHEN 0` trigger and admits an intent insert despite a persisted unresolved activation. Exact branch behavioral RED/GREEN is not claimed because direct repository execution transport remains unavailable.
+GitHub commit inspection confirms one source file changed: `experiments/provider_generation_history/supported.py`, 38 additions / 9 deletions; resulting blob `d80a6015df8b39a43a1d3674ff7fc65263f1de7b`.
 
-Durable note: `research/2026-08-31-lab090-activation-trigger-tamper-restart.md`, main commit `9b4fa16d0da0c40d813a40a2a59c2ca2cc2d4ddc`; issue #169 comment `5475758883`.
+A separate file-backed SQLite mechanism test executed PASS: fresh canonical install verifies; replacing the trigger with same-name `WHEN 0` survives `IF NOT EXISTS` but canonical verification detects the mismatch. Exact branch behavioral/full-suite GREEN is not claimed because direct repository execution transport remains unavailable.
+
+Durable note: `research/2026-08-31-lab090-activation-trigger-canonical-verification-fix.md`, main commit `22824d0c4582d4c4d8ca3a7ffd75191adfd13d04`; issue #169 comment `5476289299`.
+
+PR #175 is open/draft at head `5101eba17...`; GitHub currently reports mergeability as unknown/null rather than a resolved clean/conflict state.
 
 ## Evidence retained
 
@@ -38,7 +38,7 @@ Durable note: `research/2026-08-31-lab090-activation-trigger-tamper-restart.md`,
 - Standalone LAB-086 previously 12/12 PASS; hidden-rowid RED→GREEN evidence and exact predecessor/target derivation retained; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
-- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-tamper RED regression is now published; broader exact execution remains pending.
+- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-tamper RED regression is published and canonical trigger-definition fix is now published; broader exact execution remains pending.
 
 ## Known blockers / constraints
 
@@ -46,17 +46,17 @@ Durable note: `research/2026-08-31-lab090-activation-trigger-tamper-restart.md`,
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Exact blob fetch is available, but no supported byte-preserving server-side patch composition/write bridge is currently exposed.
 - Direct Git/raw repository execution transport remains unavailable; GitHub connector read/write operations are available.
-- PR #175 stays draft; do not claim behavioral GREEN for newly published LAB-090 regressions/guards without exact execution.
+- PR #175 stays draft; do not claim behavioral GREEN for the trigger-tamper regression/fix without exact execution.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable, resume LAB-090 PR #175. Implement fail-closed authentication of the persisted `block_intent_during_provider_activation` enforcement trigger, preferably from one canonical trigger definition used for both install and verification, without introducing a drop/recreate concurrency window. Run `test_activation_trigger_tamper_restart.py` plus activation restart/integration/downstream gates when exact repository execution is available. If execution remains unavailable, continue only narrow durability/provider-coordinator audit work and retain explicit RED/mechanism evidence without claiming behavioral GREEN.
+If still unavailable, resume LAB-090 PR #175. First attempt exact published-head execution of `test_activation_trigger_tamper_restart.py`, activation restart/integration tests, and downstream gates using any newly available safe execution path. If execution remains unavailable, audit the activation-table/schema durability boundary next: determine whether persisted table/index/constraint tampering can weaken coordinator assumptions despite canonical trigger authentication, reproduce only a concrete defect before changing code, and avoid speculative protocol expansion.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; activation-trigger tamper RED published; canonical trigger verification fix and exact behavioral/full gate pending.
+- #169 / LAB-090 — IN_PROGRESS; canonical trigger verification fix published; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
