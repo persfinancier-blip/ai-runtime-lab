@@ -282,6 +282,22 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             expected_position=expected_position,
             activation_id=activation_id,
         )
+        if (
+            type(ticket) is not ActivationTicket
+            or ticket.provider_id != new.provider_id
+            or ticket.generation != new.generation
+            or ticket.expected_position != expected_position
+            or ticket.activation_id != activation_id
+            or type(ticket.fence) is not int
+            or ticket.fence < 1
+        ):
+            raise HistoricalVerificationError(
+                "provider activation ticket does not bind requested generation"
+            )
+        if provider.activation_status(ticket) != "PREPARED":
+            raise HistoricalVerificationError(
+                "provider activation ticket is not exactly PREPARED"
+            )
         sql_committed = False
         q = self._con()
         try:
