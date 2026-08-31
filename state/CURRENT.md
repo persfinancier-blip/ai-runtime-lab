@@ -10,22 +10,24 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; current head `ae3a3cf089f7436ea74548ef9fa6cc5242e276e8`.
+- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; current head `96d7ad17836174c94c668d00e8608e498b1c5254`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues, and PR #175.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issue #169, PR #175, and the current LAB-090 activation coordinator/provider code.
 
-LAB-086 remains first priority. No supported byte-preserving server-side composition/write bridge is exposed for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
+LAB-086 remains first priority. The GitHub write surface still exposes complete UTF-8 Contents replacement, not a supported byte-preserving server-side composition/write bridge for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
 
-Reconciled PR #175 integration state. The earlier `mergeable=false` observation is not evidence of a source conflict: two-way compare from merge base `6cc7a044...` shows main-side divergence only in research/state paths and branch-side divergence in LAB-090 source/tests. A direct GitHub REST PR fetch now reports `mergeable=true`, `rebaseable=true`, `mergeable_state=clean`.
+Fresh direct execution transport remains unavailable, so exact published-head behavioral/full-suite GREEN is still not claimed.
 
-Fresh direct execution transport probe still fails before repository execution: `git ls-remote ...` -> `Could not resolve host: github.com`. Therefore exact published-head LAB-090 behavioral/full-suite GREEN is still not claimed.
+Narrow LAB-090 restart audit found a new writer window in `_init_activation_schema()`: activation table creation/verification and blocking-trigger creation/verification are two separate autocommit `executescript()` steps. If the trigger is missing while a `SQL_COMMITTED` activation exists, a concurrent live/older writer can insert after the table step and before trigger installation.
 
-Durable note: `research/2026-08-31-lab090-pr175-mergeability-reconciliation.md`, main commit `1f1b3b27d92f960ad81993af0899b9f22e85aef9`; issue #169 comment `5478529592`.
+Published deterministic RED candidate on PR #175: `experiments/provider_generation_history/tests/test_activation_schema_installation_race.py`, commit `96d7ad17836174c94c668d00e8608e498b1c5254`, blob `cfd5c24107a9582bef91cbeeec28a8bc9b6f83c5`. Independent `py_compile` PASS; GitHub re-fetch exactly matches the computed blob. A separate file-backed SQLite mechanism probe reproduced the current two-autocommit-step ordering and admitted one writer in the gap despite an unresolved activation row.
 
-PR #175 remains open/draft because exact focused/integration/downstream behavioral gates are pending, not because of a demonstrated merge conflict.
+Durable note: `research/2026-08-31-lab090-activation-schema-installation-race.md`, main commit `fec7a6ef0269cc2974f919ac5eb98bc7004b6a10`; issue #169 comment `5479151189`.
+
+PR #175 remains open/draft. Do not claim the new regression behavioral RED/GREEN until exact repository execution is available.
 
 ## Evidence retained
 
@@ -34,7 +36,7 @@ PR #175 remains open/draft because exact focused/integration/downstream behavior
 - Standalone LAB-086 previously 12/12 PASS; hidden-rowid RED→GREEN evidence and exact predecessor/target derivation retained; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
-- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are published. Broader exact execution remains pending.
+- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are published. New schema-installation writer-race regression is published; broader exact execution remains pending.
 
 ## Known blockers / constraints
 
@@ -42,17 +44,19 @@ PR #175 remains open/draft because exact focused/integration/downstream behavior
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Exact blob fetch is available, but no supported byte-preserving server-side patch composition/write bridge is currently exposed.
 - Direct Git/raw repository execution transport remains unavailable; GitHub connector read/write operations are available.
-- PR #175 is currently cleanly mergeable according to direct REST, but stays draft until exact behavioral/integration/downstream gates execute. Do not use the large multi-file Contents-API integration fallback before those gates.
+- Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute. Do not use a large multi-file Contents-API integration fallback before those gates.
 
 ## Exact next action
 
 LAB-086 first: probe again for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable and exact source execution becomes available, run PR #175 published head regressions beginning with `test_activation_schema_tamper_restart.py` and `test_activation_trigger_tamper_restart.py`, then activation restart/integration and downstream gates. If execution remains unavailable, continue only narrow byte-verifiable LAB-090 provider/coordinator/restart audits; keep #175 draft and do not claim behavioral GREEN.
+If still unavailable and exact source execution becomes available, run PR #175 published head beginning with `test_activation_schema_installation_race.py`, then `test_activation_schema_tamper_restart.py`, `test_activation_trigger_tamper_restart.py`, activation restart/integration and downstream gates. Expected current result for the new installation-race regression is RED. After reproducing it, fix `_init_activation_schema()` by holding one `BEGIN IMMEDIATE` transaction across table create/verify and trigger create/verify, using single-statement `execute()` rather than `executescript()`, then require GREEN and rerun downstream gates.
+
+If execution remains unavailable, continue only narrow byte-verifiable LAB-090 provider/coordinator/restart audits; keep #175 draft and do not claim behavioral GREEN.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; activation-table schema-substitution fix published; exact behavioral/full gate pending; merge-conflict concern reconciled as clean.
+- #169 / LAB-090 — IN_PROGRESS; activation schema-installation writer-race regression published; transactional install fix + exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
