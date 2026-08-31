@@ -60,6 +60,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         self._recover_pending_activation()
         self._verify_activation_records()
 
+    def _provider(self):
+        durable = self._require_runtime_matches_durable_head()
+        return durable.provider_id, durable.generation
+
     def _init_activation_schema(self):
         q = self._con()
         try:
