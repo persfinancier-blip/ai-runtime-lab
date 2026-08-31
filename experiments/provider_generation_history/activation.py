@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import RLock
 
 from experiments.anchor_attestation.protocol import (
     AnchorMismatch,
@@ -44,6 +45,7 @@ class ActivationState:
     next_fence: int = 0
     pending: ActivationTicket | None = None
     committed: dict[str, ActivationTicket] = field(default_factory=dict)
+    lock: RLock = field(default_factory=RLock, repr=False, compare=False)
 
 
 class FencedActivationProvider(SignedAnchorProvider):
@@ -76,110 +78,116 @@ class FencedActivationProvider(SignedAnchorProvider):
         return committed
 
     def prepare_activation(self, *, expected_position: int, activation_id: str) -> ActivationTicket:
-        if not self.available:
-            raise ProviderUnavailable("activation path unavailable")
-        if not isinstance(activation_id, str) or not activation_id:
-            raise ValueError("activation_id must be non-empty")
-        expected_position = int(expected_position)
+        with self.activation_state.lock:
+            if not self.available:
+                raise ProviderUnavailable("activation path unavailable")
+            if not isinstance(activation_id, str) or not activation_id:
+                raise ValueError("activation_id must be non-empty")
+            expected_position = int(expected_position)
 
-        committed = self.activation_state.committed.get(activation_id)
-        if committed is not None:
-            self._ticket_matches_runtime(committed)
-            if committed.expected_position != expected_position:
-                raise ActivationTicketMismatch("activation_id reused with different position")
-            return committed
+            committed = self.activation_state.committed.get(activation_id)
+            if committed is not None:
+                self._ticket_matches_runtime(committed)
+                if committed.expected_position != expected_position:
+                    raise ActivationTicketMismatch("activation_id reused with different position")
+                return committed
 
-        pending = self.activation_state.pending
-        if pending is not None:
-            self._ticket_matches_runtime(pending)
-            if pending.activation_id != activation_id:
-                raise ActivationFenced("provider has another pending activation")
-            if pending.expected_position != expected_position:
-                raise ActivationTicketMismatch("activation_id reused with different position")
-            return pending
+            pending = self.activation_state.pending
+            if pending is not None:
+                self._ticket_matches_runtime(pending)
+                if pending.activation_id != activation_id:
+                    raise ActivationFenced("provider has another pending activation")
+                if pending.expected_position != expected_position:
+                    raise ActivationTicketMismatch("activation_id reused with different position")
+                return pending
 
-        if self.value != expected_position:
-            raise AnchorMismatch(f"expected={expected_position} current={self.value}")
+            if self.value != expected_position:
+                raise AnchorMismatch(f"expected={expected_position} current={self.value}")
 
-        self.activation_state.next_fence += 1
-        ticket = ActivationTicket(
-            self.provider_id,
-            self.generation,
-            expected_position,
-            activation_id,
-            self.activation_state.next_fence,
-        )
-        self.activation_state.pending = ticket
-        return ticket
+            self.activation_state.next_fence += 1
+            ticket = ActivationTicket(
+                self.provider_id,
+                self.generation,
+                expected_position,
+                activation_id,
+                self.activation_state.next_fence,
+            )
+            self.activation_state.pending = ticket
+            return ticket
 
     def activation_status(self, ticket: ActivationTicket) -> str:
-        self._ticket_matches_runtime(ticket)
-        committed = self._committed_ticket(ticket)
-        pending = self.activation_state.pending
-        if pending is not None and pending.activation_id == ticket.activation_id and pending != ticket:
-            raise ActivationTicketMismatch("pending activation ticket mismatch")
-        if committed is not None:
+        with self.activation_state.lock:
+            self._ticket_matches_runtime(ticket)
+            committed = self._committed_ticket(ticket)
+            pending = self.activation_state.pending
+            if pending is not None and pending.activation_id == ticket.activation_id and pending != ticket:
+                raise ActivationTicketMismatch("pending activation ticket mismatch")
+            if committed is not None:
+                if pending == ticket:
+                    return "COMMITTED_FENCED"
+                return "RELEASED"
             if pending == ticket:
-                return "COMMITTED_FENCED"
-            return "RELEASED"
-        if pending == ticket:
-            return "PREPARED"
-        return "ABSENT"
+                return "PREPARED"
+            return "ABSENT"
 
     def commit_activation(self, ticket: ActivationTicket, *, timeout_after_commit: bool = False) -> str:
-        if not self.available:
-            raise ProviderUnavailable("activation path unavailable")
-        self._ticket_matches_runtime(ticket)
-        status = self.activation_status(ticket)
-        if status in {"COMMITTED_FENCED", "RELEASED"}:
-            return status
-        if status != "PREPARED":
-            raise ActivationTicketMismatch("activation is not pending")
-        if self.value != ticket.expected_position:
-            raise AnchorMismatch(
-                f"activation position changed: expected={ticket.expected_position} current={self.value}"
-            )
-        self.activation_state.committed[ticket.activation_id] = ticket
-        # Keep pending installed: provider commitment alone must not release the
-        # external fence before the coordinator durably acknowledges this ticket.
-        if timeout_after_commit:
-            raise UnknownOutcome("activation committed; acknowledgement lost")
-        return "COMMITTED_FENCED"
+        with self.activation_state.lock:
+            if not self.available:
+                raise ProviderUnavailable("activation path unavailable")
+            self._ticket_matches_runtime(ticket)
+            status = self.activation_status(ticket)
+            if status in {"COMMITTED_FENCED", "RELEASED"}:
+                return status
+            if status != "PREPARED":
+                raise ActivationTicketMismatch("activation is not pending")
+            if self.value != ticket.expected_position:
+                raise AnchorMismatch(
+                    f"activation position changed: expected={ticket.expected_position} current={self.value}"
+                )
+            self.activation_state.committed[ticket.activation_id] = ticket
+            # Keep pending installed: provider commitment alone must not release the
+            # external fence before the coordinator durably acknowledges this ticket.
+            if timeout_after_commit:
+                raise UnknownOutcome("activation committed; acknowledgement lost")
+            return "COMMITTED_FENCED"
 
     def release_activation(self, ticket: ActivationTicket) -> str:
-        if not self.available:
-            raise ProviderUnavailable("activation path unavailable")
-        self._ticket_matches_runtime(ticket)
-        status = self.activation_status(ticket)
-        if status == "RELEASED":
-            return status
-        if status != "COMMITTED_FENCED":
-            raise ActivationTicketMismatch("activation is not committed and fenced")
-        pending = self.activation_state.pending
-        if pending != ticket:
-            raise ActivationTicketMismatch("exact activation ticket is not fenced")
-        self.activation_state.pending = None
-        return "RELEASED"
+        with self.activation_state.lock:
+            if not self.available:
+                raise ProviderUnavailable("activation path unavailable")
+            self._ticket_matches_runtime(ticket)
+            status = self.activation_status(ticket)
+            if status == "RELEASED":
+                return status
+            if status != "COMMITTED_FENCED":
+                raise ActivationTicketMismatch("activation is not committed and fenced")
+            pending = self.activation_state.pending
+            if pending != ticket:
+                raise ActivationTicketMismatch("exact activation ticket is not fenced")
+            self.activation_state.pending = None
+            return "RELEASED"
 
     def abort_activation(self, ticket: ActivationTicket) -> str:
-        self._ticket_matches_runtime(ticket)
-        status = self.activation_status(ticket)
-        if status in {"COMMITTED_FENCED", "RELEASED"}:
-            return status
-        if status == "ABSENT":
-            return status
-        self.activation_state.pending = None
-        return "ABORTED"
+        with self.activation_state.lock:
+            self._ticket_matches_runtime(ticket)
+            status = self.activation_status(ticket)
+            if status in {"COMMITTED_FENCED", "RELEASED"}:
+                return status
+            if status == "ABSENT":
+                return status
+            self.activation_state.pending = None
+            return "ABORTED"
 
     def increment(self, *, expected, challenge, request_id, timeout_after_commit=False):
-        pending = self.activation_state.pending
-        if pending is not None:
-            raise ActivationFenced(
-                f"provider activation {pending.activation_id} fence={pending.fence} is pending"
+        with self.activation_state.lock:
+            pending = self.activation_state.pending
+            if pending is not None:
+                raise ActivationFenced(
+                    f"provider activation {pending.activation_id} fence={pending.fence} is pending"
+                )
+            return super().increment(
+                expected=expected,
+                challenge=challenge,
+                request_id=request_id,
+                timeout_after_commit=timeout_after_commit,
             )
-        return super().increment(
-            expected=expected,
-            challenge=challenge,
-            request_id=request_id,
-            timeout_after_commit=timeout_after_commit,
-        )
