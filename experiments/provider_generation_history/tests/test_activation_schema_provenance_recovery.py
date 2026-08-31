@@ -10,6 +10,7 @@ from experiments.anchor_attestation.protocol import (
 )
 from experiments.provider_generation_history.activation import FencedActivationProvider
 from experiments.provider_generation_history.activation_schema_provenance import (
+    ActivationSchemaMigrationRequired,
     ProvenancedHistoricalSharedAnchorLedger,
     _completion_intent,
 )
@@ -130,8 +131,7 @@ class ActivationSchemaProvenanceRecoveryTests(unittest.TestCase):
             prepared = legacy.reserve(_completion_intent())
             self.assertEqual(prepared.status, "PREPARED")
 
-            with self.assertRaises(Exception):
-                # Ordinary startup must never advance a PREPARED migration marker.
+            with self.assertRaises(ActivationSchemaMigrationRequired):
                 ProvenancedHistoricalSharedAnchorLedger(
                     path, attested(provider, 1, key), g1
                 )
