@@ -1,9 +1,7 @@
 import sqlite3
 import tempfile
-import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
@@ -13,10 +11,11 @@ from experiments.anchor_attestation.protocol import (
 from experiments.provider_generation_history.activation import FencedActivationProvider
 from experiments.provider_generation_history.activation_schema_provenance import (
     ProvenancedHistoricalSharedAnchorLedger,
+    _install_and_reserve_prepared,
 )
 from experiments.provider_generation_history.protocol import GenerationDescriptor
 from experiments.provider_generation_history.supported import SupportedHistoricalSharedAnchorLedger
-from experiments.shared_anchor_intent_ledger.protocol import Intent
+from experiments.shared_anchor_intent_ledger.protocol import Intent, PendingIntent
 
 
 def descriptor(generation, key):
@@ -30,19 +29,8 @@ def attested(provider, generation, key):
     return AttestedCatchup(provider, verifier)
 
 
-class PauseAfterActivationDDL(SupportedHistoricalSharedAnchorLedger):
-    ddl_installed = None
-    allow_marker = None
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ddl_installed.set()
-        if not self.allow_marker.wait(timeout=5):
-            raise RuntimeError("activation migration marker pause timed out")
-
-
 class ActivationSchemaMigrationConcurrencyTests(unittest.TestCase):
-    def test_writer_cannot_enter_between_activation_ddl_and_provenance_marker(self):
+    def test_atomic_boundary_exposes_exact_ddl_only_with_prepared_marker(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             key = b"provider-key-1"
@@ -52,8 +40,8 @@ class ActivationSchemaMigrationConcurrencyTests(unittest.TestCase):
                 path, attested(provider, 1, key), g1
             )
 
-            # Recreate the legitimate pre-LAB-090 migration state while retaining
-            # the already-initialized shared-anchor ledger.
+            # Recreate a legitimate pre-LAB-090 source while retaining the
+            # initialized shared-anchor/provider-history ledger.
             q = sqlite3.connect(path)
             try:
                 q.execute("DROP TRIGGER block_intent_during_provider_activation")
@@ -62,65 +50,60 @@ class ActivationSchemaMigrationConcurrencyTests(unittest.TestCase):
             finally:
                 q.close()
 
-            ddl_installed = threading.Event()
-            allow_marker = threading.Event()
-            writer_finished = threading.Event()
-            migration_errors = []
-            writer_errors = []
-
-            PauseAfterActivationDDL.ddl_installed = ddl_installed
-            PauseAfterActivationDDL.allow_marker = allow_marker
-
-            def migrate():
-                try:
-                    with patch(
-                        "experiments.provider_generation_history.activation_schema_provenance."
-                        "SupportedHistoricalSharedAnchorLedger",
-                        PauseAfterActivationDDL,
-                    ):
-                        ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
-                            path, attested(provider, 1, key), g1
-                        )
-                except Exception as exc:
-                    migration_errors.append(exc)
-
-            def writer():
-                try:
-                    live.reserve(
-                        Intent(
-                            "writer-during-activation-schema-migration",
-                            "component-A",
-                            "migration",
-                            {"x": 1},
-                        )
-                    )
-                except Exception as exc:
-                    writer_errors.append(exc)
-                finally:
-                    writer_finished.set()
-
-            migration_thread = threading.Thread(target=migrate)
-            migration_thread.start()
-            self.assertTrue(ddl_installed.wait(timeout=5))
-
-            writer_thread = threading.Thread(target=writer)
-            writer_thread.start()
-            writer_thread.join(timeout=0.2)
-            admitted_before_provenance = writer_finished.is_set()
-
-            # Always release the migration thread before asserting so a RED result
-            # cannot strand the test process.
-            allow_marker.set()
-            migration_thread.join(timeout=5)
-            writer_thread.join(timeout=5)
-
-            self.assertFalse(
-                admitted_before_provenance,
-                "shared-anchor writer entered after activation DDL commit but before provenance marker reservation",
+            prepared = _install_and_reserve_prepared(
+                path, attested(provider, 1, key), g1
             )
-            self.assertFalse(migration_errors)
-            self.assertTrue(writer_finished.is_set())
-            self.assertLessEqual(len(writer_errors), 1)
+            self.assertEqual(prepared.status, "PREPARED")
+
+            # Model a crash immediately after the atomic SQLite commit and before
+            # any external anchor effect/confirmation. Both DDL objects and the
+            # PREPARED provenance row must already be durable together.
+            q = sqlite3.connect(path)
+            try:
+                table = q.execute(
+                    "SELECT type FROM sqlite_master WHERE name='provider_generation_activations'"
+                ).fetchone()
+                trigger = q.execute(
+                    "SELECT type FROM sqlite_master WHERE name='block_intent_during_provider_activation'"
+                ).fetchone()
+                marker = q.execute(
+                    "SELECT status FROM shared_anchor_intents "
+                    "WHERE intent_id='migration:provider-generation-activation-schema:v1'"
+                ).fetchone()
+                self.assertEqual(table, ("table",))
+                self.assertEqual(trigger, ("trigger",))
+                self.assertEqual(marker, ("PREPARED",))
+            finally:
+                q.close()
+
+            # A different writer cannot occupy the shared-anchor tail after that
+            # commit because LAB-080 sees the migration PREPARED row.
+            with self.assertRaises(PendingIntent):
+                live.reserve(
+                    Intent(
+                        "writer-during-activation-schema-migration",
+                        "component-A",
+                        "migration",
+                        {"x": 1},
+                    )
+                )
+
+            # Explicit migration is the only recovery path and confirms the exact
+            # PREPARED row instead of creating a second marker.
+            migrated = ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
+                path, attested(provider, 1, key), g1
+            )
+            self.assertTrue(migrated.verify_activation_schema_provenance())
+
+            q = sqlite3.connect(path)
+            try:
+                rows = q.execute(
+                    "SELECT status FROM shared_anchor_intents "
+                    "WHERE intent_id='migration:provider-generation-activation-schema:v1'"
+                ).fetchall()
+                self.assertEqual(rows, [("CONFIRMED",)])
+            finally:
+                q.close()
 
 
 if __name__ == "__main__":
