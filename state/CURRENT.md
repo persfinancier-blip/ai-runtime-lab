@@ -17,19 +17,15 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues, and PR #175.
 
-LAB-086 remains first priority. Direct git transport is still unavailable (`Could not resolve host: github.com`) and no safe supported byte-preserving server-side composition/write bridge is exposed for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
+LAB-086 remains first priority. No supported byte-preserving server-side composition/write bridge is exposed for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
 
-Resumed LAB-090 fallback and implemented the pending fail-closed activation relation-schema verification. PR #175 commit `ae3a3cf089f7436ea74548ef9fa6cc5242e276e8`, `experiments/provider_generation_history/supported.py` blob `76278dfceff78e2738d7dba73a5c8bcf2c4d3ef6`.
+Reconciled PR #175 integration state. The earlier `mergeable=false` observation is not evidence of a source conflict: two-way compare from merge base `6cc7a044...` shows main-side divergence only in research/state paths and branch-side divergence in LAB-090 source/tests. A direct GitHub REST PR fetch now reports `mergeable=true`, `rebaseable=true`, `mergeable_state=clean`.
 
-The implementation now canonicalizes `provider_generation_activations` DDL and, immediately after `CREATE TABLE IF NOT EXISTS`, requires `sqlite_master` to report the object as a real `table` whose normalized persisted SQL exactly matches the canonical PRIMARY KEY / UNIQUE / NOT NULL / CHECK contract. No drop/recreate or evidence-destructive repair is attempted; any mismatch raises `HistoricalVerificationError` before trigger verification/recovery.
+Fresh direct execution transport probe still fails before repository execution: `git ls-remote ...` -> `Could not resolve host: github.com`. Therefore exact published-head LAB-090 behavioral/full-suite GREEN is still not claimed.
 
-GitHub commit diff inspection confirms only `experiments/provider_generation_history/supported.py` changed. A file-backed SQLite mechanism probe executed PASS: fresh canonical table passes exact DDL verification; same-name VIEW substitution survives SQLite `CREATE TABLE IF NOT EXISTS` but is rejected by the new `type='table'`/DDL check.
+Durable note: `research/2026-08-31-lab090-pr175-mergeability-reconciliation.md`, main commit `1f1b3b27d92f960ad81993af0899b9f22e85aef9`; issue #169 comment `5478529592`.
 
-Exact published-branch behavioral/full-suite GREEN is not claimed because repository execution transport remains unavailable. Existing regression `test_activation_schema_tamper_restart.py` remains the required exact behavioral gate.
-
-Durable note: `research/2026-08-31-lab090-activation-table-schema-verification-fix.md`, main commit `fef486875f511900e3274b156836393becf486aa`; issue #169 comment `5477562648`.
-
-PR #175 remains open/draft at head `ae3a3cf...`; GitHub currently reports `mergeable=false`. Do not integrate until exact behavioral/full gate executes and branch integration state is resolved through supported high-level operations.
+PR #175 remains open/draft because exact focused/integration/downstream behavioral gates are pending, not because of a demonstrated merge conflict.
 
 ## Evidence retained
 
@@ -38,7 +34,7 @@ PR #175 remains open/draft at head `ae3a3cf...`; GitHub currently reports `merge
 - Standalone LAB-086 previously 12/12 PASS; hidden-rowid RED→GREEN evidence and exact predecessor/target derivation retained; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
-- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are now published. Broader exact execution remains pending.
+- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are published. Broader exact execution remains pending.
 
 ## Known blockers / constraints
 
@@ -46,17 +42,17 @@ PR #175 remains open/draft at head `ae3a3cf...`; GitHub currently reports `merge
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Exact blob fetch is available, but no supported byte-preserving server-side patch composition/write bridge is currently exposed.
 - Direct Git/raw repository execution transport remains unavailable; GitHub connector read/write operations are available.
-- PR #175 stays draft and currently reports `mergeable=false`; do not claim behavioral GREEN for activation schema/trigger fixes without exact execution.
+- PR #175 is currently cleanly mergeable according to direct REST, but stays draft until exact behavioral/integration/downstream gates execute. Do not use the large multi-file Contents-API integration fallback before those gates.
 
 ## Exact next action
 
 LAB-086 first: probe again for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable, resume LAB-090 PR #175. First inspect why GitHub reports `mergeable=false` and determine whether divergence is only control-plane/docs or an actual source conflict. Use only supported high-level operations; do not use low-level ref/tree manipulation or force updates. If an exact-source execution path becomes available, run `test_activation_schema_tamper_restart.py`, trigger-tamper restart regression, activation restart/integration suite, and downstream gates on published head `ae3a3cf...`. If execution remains unavailable, continue only narrow byte-verifiable audits/fixes and record missing behavioral gates explicitly.
+If still unavailable and exact source execution becomes available, run PR #175 published head regressions beginning with `test_activation_schema_tamper_restart.py` and `test_activation_trigger_tamper_restart.py`, then activation restart/integration and downstream gates. If execution remains unavailable, continue only narrow byte-verifiable LAB-090 provider/coordinator/restart audits; keep #175 draft and do not claim behavioral GREEN.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; activation-table schema-substitution fix published; exact behavioral/full gate + integration-state resolution pending.
+- #169 / LAB-090 — IN_PROGRESS; activation-table schema-substitution fix published; exact behavioral/full gate pending; merge-conflict concern reconciled as clean.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
