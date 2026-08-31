@@ -221,9 +221,11 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             desc = GenerationDescriptor(row[2], row[3], row[7])
             if desc.generation_id != row[1]:
                 raise HistoricalVerificationError("activation generation identity mismatch")
+            if type(ticket.expected_position) is not int or ticket.expected_position < 0:
+                raise HistoricalVerificationError("invalid activation expected position")
             if row[0] != self._activation_id(desc, row[4]):
                 raise HistoricalVerificationError("activation identity mismatch")
-            if ticket.fence < 1:
+            if type(ticket.fence) is not int or ticket.fence < 1:
                 raise HistoricalVerificationError("invalid activation fence")
             if row[6] not in {"SQL_COMMITTED", "COMMITTED"}:
                 raise HistoricalVerificationError("invalid activation status")
