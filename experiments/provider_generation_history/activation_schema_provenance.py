@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.provider_generation_history.protocol import (
     CurrentGenerationRequired,
     HistoricalVerificationError,
@@ -93,12 +94,15 @@ def _classify(path):
     q = sqlite3.connect(str(path), timeout=5, isolation_level=None)
     q.execute("PRAGMA busy_timeout=5000")
     try:
-        # Shared-ledger schema must already exist before provenance can be judged.
+        # LAB-092 migrates an existing LAB-080/081 database. It must never bootstrap
+        # a missing shared-anchor authority surface as a side effect of schema repair.
         ledger_table = q.execute(
             "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
         ).fetchone()
         if ledger_table is None:
-            return "LEGACY_ABSENT"
+            raise HistoricalVerificationError(
+                "activation schema migration requires an existing shared anchor ledger"
+            )
         if ledger_table[0] != "table":
             raise HistoricalVerificationError("shared anchor intent ledger relation mismatch")
 
@@ -127,9 +131,9 @@ def _classify(path):
 
 
 def _reservation_surface(path, attested, bootstrap):
-    """Build only the inherited reservation primitives; do not run LAB-090 startup."""
-    if getattr(attested, "verifier", None) is None:
-        raise TypeError("attested verifier required")
+    """Build only inherited reservation primitives; do not run LAB-090 startup."""
+    if type(attested) is not AttestedCatchup:
+        raise TypeError("exact LAB-036 AttestedCatchup required")
     ledger = object.__new__(SupportedHistoricalSharedAnchorLedger)
     ledger.path = str(path)
     ledger.attested = attested
