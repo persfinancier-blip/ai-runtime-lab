@@ -16,6 +16,7 @@ from experiments.provider_generation_history.activation import (
     FencedActivationProvider,
 )
 from experiments.provider_generation_history.protocol import (
+    CurrentGenerationRequired,
     GenerationDescriptor,
     PendingRotationBlocked,
 )
@@ -253,6 +254,46 @@ class ActivationIntegrationTests(unittest.TestCase):
             ticket = restarted._ticket_from_row(row)
             self.assertEqual(restarted_provider.activation_status(ticket), "RELEASED")
             self.assertEqual(restarted.provider_history.current().generation, 2)
+
+    def test_failed_release_stale_runtime_cannot_poison_next_intent(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.ledger(path, p1, 1, self.k1)
+            state = ActivationState()
+            p2 = UnavailableOnFirstReleaseProvider(
+                "anchor-A", 2, self.k2, value=0, activation_state=state
+            )
+
+            with self.assertRaises(ProviderUnavailable):
+                ledger.rotate_provider(
+                    self.g2,
+                    ledger.provider_history.make_transition(self.g1, self.g2),
+                    attested(p2, 2, self.k2),
+                )
+
+            self.assertEqual(ledger.provider_history.current().generation, 2)
+            self.assertIs(ledger.attested.provider, p1)
+            row = ledger._activation_row(generation_id=self.g2.generation_id)
+            self.assertEqual(row[6], "COMMITTED")
+
+            with self.assertRaises(CurrentGenerationRequired):
+                ledger.execute(
+                    Intent("must-not-persist", "component-A", "migration", {"x": 3})
+                )
+
+            q = sqlite3.connect(path)
+            try:
+                meta = q.execute(
+                    "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
+                ).fetchone()
+                intent = q.execute(
+                    "SELECT status FROM shared_anchor_intents WHERE intent_id='must-not-persist'"
+                ).fetchone()
+            finally:
+                q.close()
+            self.assertEqual(meta, (0,))
+            self.assertIsNone(intent)
 
     def test_restart_releases_fence_after_sql_ack_if_release_was_lost(self):
         with tempfile.TemporaryDirectory() as td:
