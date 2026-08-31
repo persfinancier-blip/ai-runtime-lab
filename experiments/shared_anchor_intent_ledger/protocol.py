@@ -405,6 +405,12 @@ class SharedAnchorLedger:
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
+            # Re-check the provider after acquiring SQLite's writer reservation.
+            # A provider-generation rotation must serialize either before this
+            # check (and fail stale evidence) or after this watermark commit.
+            commit_provider_id, commit_generation = self._provider()
+            if (commit_provider_id, commit_generation) != (provider_id, generation):
+                raise ProviderMismatch("provider generation changed after external verification")
             # Re-read the exact ledger slice after external verification.  The
             # watermark may advance only if the rows we authenticated are still
             # byte-for-byte the authoritative rows at the commit boundary.
