@@ -10,23 +10,23 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - LAB-086 exact predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the allowed fallback while LAB-086 exact byte-preserving publication/execution is tool-limited. Draft PR #175; branch `lab-090-provider-activation-fencing`; current head `27b059fb1da8cd7f790daaa3e5603f0172c427c4`.
+- LAB-090 / #169 is the allowed fallback while LAB-086 exact byte-preserving publication/execution is tool-limited. Draft PR #175; branch `lab-090-provider-activation-fencing`; latest production-fix commit `9cefa27a285b292e9699505a3b10e580c69a38e1`.
 - LAB-091 / #170 remains IN_PROGRESS on draft PR #173.
 - LAB-088 / #167 remains IN_PROGRESS on draft PR #172.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs. LAB-086 remains first priority, but the available GitHub connector still exposes complete-file Contents writes rather than a safe server-side exact-blob-plus-retained-patch composition operation. No LAB-086 mutation was attempted because manually/model-reserializing the 949-line security-critical `strict_fence.py` remains prohibited.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs. LAB-086 remains first priority. Direct Git transport was re-probed and again failed before repository execution with `Could not resolve host: github.com`. The available GitHub connector still exposes complete-file Contents writes but no safe server-side exact-blob-plus-retained-patch composition operation for the 949-line security-critical LAB-086 `strict_fence.py`; no LAB-086 mutation was attempted.
 
-Resumed the exact LAB-090 fallback target recorded in the previous handoff: `verify_component()` generation concurrency. Source audit confirmed the remaining TOCTOU window. Inherited LAB-080 `verify_component()` authenticates/checks the current provider before its final `BEGIN IMMEDIATE`, but the commit-boundary transaction only rechecks the ledger slice and watermark. A G1->G2 rotation can therefore commit after the initial provider check but before watermark DML, allowing already-authenticated G1 evidence to advance the watermark after G2 is durable current.
+Resumed the exact LAB-090 fallback target: `verify_component()` generation concurrency. The previously published deterministic race regression remains `experiments/provider_generation_history/tests/test_activation_verify_component_rotation_race.py`, blob `359288e32e7df0ffd60bd359e326398b0bec276a`.
 
-Published deterministic regression candidate in PR #175 commit/head `27b059fb1da8cd7f790daaa3e5603f0172c427c4`: `experiments/provider_generation_history/tests/test_activation_verify_component_rotation_race.py`, blob `359288e32e7df0ffd60bd359e326398b0bec276a`. The test rotates G1->G2 during reauthentication immediately before the inherited final watermark transaction and requires `CurrentGenerationRequired` plus an unchanged component watermark. Exact published test bytes were independently reconstructed and Git-blob hashed to the same SHA; `py_compile` PASS. Behavioral unittest PASS is not claimed because the production commit-boundary guard is not yet published.
+Published the production fix in PR #175 commit `9cefa27a285b292e9699505a3b10e580c69a38e1`. It changes only `experiments/shared_anchor_intent_ledger/protocol.py`: immediately after final `BEGIN IMMEDIATE`, before any watermark DML, `verify_component()` dynamically re-checks `_provider()` and requires the same `(provider_id,generation)` authenticated earlier. For `SupportedHistoricalSharedAnchorLedger`, `_provider()` verifies live runtime against the durable provider-generation head. Therefore rotation either commits first and stale evidence is rejected, or verification obtains SQLite's writer reservation first and rotation serializes behind the watermark transaction.
 
-Minimal fix design is recorded: add a no-op commit-boundary hook to LAB-080 `SharedAnchorLedger.verify_component()` immediately after final `BEGIN IMMEDIATE`; override it in provider-history integration to read `IntegratedProviderHistory._current_locked(q)` through that same connection and require the observed provider/generation to equal the durable current head before any watermark DML. This gives a cross-process linearization point with provider rotation; a post-write check is insufficient.
+Post-publication GitHub commit inspection confirms exactly six inserted lines and no unrelated diff. Resulting `protocol.py` blob: `fd22bc30f6aacdfd157557c8b458d9f7b0b3bda8`.
 
-Issue #169 comment `5473245952`. Durable note: `research/2026-08-31-lab090-verify-component-generation-commit-race.md`, main commit `b4976b101bcd0e91b8afd3378c1b15741d0ce708`.
+Executed a local file-backed two-thread SQLite mechanism check for the specific implementation assumption: while one connection holds `BEGIN IMMEDIATE`, a second connection can read the committed generation head, while a competing writer waits until the first transaction commits. Observed generation order `1 -> 2`; mechanism PASS.
 
-PR #175 recheck reports open, draft, and mergeable at head `27b059fb1...`; the earlier transient non-mergeable control-plane observation is no longer present.
+Exact PR-head behavioral regression/full-suite PASS is not claimed because repository execution transport remains unavailable. Issue #169 comment `5473667375`. Durable note: `research/2026-08-31-lab090-verify-component-commit-boundary-fix.md`, main commit `dc1981fc9d49295423a6140419041d694630fd19`.
 
 ## Evidence retained
 
@@ -37,25 +37,25 @@ PR #175 recheck reports open, draft, and mergeable at head `27b059fb1...`; the e
 - LAB-088 exact signer-noise/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
 - LAB-091 focused/adoption evidence retained; full real-stack gate pending.
 - LAB-090 provider primitive/concurrency exact-byte slice remains 10/10 PASS + compileall. Subsequent activation integration/restart/stale-runtime hardening is published but broader exact execution remains pending.
-- New LAB-090 `verify_component` rotation-race regression blob `359288e3...` is byte-verified and `py_compile` PASS; behavioral RED/GREEN execution remains pending.
+- LAB-090 `verify_component` rotation-race regression blob `359288e3...` is byte-verified and `py_compile` PASS from the prior run; production commit-boundary fix is now published as exact six-line diff, with separate SQLite serialization mechanism PASS. Behavioral GREEN execution remains pending.
 
 ## Known blockers / constraints
 
 - LAB-086 remains first priority. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`.
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` plus retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Current GitHub connector provides normal complete-file Contents writes but no observed safe server-side patch/composition primitive for the LAB-086 exact predecessor+retained-patch operation.
-- PR #175 stays draft. The new generation-commit race regression is exact-byte/syntax verified only, not yet behaviorally executed.
-- Production fix for the LAB-090 race should not be published by casually reserializing shared protocol files; require exact replacement-byte verification and an exact diff, or a byte-preserving patch path.
+- PR #175 stays draft. The generation-commit race production fix is published and diff-audited, but the new behavioral regression/full downstream gate has not executed on exact PR-head bytes in this run.
+- Direct Git transport currently fails DNS resolution before repository code execution.
 
 ## Exact next action
 
 LAB-086 first: probe again for a supported byte-preserving composition/transfer bridge; if available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable, resume LAB-090 PR #175. Publish the `verify_component` commit-boundary generation guard through a byte-exact path: base no-op hook immediately after final `BEGIN IMMEDIATE`, provider-history override using the same connection/current-head read, and no watermark DML before that check. Then execute the new rotation-race regression and the activation integration/restart/downstream gate. If execution transport remains unavailable, independently reconstruct/hash-verify the changed production bytes and audit the exact commit diff before any claim of correctness.
+If still unavailable, resume LAB-090 PR #175. First execute the published rotation-race regression against exact PR-head bytes and run the activation integration/restart/downstream gate. If execution transport remains unavailable, inspect PR #175 branch/main conflict/mergeability state and perform the next narrow correctness audit only; do not broaden authority semantics or claim behavioral GREEN without execution.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; stable stale-runtime fix published; commit-boundary generation race regression now published; production guard + exact integration/restart/downstream gate pending.
+- #169 / LAB-090 — IN_PROGRESS; provider activation hardening and verify_component commit-boundary guard published; exact behavioral integration/restart/downstream gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
