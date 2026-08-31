@@ -110,6 +110,83 @@ class ActivationSchemaProvenanceTests(unittest.TestCase):
             finally:
                 q.close()
 
+    def test_completed_migration_then_trigger_deletion_fails_closed_without_repair(self):
+        td, path, key, provider, g1 = self._fixture()
+        with td:
+            SupportedHistoricalSharedAnchorLedger(path, attested(provider, 1, key), g1)
+            q = sqlite3.connect(path)
+            try:
+                q.execute("DROP TRIGGER block_intent_during_provider_activation")
+                q.execute("DROP TABLE provider_generation_activations")
+                q.commit()
+            finally:
+                q.close()
+
+            ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
+                path, attested(provider, 1, key), g1
+            )
+
+            q = sqlite3.connect(path)
+            try:
+                q.execute("DROP TRIGGER block_intent_during_provider_activation")
+                q.commit()
+            finally:
+                q.close()
+
+            with self.assertRaises(HistoricalVerificationError):
+                ProvenancedHistoricalSharedAnchorLedger(
+                    path, attested(provider, 1, key), g1
+                )
+            with self.assertRaises(HistoricalVerificationError):
+                ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
+                    path, attested(provider, 1, key), g1
+                )
+
+            q = sqlite3.connect(path)
+            try:
+                relation = q.execute(
+                    "SELECT type FROM sqlite_master WHERE name='block_intent_during_provider_activation'"
+                ).fetchone()
+                self.assertIsNone(relation)
+            finally:
+                q.close()
+
+    def test_partial_unmarked_activation_schema_fails_closed_without_repair(self):
+        td, path, key, provider, g1 = self._fixture()
+        with td:
+            SupportedHistoricalSharedAnchorLedger(path, attested(provider, 1, key), g1)
+            q = sqlite3.connect(path)
+            try:
+                # Model an interrupted/corrupted legacy installation: the table
+                # remains exact, but the trigger is absent and no provenance marker
+                # has ever been written. This is ambiguous and must not auto-heal.
+                q.execute("DROP TRIGGER block_intent_during_provider_activation")
+                q.commit()
+            finally:
+                q.close()
+
+            with self.assertRaises(HistoricalVerificationError):
+                ProvenancedHistoricalSharedAnchorLedger(
+                    path, attested(provider, 1, key), g1
+                )
+            with self.assertRaises(HistoricalVerificationError):
+                ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
+                    path, attested(provider, 1, key), g1
+                )
+
+            q = sqlite3.connect(path)
+            try:
+                table = q.execute(
+                    "SELECT type FROM sqlite_master WHERE name='provider_generation_activations'"
+                ).fetchone()
+                trigger = q.execute(
+                    "SELECT type FROM sqlite_master WHERE name='block_intent_during_provider_activation'"
+                ).fetchone()
+                self.assertEqual(table, ("table",))
+                self.assertIsNone(trigger)
+            finally:
+                q.close()
+
 
 if __name__ == "__main__":
     unittest.main()
