@@ -11,18 +11,21 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-090 / #169 fallback remains draft PR #175; branch `lab-090-provider-activation-fencing`; atomic source fix head `d9a381dd4607a928cd1315adef6431e239995bc1`, `supported.py` blob `8140d6e180c3e97085830b872cea7d87f8433144`.
-- LAB-092 / #176 is now IN_PROGRESS on branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Candidate head `ce6fcbedeb838473d68071321df449d339ede290`.
+- LAB-092 / #176 is IN_PROGRESS on branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Latest regression head `86d501cb2879a684c72201ae94f348a2931ee0a4`; implementation remains `ce6fcbedeb838473d68071321df449d339ede290`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and active PRs. LAB-086 remains first priority, but no supported byte-preserving patch-composition/write bridge is exposed. Manual/model reserialization of the 949-line security-critical `strict_fence.py` remains prohibited.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs and issue #176. LAB-086 remains first priority, but the current GitHub interface still exposes no supported byte-preserving patch-composition/write bridge. Manual/model reserialization of the 949-line security-critical `strict_fence.py` remains prohibited.
 
-Advanced the explicitly allowed LAB-092 fallback without changing LAB-090. Created branch `lab-092-activation-schema-provenance` from exact LAB-090 head `d9a381dd...`. Published regressions first at commit `5dc92792fd3dc6bcbd5cec14c8b2b6d1cf5f6bd1`, then implementation at `ce6fcbedeb838473d68071321df449d339ede290`. Opened draft PR #177 against `lab-090-provider-activation-fencing`.
+Re-probed exact source execution with a fresh git clone of PR #177; transport failed before repository execution with `Could not resolve host: github.com`. No branch-level GREEN is claimed.
 
-LAB-092 candidate introduces `ProvenancedHistoricalSharedAnchorLedger` with explicit `migrate_activation_schema_v1()`. Contract is DDL-first using inherited LAB-090 atomic canonical table+trigger installation, then one deterministic authenticated shared-anchor `migration` completion intent. Ordinary startup requires exact DDL + CONFIRMED marker and re-authenticates that marker. Legacy absent DDL and exact DDL with absent/PREPARED marker are recoverable only through explicit migration. Any partial/mismatched DDL, especially PREPARED/CONFIRMED marker plus missing/mismatched activation objects, fails closed and is never automatically repaired.
+Advanced the explicitly allowed LAB-092 fallback without changing LAB-090. Added two fail-closed regressions to PR #177 at commit `86d501cb2879a684c72201ae94f348a2931ee0a4`, test blob `17f37a6a34dfc8caf26ee37a7e019afc6a744fc4`:
+- confirmed migration followed by trigger-only deletion must fail closed on both startup and explicit migration, with no repair;
+- unmarked partial activation DDL (exact table, missing trigger) must fail closed on both paths and remain unrepaired.
+Published bytes were re-fetched and contain the intended tests.
 
-Durable evidence: `research/2026-08-31-lab092-explicit-activation-schema-provenance-slice.md`, main commit `fea65ac697b6e1dc61abb69a0b5ebd396b4088d9`; #176 comment `5483311593`.
+Durable evidence: `research/2026-08-31-lab092-trigger-and-partial-ddl-regressions.md`, main commit `4f23a71abb0c3cd3f35704e24e12b17ba1f5109e`; #176 comment `5484009806`.
 
 ## Evidence retained
 
@@ -32,7 +35,7 @@ Durable evidence: `research/2026-08-31-lab092-explicit-activation-schema-provena
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
 - LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall; atomic installation fix published, exact branch behavioral/full-suite execution pending.
-- LAB-092 authored implementation `py_compile` PASS in this run. Standalone file-backed SQLite classifier probe produced expected `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, `DDL_INSTALLED_PREPARED`, `COMPLETE`, and post-completion-deletion `FAIL_CLOSED` states. Exact branch unit tests are not yet GREEN because repository checkout transport failed before execution.
+- LAB-092 authored implementation `py_compile` PASS from prior run. Standalone file-backed SQLite classifier probe produced expected `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, `DDL_INSTALLED_PREPARED`, `COMPLETE`, and post-completion-deletion `FAIL_CLOSED` states. Exact branch unit tests are not yet GREEN because repository checkout transport still fails before execution.
 
 ## Known blockers / constraints
 
@@ -41,7 +44,7 @@ Durable evidence: `research/2026-08-31-lab092-explicit-activation-schema-provena
 - GitHub connector read/write is available, but no supported byte-preserving server-side patch-composition write is exposed.
 - Direct git transport was probed again in this run and failed before repository execution with `Could not resolve host: github.com`.
 - Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute.
-- Keep PR #177 draft until exact LAB-092 behavioral tests execute; mechanism-level classifier evidence is not branch-level GREEN.
+- Keep PR #177 draft until exact LAB-092 behavioral tests execute; mechanism-level/classifier evidence and authored regressions are not branch-level GREEN.
 - Do not solve LAB-092 with unauthenticated local markers, marker-before-DDL ordering, or post-confirmation auto-repair.
 
 ## Exact next action
@@ -50,7 +53,7 @@ LAB-086 first: probe for a supported byte-preserving composition/transfer bridge
 
 If still unavailable and exact source execution becomes available, execute PR #175 `test_activation_schema_installation_race.py` first on source blob `8140d6e1...`, then the remaining LAB-090 activation restart/tamper/integration/downstream gates.
 
-If execution remains unavailable, continue LAB-092 on PR #177 with the remaining regression matrix without changing LAB-090: add trigger-only deletion after confirmed migration; partial/mismatched DDL with absent/PREPARED marker; PREPARED marker recovery; and a concurrent-writer explicit-migration test. Audit whether explicit migration can coexist safely with any unresolved LAB-090 activation record. Keep all claims below branch-level GREEN until exact published-head execution succeeds.
+If execution remains unavailable, continue LAB-092 on PR #177 without changing LAB-090: add mismatched-DDL regressions, then PREPARED-marker recovery, then a concurrent-writer explicit-migration regression. Audit explicit migration against an unresolved LAB-090 activation record and require fail-closed behavior/no provenance confirmation if an unresolved activation blocks the marker intent. Keep all claims below branch-level GREEN until exact published-head execution succeeds.
 
 ## Backlog
 
@@ -58,4 +61,4 @@ If execution remains unavailable, continue LAB-092 on PR #177 with the remaining
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; atomic installation source fix published; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; isolated explicit provenance candidate in draft PR #177; exact behavioral gate and remaining regressions pending.
+- #176 / LAB-092 — IN_PROGRESS; explicit provenance candidate in draft PR #177; trigger-deletion and unmarked partial-DDL regressions published; exact behavioral gate plus mismatched/PREPARED/concurrency regressions pending.
