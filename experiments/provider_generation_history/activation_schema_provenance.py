@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
-from experiments.provider_generation_history.protocol import HistoricalVerificationError
+from experiments.provider_generation_history.protocol import (
+    CurrentGenerationRequired,
+    HistoricalVerificationError,
+)
 from experiments.provider_generation_history.supported import (
+    CoordinatorOnlyProviderHistory,
     SupportedHistoricalSharedAnchorLedger,
     _ACTIVATION_TABLE_NAME,
     _ACTIVATION_TABLE_SQL,
@@ -11,7 +15,11 @@ from experiments.provider_generation_history.supported import (
     _ACTIVATION_TRIGGER_SQL,
     _normalized_sql,
 )
-from experiments.shared_anchor_intent_ledger.protocol import Intent
+from experiments.shared_anchor_intent_ledger.protocol import (
+    Intent,
+    IntentConflict,
+    PendingIntent,
+)
 
 
 _MIGRATION_COMPONENT = "provider-generation-activation-schema"
@@ -118,8 +126,133 @@ def _classify(path):
         q.close()
 
 
+def _reservation_surface(path, attested, bootstrap):
+    """Build only the inherited reservation primitives; do not run LAB-090 startup."""
+    if getattr(attested, "verifier", None) is None:
+        raise TypeError("attested verifier required")
+    ledger = object.__new__(SupportedHistoricalSharedAnchorLedger)
+    ledger.path = str(path)
+    ledger.attested = attested
+    ledger.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
+    return ledger
+
+
+def _install_and_reserve_prepared(path, attested, bootstrap):
+    """Commit exact activation DDL and its deterministic PREPARED marker atomically."""
+    intent = _completion_intent()
+    intent.validate()
+    ledger = _reservation_surface(path, attested, bootstrap)
+    q = ledger._con()
+    try:
+        q.execute("BEGIN IMMEDIATE")
+
+        ledger_table = q.execute(
+            "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
+        ).fetchone()
+        if ledger_table is None or ledger_table[0] != "table":
+            raise HistoricalVerificationError("shared anchor intent ledger relation mismatch")
+
+        table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
+        marker = _marker_state(q)
+
+        if marker == "CONFIRMED":
+            if not (table_exact and trigger_exact):
+                raise HistoricalVerificationError(
+                    "confirmed activation schema provenance has missing or mismatched DDL"
+                )
+            q.commit()
+            return ledger.entry(intent.intent_id)
+
+        if marker == "PREPARED":
+            if not (table_exact and trigger_exact):
+                raise HistoricalVerificationError(
+                    "prepared activation schema provenance has missing or mismatched DDL"
+                )
+            q.commit()
+            return ledger.entry(intent.intent_id)
+
+        if not (
+            (table_absent and trigger_absent)
+            or (table_exact and trigger_exact)
+        ):
+            raise HistoricalVerificationError(
+                "activation schema is partially installed or definition-mismatched"
+            )
+
+        pending = q.execute(
+            "SELECT COUNT(*) FROM shared_anchor_intents WHERE status='PREPARED'"
+        ).fetchone()[0]
+        if pending:
+            raise PendingIntent("another anchor intent is unresolved")
+
+        durable = ledger.provider_history._current_locked(q)
+        runtime = ledger._descriptor_from_attested(attested)
+        if runtime.generation_id != durable.generation_id:
+            raise CurrentGenerationRequired(
+                "runtime provider is stale relative to durable history"
+            )
+
+        if table_absent and trigger_absent:
+            q.execute(_ACTIVATION_TABLE_SQL)
+            q.execute(_ACTIVATION_TRIGGER_SQL)
+
+        table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
+        if table_absent or trigger_absent or not (table_exact and trigger_exact):
+            raise HistoricalVerificationError(
+                "activation schema did not reach the exact migration definition"
+            )
+
+        predecessor = q.execute(
+            "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
+        ).fetchone()[0]
+        position = predecessor + 1
+        request_id = ledger._request_id(
+            position,
+            intent.intent_id,
+            intent.component_id,
+            intent.intent_type,
+            intent.payload_digest,
+        )
+        q.execute(
+            "INSERT INTO shared_anchor_intents VALUES(?,?,?,?,?,?,?,?,?,'PREPARED',NULL)",
+            (
+                intent.intent_id,
+                intent.component_id,
+                intent.intent_type,
+                intent.payload_digest,
+                durable.provider_id,
+                durable.generation,
+                predecessor,
+                position,
+                request_id,
+            ),
+        )
+        changed = q.execute(
+            "UPDATE shared_anchor_meta SET reserved_position=? WHERE singleton=1 AND reserved_position=?",
+            (position, predecessor),
+        ).rowcount
+        if changed != 1:
+            raise IntentConflict("shared anchor tail changed during activation schema migration")
+
+        # Re-read both sides of the migration boundary before making either visible.
+        if _marker_state(q) != "PREPARED":
+            raise HistoricalVerificationError("activation schema PREPARED marker was not reserved")
+        table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
+        if table_absent or trigger_absent or not (table_exact and trigger_exact):
+            raise HistoricalVerificationError("activation schema changed before migration commit")
+
+        q.commit()
+        return ledger.entry(intent.intent_id)
+    except:
+        if q.in_transaction:
+            q.rollback()
+        raise
+    finally:
+        q.close()
+
+
 class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLedger):
-    """LAB-092 surface: explicit DDL-first migration with authenticated completion provenance."""
+    """LAB-092 surface: explicit migration with atomic DDL+PREPARED provenance."""
 
     def _init_activation_schema(self):
         state = _classify(self.path)
@@ -150,9 +283,9 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         }:
             raise HistoricalVerificationError("activation schema migration state is not recoverable")
 
-        # DDL-first: inherited LAB-090 installs/verifies table+trigger atomically under
-        # BEGIN IMMEDIATE. Only after exact DDL exists do we reserve/confirm the one
-        # deterministic authenticated migration completion intent.
+        # Exact DDL and the deterministic authenticated PREPARED intent become
+        # visible in one SQLite commit. External confirmation happens only after.
+        _install_and_reserve_prepared(path, attested, bootstrap)
         legacy = SupportedHistoricalSharedAnchorLedger(path, attested, bootstrap)
         marker = legacy.execute(_completion_intent())
         if marker.status != "CONFIRMED":
