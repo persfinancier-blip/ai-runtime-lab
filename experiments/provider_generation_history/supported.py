@@ -22,6 +22,16 @@ from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution,
 from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
 
 
+_ACTIVATION_TABLE_NAME = "provider_generation_activations"
+_ACTIVATION_TABLE_SQL = """CREATE TABLE provider_generation_activations(
+  activation_id TEXT PRIMARY KEY,
+  new_generation_id TEXT NOT NULL UNIQUE,
+  provider_id TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  expected_position INTEGER NOT NULL,
+  fence INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('SQL_COMMITTED','COMMITTED'))
+)"""
 _ACTIVATION_TRIGGER_NAME = "block_intent_during_provider_activation"
 _ACTIVATION_TRIGGER_SQL = """CREATE TRIGGER block_intent_during_provider_activation
 BEFORE INSERT ON shared_anchor_intents
@@ -83,18 +93,24 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         q = self._con()
         try:
             q.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS provider_generation_activations(
-                  activation_id TEXT PRIMARY KEY,
-                  new_generation_id TEXT NOT NULL UNIQUE,
-                  provider_id TEXT NOT NULL,
-                  generation INTEGER NOT NULL,
-                  expected_position INTEGER NOT NULL,
-                  fence INTEGER NOT NULL,
-                  status TEXT NOT NULL CHECK(status IN ('SQL_COMMITTED','COMMITTED'))
-                );
-                """
+                _ACTIVATION_TABLE_SQL.replace(
+                    "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1
+                )
+                + ";"
             )
+            table_row = q.execute(
+                "SELECT type,sql FROM sqlite_master WHERE name=?",
+                (_ACTIVATION_TABLE_NAME,),
+            ).fetchone()
+            if (
+                table_row is None
+                or table_row[0] != "table"
+                or table_row[1] is None
+                or _normalized_sql(table_row[1]) != _normalized_sql(_ACTIVATION_TABLE_SQL)
+            ):
+                raise HistoricalVerificationError(
+                    "activation relation schema definition mismatch"
+                )
             q.executescript(
                 _ACTIVATION_TRIGGER_SQL.replace(
                     "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1
