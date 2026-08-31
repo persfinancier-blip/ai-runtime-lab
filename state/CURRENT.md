@@ -10,24 +10,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; current head `96d7ad17836174c94c668d00e8608e498b1c5254`.
+- LAB-090 / #169 is the allowed fallback; draft PR #175; branch `lab-090-provider-activation-fencing`; latest branch commit observed/written this run `98a1059e32d3927b661e873077acc070e2d22af7` (retained candidate patch only; source fix not yet applied).
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issue #169, PR #175, and the current LAB-090 activation coordinator/provider code.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues/PR state, PR #175 and the current LAB-090 activation coordinator implementation.
 
-LAB-086 remains first priority. The GitHub write surface still exposes complete UTF-8 Contents replacement, not a supported byte-preserving server-side composition/write bridge for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`. LAB-086 was not mutated.
+LAB-086 remains first priority. GitHub connector still exposes exact blob reads and complete UTF-8 Contents replacement but no supported byte-preserving server-side patch composition/write bridge for exact predecessor `d4a6a40f...` + retained patch `61841b58...` -> required target `b78e7c98...`. Do not manually/model-reserialize the 949-line security-critical `strict_fence.py`; LAB-086 was not mutated.
 
-Fresh direct execution transport remains unavailable, so exact published-head behavioral/full-suite GREEN is still not claimed.
+Direct git clone was attempted again and failed before repository execution with `Could not resolve host: github.com`. Exact published-head behavioral/full-suite GREEN is therefore still not claimed.
 
-Narrow LAB-090 restart audit found a new writer window in `_init_activation_schema()`: activation table creation/verification and blocking-trigger creation/verification are two separate autocommit `executescript()` steps. If the trigger is missing while a `SQL_COMMITTED` activation exists, a concurrent live/older writer can insert after the table step and before trigger installation.
+Continued LAB-090 schema-installation race work. Current `_init_activation_schema()` installs/verifies the activation table and blocking trigger in two separate `executescript()` transaction boundaries, leaving a restart writer window if the trigger is absent while unresolved activation evidence exists.
 
-Published deterministic RED candidate on PR #175: `experiments/provider_generation_history/tests/test_activation_schema_installation_race.py`, commit `96d7ad17836174c94c668d00e8608e498b1c5254`, blob `cfd5c24107a9582bef91cbeeec28a8bc9b6f83c5`. Independent `py_compile` PASS; GitHub re-fetch exactly matches the computed blob. A separate file-backed SQLite mechanism probe reproduced the current two-autocommit-step ordering and admitted one writer in the gap despite an unresolved activation row.
+Independently executed a file-backed SQLite two-connection mechanism test for the proposed fix: one `BEGIN IMMEDIATE` held across table create/verify and trigger create/verify forced the concurrent writer to wait; after commit the writer failed with `provider activation unresolved`, and persisted shared-anchor intent count remained 0. Result: atomic install mechanism PASS.
 
-Durable note: `research/2026-08-31-lab090-activation-schema-installation-race.md`, main commit `fec7a6ef0269cc2974f919ac5eb98bc7004b6a10`; issue #169 comment `5479151189`.
-
-PR #175 remains open/draft. Do not claim the new regression behavioral RED/GREEN until exact repository execution is available.
+Retained the exact minimal candidate diff on the LAB-090 branch at `research/patches/lab090-activation-schema-installation-transaction.patch`, commit `98a1059e32d3927b661e873077acc070e2d22af7`. This is evidence/design only; `supported.py` is not claimed fixed. Durable main note: `research/2026-08-31-lab090-activation-schema-installation-transaction-fix-design.md`, commit `57dc398b5228b8d0b32dcb76014126ee95cd6456`; issue #169 comment `5479760031`.
 
 ## Evidence retained
 
@@ -36,7 +34,7 @@ PR #175 remains open/draft. Do not claim the new regression behavioral RED/GREEN
 - Standalone LAB-086 previously 12/12 PASS; hidden-rowid RED→GREEN evidence and exact predecessor/target derivation retained; publication/full gate pending.
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
-- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are published. New schema-installation writer-race regression is published; broader exact execution remains pending.
+- LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall. Subsequent integration/restart/stale-runtime/verify-component/ticket-binding/numeric-type hardening is published. Trigger-definition and activation-table schema fail-closed verification are published. Schema-installation writer-race regression is published. Atomic transaction mechanism for the intended fix is independently validated; exact branch source application + broader execution remain pending.
 
 ## Known blockers / constraints
 
@@ -44,19 +42,21 @@ PR #175 remains open/draft. Do not claim the new regression behavioral RED/GREEN
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Exact blob fetch is available, but no supported byte-preserving server-side patch composition/write bridge is currently exposed.
 - Direct Git/raw repository execution transport remains unavailable; GitHub connector read/write operations are available.
-- Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute. Do not use a large multi-file Contents-API integration fallback before those gates.
+- Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute. Do not claim the retained `.patch` file is an applied source fix.
 
 ## Exact next action
 
 LAB-086 first: probe again for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable and exact source execution becomes available, run PR #175 published head beginning with `test_activation_schema_installation_race.py`, then `test_activation_schema_tamper_restart.py`, `test_activation_trigger_tamper_restart.py`, activation restart/integration and downstream gates. Expected current result for the new installation-race regression is RED. After reproducing it, fix `_init_activation_schema()` by holding one `BEGIN IMMEDIATE` transaction across table create/verify and trigger create/verify, using single-statement `execute()` rather than `executescript()`, then require GREEN and rerun downstream gates.
+If still unavailable, apply the already-retained LAB-090 minimal source fix to exact current PR #175 `supported.py` only through a safe high-level operation that preserves all other file bytes: replace the two `executescript()` boundaries in `_init_activation_schema()` with one explicit `BEGIN IMMEDIATE` and single-statement `execute()` calls, retaining exact table/trigger verification and rollback behavior. Re-fetch and diff-audit the result.
 
-If execution remains unavailable, continue only narrow byte-verifiable LAB-090 provider/coordinator/restart audits; keep #175 draft and do not claim behavioral GREEN.
+When exact source execution becomes available, run `test_activation_schema_installation_race.py` first, then `test_activation_schema_tamper_restart.py`, `test_activation_trigger_tamper_restart.py`, activation restart/integration and downstream gates. Require GREEN before moving PR #175 out of draft.
+
+If neither safe source application nor execution is available, continue only narrow byte-verifiable LAB-090 provider/coordinator/restart audits; do not expand protocol scope speculatively.
 
 ## Backlog
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; activation schema-installation writer-race regression published; transactional install fix + exact behavioral/full gate pending.
+- #169 / LAB-090 — IN_PROGRESS; atomic installation candidate diff retained and mechanism validated; exact source application + behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
