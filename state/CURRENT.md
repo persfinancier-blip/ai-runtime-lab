@@ -28,6 +28,8 @@ Executed a local file-backed two-thread SQLite mechanism check for the specific 
 
 Exact PR-head behavioral regression/full-suite PASS is not claimed because repository execution transport remains unavailable. Issue #169 comment `5473667375`. Durable note: `research/2026-08-31-lab090-verify-component-commit-boundary-fix.md`, main commit `dc1981fc9d49295423a6140419041d694630fd19`.
 
+PR #175 is currently open/draft and GitHub reports `mergeable=false`; branch comparison is diverged 31 ahead / 36 behind main. A merge-base→main comparison shows main-side divergence only in `research/*` and `state/CURRENT.md`, with no LAB-090 source/test path overlap. Treat non-mergeable as a control-plane/integration condition to resolve before ready/merge, not evidence of a source-level conflict in the LAB-090 files.
+
 ## Evidence retained
 
 - LAB-080 18/18 PASS; LAB-082 28/28 PASS; LAB-083 24/24 PASS; LAB-084 17/17 PASS.
@@ -45,13 +47,14 @@ Exact PR-head behavioral regression/full-suite PASS is not claimed because repos
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` plus retained patch `61841b58...`, requiring exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
 - Current GitHub connector provides normal complete-file Contents writes but no observed safe server-side patch/composition primitive for the LAB-086 exact predecessor+retained-patch operation.
 - PR #175 stays draft. The generation-commit race production fix is published and diff-audited, but the new behavioral regression/full downstream gate has not executed on exact PR-head bytes in this run.
+- PR #175 is currently 31 commits ahead / 36 behind main and GitHub reports non-mergeable; main-side changes since merge-base do not overlap LAB-090 source/test paths.
 - Direct Git transport currently fails DNS resolution before repository code execution.
 
 ## Exact next action
 
 LAB-086 first: probe again for a supported byte-preserving composition/transfer bridge; if available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable, resume LAB-090 PR #175. First execute the published rotation-race regression against exact PR-head bytes and run the activation integration/restart/downstream gate. If execution transport remains unavailable, inspect PR #175 branch/main conflict/mergeability state and perform the next narrow correctness audit only; do not broaden authority semantics or claim behavioral GREEN without execution.
+If still unavailable, resume LAB-090 PR #175. First execute the published rotation-race regression against exact PR-head bytes and run the activation integration/restart/downstream gate. If execution transport remains unavailable, resolve or safely refresh the PR's diverged/non-mergeable integration state using only supported high-level operations after conflict-checking; do not use low-level ref/tree manipulation or force updates. Then continue only with a narrow correctness audit; do not broaden authority semantics or claim behavioral GREEN without execution.
 
 ## Backlog
 
