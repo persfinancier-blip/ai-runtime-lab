@@ -345,6 +345,8 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
     def verify_activation_schema_provenance(self):
         if _classify(self.path) != "COMPLETE":
             raise HistoricalVerificationError("activation schema provenance is incomplete")
+        _verify_confirmation_authority(self, self.attested)
+        _verify_confirmation_activation_integrity(self)
         marker = self.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema completion marker is not confirmed")
