@@ -169,6 +169,23 @@ def _verify_confirmation_activation_integrity(ledger):
     return ledger._verify_activation_records()
 
 
+class _ProvenanceBoundCoordinatorOnlyProviderHistory(CoordinatorOnlyProviderHistory):
+    """Live LAB-092 provider-history surface that cannot mutate receipts after provenance loss."""
+
+    def store_receipt(self, receipt):
+        if _classify(self.path) != "COMPLETE":
+            raise HistoricalVerificationError("activation schema provenance is incomplete")
+        return super().store_receipt(receipt)
+
+
+def _bind_live_provider_history_provenance(ledger):
+    """Replace the live public history handle without replaying schema initialization."""
+    history = object.__new__(_ProvenanceBoundCoordinatorOnlyProviderHistory)
+    history.path = ledger.provider_history.path
+    history.bootstrap = ledger.provider_history.bootstrap
+    ledger.provider_history = history
+
+
 def _install_and_reserve_prepared(path, attested, bootstrap):
     """Commit exact activation DDL and its deterministic PREPARED marker atomically."""
     intent = _completion_intent()
@@ -317,6 +334,7 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
 
         super().__init__(path, attested, bootstrap)
+        _bind_live_provider_history_provenance(self)
 
     def _require_complete_activation_schema_provenance(self):
         if _classify(self.path) != "COMPLETE":
