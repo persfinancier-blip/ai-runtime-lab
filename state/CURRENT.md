@@ -11,26 +11,26 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`.
 - Exact LAB-086 predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - LAB-090 / #169 fallback remains draft PR #175; branch `lab-090-provider-activation-fencing`; source head `d9a381dd4607a928cd1315adef6431e239995bc1`, `supported.py` blob `8140d6e180c3e97085830b872cea7d87f8433144`.
-- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Current head `4dfd91b2a346b2f68eb73b2f2cca463743500567`; provenance blob `c1e46235bc703cfd8ac718b04bb43e19637a94f1`.
+- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090. Current head `7b14fc29217bdf987704d61bfcbc80fba43db1a4`; provenance blob `35e1adef996640578bf7ade76972680189211bd4`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues/PRs and exact LAB-092/LAB-090/LAB-080 source ordering. LAB-086 remains first priority, but no supported byte-preserving composition bridge is exposed and the 949-line security-critical `strict_fence.py` must not be manually/model reserialized.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PRs and the exact LAB-092/LAB-090/LAB-080 authority paths. LAB-086 remains first priority, but the current GitHub surface still exposes no supported byte-preserving patch-composition bridge and the 949-line security-critical `strict_fence.py` must not be manually/model reserialized.
 
-Advanced the allowed LAB-092 fallback.
+Advanced the allowed LAB-092 fallback. The COMPLETE-startup pre-auth bridge was audited for local `receipt_binding` tamper, provider-history corruption and repeated reauthentication side effects.
 
-Confirmation-race audit found that `atomic DDL+PREPARED -> provider generation changes -> old marker CONFIRMED` is already closed by two existing invariants: LAB-090 rotation rejects any PREPARED shared-anchor intent under `BEGIN IMMEDIATE`, and historical `_reauthenticate()` rejects an unreceipted entry whose provider generation no longer matches durable current history.
+Direct `receipt_binding` substitution is already fail-closed because confirmed execution compares the durable binding to a cryptographically verified historical receipt. With a stored receipt, restart reauthentication is local verification rather than another external reconcile call.
 
-The same audit found a separate restart ordering defect: `ProvenancedHistoricalSharedAnchorLedger.__init__()` re-authenticated the locally CONFIRMED provenance marker only after full LAB-090 construction, while that constructor can run provider activation recovery. Regression-first commit `7c2700394e3bb5e24cacd3fa62423046eace40d1` requires invalid external provenance to fail before activation recovery.
+A separate reachable ordering gap was found when the marker receipt is missing: `confirmation.execute()` could reconcile externally and persist a replacement historical receipt before the later LAB-090 constructor performed full provider-history verification. Receipt-only verification can miss corruption elsewhere in provider history, such as a valid-looking orphan successor descriptor.
 
-Initial pre-auth fix `25bd75b652a3a525fda69bc55264a547ecbc1284` was self-audited and found to introduce a legacy-startup mutation risk: inherited `execute()` can reserve a missing marker. Added regression commit `4cf690d60db17947430f956aea61c20d59ff7ce9`, requiring ordinary legacy startup to raise migration-required while leaving marker/table/trigger absent.
+Regression-first commit `e243511fb4001d049f3948227d727d486a3691f4` adds `test_activation_schema_pre_auth_history_verification.py`, requiring corrupt provider history to fail before a missing migration-marker receipt is recreated.
 
-Corrected current PR #177 head `4dfd91b2a346b2f68eb73b2f2cca463743500567`: restart now performs read-only `_classify(path)` first; only already-COMPLETE state may externally re-authenticate the deterministic marker via the non-constructor bridge; only after that can LAB-090 `super().__init__()` run activation recovery; marker is rechecked afterward. Current provenance blob `c1e46235bc703cfd8ac718b04bb43e19637a94f1`.
+Fix commit `7b14fc29217bdf987704d61bfcbc80fba43db1a4` adds read-only `_verify_confirmation_authority()`: full `_verify_durable_locked()` provider-history verification plus exact runtime/current-generation comparison now runs before external marker reauthentication on COMPLETE startup and on the post-DDL migration confirmation handoff. Re-fetched commit diff confirms only this ordering hardening. Current provenance blob `35e1adef996640578bf7ade76972680189211bd4`.
 
 Fresh exact checkout/test execution was attempted with `git clone --depth 1 --branch lab-092-activation-schema-provenance ...`; transport again failed before repository code execution with `Could not resolve host: github.com`. No branch-level RED/GREEN is claimed.
 
-Durable evidence: `research/2026-09-01-lab092-confirmation-race-and-restart-preauth.md`, main commit `5e8db66db1b7791c524f46be76f8c62f2e0d1ba7`; #176 comments `5488390773` and corrective `5488398363`.
+Durable evidence: `research/2026-09-01-lab092-preauth-full-history-before-receipt-recovery.md`, main commit `1bd28430cb0ea14b5ec20cae0a6ce041704bc859`; #176 comment `5488824164`.
 
 ## Evidence retained
 
@@ -40,7 +40,7 @@ Durable evidence: `research/2026-09-01-lab092-confirmation-race-and-restart-prea
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
 - LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall; atomic installation fix published, exact branch behavioral/full-suite execution pending.
-- LAB-092 classifier/atomic-visibility evidence retained. Atomic DDL+PREPARED, stale runtime/recovery checks, non-mutating confirmation, restart pre-authentication and legacy startup read-only precheck are published; exact PR #177 regression execution remains pending because checkout transport still fails before code execution.
+- LAB-092 classifier/atomic-visibility evidence retained. Atomic DDL+PREPARED, stale runtime/recovery checks, non-mutating confirmation, restart pre-authentication, legacy startup read-only precheck and full-history-before-receipt-recovery hardening are published; exact PR #177 regression execution remains pending because checkout transport still fails before code execution.
 
 ## Known blockers / constraints
 
@@ -49,18 +49,18 @@ Durable evidence: `research/2026-09-01-lab092-confirmation-race-and-restart-prea
 - GitHub connector read/write is available, but no supported byte-preserving server-side patch-composition write is exposed.
 - Direct git transport failed again before repository execution with `Could not resolve host: github.com`.
 - Keep PR #175 draft until exact focused/integration/downstream behavioral gates execute.
-- Keep PR #177 draft; source hardening is published but exact behavioral execution is still pending.
+- Keep PR #177 draft; current head is `7b14fc29...` and exact behavioral execution is still pending.
 - Ordinary LAB-092 startup must never reserve/mutate migration provenance on legacy/unmarked/PREPARED state.
-- No provider activation recovery may run before a locally COMPLETE marker is externally re-authenticated.
+- No provider activation recovery may run before a locally COMPLETE marker is fully authority-verified and externally re-authenticated.
 - Explicit branch/base conflict reconciliation is required before integration of #175/#177.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving composition/transfer bridge. If available, conflict-check predecessor `d4a6a40f...`, apply only retained patch `61841b58...`, require target `b78e7c98...`, publish/re-fetch/hash-verify, then run the full LAB-086 security gate.
 
-If still unavailable and exact source execution becomes available, execute PR #175 `test_activation_schema_installation_race.py` first on source blob `8140d6e1...`, then remaining LAB-090 gates; then execute all PR #177 tests on head `4dfd91b2...`, prioritizing `test_activation_schema_restart_precheck.py` and `test_activation_schema_migration_confirmation_bridge.py`, followed by stale runtime/PREPARED recovery, atomic boundary, unresolved activation, deletion/mismatch and legitimate legacy migration.
+If still unavailable and exact source execution becomes available, execute the new PR #177 regression `test_activation_schema_pre_auth_history_verification.py` first on head `7b14fc29...`, then `test_activation_schema_restart_precheck.py` and `test_activation_schema_migration_confirmation_bridge.py`, followed by stale runtime/PREPARED recovery, atomic boundary, unresolved activation, deletion/mismatch and legitimate legacy migration; execute PR #175 gates before any integration.
 
-If execution remains unavailable, audit the corrected LAB-092 COMPLETE-startup pre-auth bridge for local-row tamper of `receipt_binding`, provider-history corruption, and repeated external reauthentication side effects. Add regression first for any reachable gap; otherwise document closure and move to the next highest-value LAB-092/LAB-090 integration risk.
+If execution remains unavailable, audit the remaining LAB-092 handoff between successful external marker reauthentication and LAB-090 constructor recovery for concurrent provider-history/activation changes. Add regression first for any reachable mutation-before-revalidation gap; otherwise document closure and move to the next highest-value LAB-092/LAB-090 integration risk.
 
 ## Backlog
 
@@ -68,4 +68,4 @@ If execution remains unavailable, audit the corrected LAB-092 COMPLETE-startup p
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; atomic installation source fix published; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; restart provenance pre-auth + legacy read-only precheck published; exact regression gate pending.
+- #176 / LAB-092 — IN_PROGRESS; full-history-before-marker-receipt-recovery hardening published; exact regression gate pending.
