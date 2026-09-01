@@ -15,7 +15,9 @@ from experiments.provider_generation_history.activation_schema_provenance import
 )
 from experiments.provider_generation_history.protocol import (
     GenerationDescriptor,
+    HistoricalReceipt,
     HistoricalVerificationError,
+    mac,
 )
 from experiments.provider_generation_history.supported import SupportedHistoricalSharedAnchorLedger
 from experiments.shared_anchor_intent_ledger.protocol import Intent
@@ -127,6 +129,41 @@ class ActivationSchemaPostConstructionMarkerDeletionTests(unittest.TestCase):
             with self.assertRaises(HistoricalVerificationError):
                 ledger.verify_component(component_id)
             self.assertEqual(ledger.watermark(component_id), 1)
+
+    def test_direct_provider_receipt_store_fails_closed_after_marker_deletion(self):
+        td, path, key, provider, g1, ledger = self._migrated()
+        with td:
+            self._delete_marker(path)
+            unsigned = {
+                "provider_id": "anchor-A",
+                "generation": 1,
+                "position": 1,
+                "request_id": "post-provenance-direct-receipt",
+                "kind": "RECONCILE",
+                "challenge": "post-provenance-direct-receipt-challenge",
+            }
+            receipt = HistoricalReceipt(
+                unsigned["provider_id"],
+                unsigned["generation"],
+                unsigned["position"],
+                unsigned["request_id"],
+                unsigned["kind"],
+                unsigned["challenge"],
+                mac(key, unsigned),
+            )
+
+            with self.assertRaises(HistoricalVerificationError):
+                ledger.provider_history.store_receipt(receipt)
+
+            q = sqlite3.connect(path)
+            try:
+                row = q.execute(
+                    "SELECT 1 FROM historical_provider_receipts WHERE request_id=?",
+                    (receipt.request_id,),
+                ).fetchone()
+                self.assertIsNone(row)
+            finally:
+                q.close()
 
 
 if __name__ == "__main__":
