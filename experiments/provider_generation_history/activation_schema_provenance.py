@@ -330,6 +330,10 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         self._require_complete_activation_schema_provenance()
         return super().rotate_provider(new, proof, new_attested)
 
+    def verify_component(self, component_id):
+        self._require_complete_activation_schema_provenance()
+        return super().verify_component(component_id)
+
     @classmethod
     def migrate_activation_schema_v1(cls, path, attested, bootstrap):
         state = _classify(path)
