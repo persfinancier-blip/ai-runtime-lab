@@ -107,6 +107,27 @@ class ActivationSchemaPostConstructionMarkerDeletionTests(unittest.TestCase):
             self.assertEqual(ledger.provider_history.current().generation, 1)
             self.assertIsNone(ledger._activation_row(generation_id=g2.generation_id))
 
+    def test_verify_component_does_not_advance_watermark_after_marker_deletion(self):
+        td, path, key, provider, g1, ledger = self._migrated()
+        with td:
+            component_id = "post-provenance-component"
+            self.assertEqual(ledger.verify_component(component_id), 1)
+            self.assertEqual(ledger.watermark(component_id), 1)
+
+            ledger.execute(
+                Intent(
+                    "pre-tamper-confirmed",
+                    component_id,
+                    "archive_checkpoint",
+                    {"checkpoint": 2},
+                )
+            )
+            self._delete_marker(path)
+
+            with self.assertRaises(HistoricalVerificationError):
+                ledger.verify_component(component_id)
+            self.assertEqual(ledger.watermark(component_id), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
