@@ -12,20 +12,21 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Authoritative pending LAB-086 lineage: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - PR #165 body still describes the older alternate-UNIQUE executable lineage; issue #163 is authoritative for the pending hidden-rowid publication.
 - LAB-090 / #169 fallback remains draft PR #175; branch `lab-090-provider-activation-fencing`; head/base for LAB-092 is `d9a381dd4607a928cd1315adef6431e239995bc1`.
-- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090 head. Current branch head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`; production provenance source blob `396b67a46686f6df23584b1b366824c1b7ac1886`; post-construction tamper regression blob `8f177a88cc861d4790b859b739c80070e2c6c232`.
+- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based on LAB-090 head. Current branch head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`; PR metadata currently reports `mergeable=true`, `draft=true`.
 - LAB-093 / #178 is READY: define encapsulation boundary for caller-owned `AttestedCatchup` / provider mutation capabilities exposed through ledger objects.
 - LAB-094 / #179 is READY: make the provider-history construction-time bootstrap trust root immutable/non-rebindable for later `verify_durable()` authority decisions.
+- LAB-095 / #180 is READY: bind supported ledger/provider-history database identity immutably after construction and prevent cross-DB path rebinding/divergence.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PR metadata. LAB-086 was probed first. Fresh local `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git` again failed before repository code execution with `Could not resolve host: github.com`; no manual/model reserialization or LAB-086 branch mutation was attempted.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PR metadata. LAB-086 was probed first. Fresh local `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` again failed before repository code execution with `Could not resolve host: github.com`; no manual/model reserialization or LAB-086 branch mutation was attempted.
 
-Continued the allowed LAB-092 ledger-owned reference/rebinding audit. Found a concrete lower-layer trust-root issue: `DurableProviderHistory.__init__()` retains the validated bootstrap as public mutable `self.bootstrap`, while `DurableProviderHistory.verify_durable()` and `IntegratedProviderHistory._verify_durable_locked()` later consume `self.bootstrap.generation_id` as the authenticated first-generation root. Because supported ledger composition exposes the live `ledger.provider_history` object, rebinding this slot changes authority used by a supported verification method. This is security-relevant authority interpretation, not merely arbitrary attribute reassignment.
+Continued the allowed LAB-092 ledger-owned retained-reference audit. Found a concrete lower-layer DB identity issue. `SharedAnchorLedger.__init__()` stores public mutable `self.path`; `DurableProviderHistory.__init__()` independently stores its own public mutable `self.path`. In supported LAB-081/LAB-090/LAB-092 composition, `HistoricalSharedAnchorLedger.reserve()` opens `q = self._con()` from the ledger's current path and then calls `provider_history._current_locked(q)` using that already-selected connection before mutation. Therefore post-construction `ledger.path` rebinding can redirect supported authority decisions and durable intent writes to another SQLite file without running the constructor's full `verify_durable()` against that target. LAB-092 `_classify(self.path)` proves activation schema/provenance shape only and is not provider-history trust verification.
 
-Scope decision: do not patch LAB-092. The issue originates in the provider-history layer and affects LAB-081/LAB-090/LAB-092 composition. Opened #179 / LAB-094 for an immutable construction-time bootstrap trust-root contract. This is distinct from #178/LAB-093, which concerns caller-owned `attested`/provider capabilities.
+Scope decision: do not patch LAB-092 only. Opened #180 / LAB-095 for lifetime-stable canonical DB identity, prevention of ledger/provider-history path divergence, and a cross-DB rebinding regression. This is distinct from #179/LAB-094 bootstrap trust-root rebinding and #178/LAB-093 caller-owned external-provider capabilities.
 
-No LAB-092 production/regression change was made. Durable evidence: `research/2026-09-01-lab092-ledger-owned-bootstrap-trust-root-audit.md`, main commit `f468dcc6a17957ce484523353e7f8efd5038f772`; #176 comment `5496946820`. PR #177 remains draft; current metadata reports `mergeable=true`, exact base `d9a381dd...`, head `81673f8f...`.
+No LAB-092 production/regression change was made. Durable evidence: `research/2026-09-01-lab092-ledger-path-rebinding-audit.md`, main commit `a037f49ab17bcf0fbc07e559cd6c91fdcbd00284`; #176 comment `5497699998`.
 
 ## Evidence retained
 
@@ -37,6 +38,7 @@ No LAB-092 production/regression change was made. Durable evidence: `research/20
 - LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall; exact published-head behavioral/full-suite execution pending.
 - LAB-092 classifier/atomic-visibility/order evidence retained; post-construction marker deletion is guarded on shared-anchor reservation/execute, provider rotation, component watermark mutation, and public provider-history receipt insertion. Public return-value/descriptor audit found no additional mutable ledger-owned authority handle. Exact PR #177 regression/full execution remains pending.
 - LAB-094 finding: public mutable provider-history `bootstrap` is later consumed as the durable-history trust root; no fix attempted in LAB-092.
+- LAB-095 finding: public mutable ledger/provider-history DB paths are independently retained; ledger path rebinding changes the SQLite connection consumed by supported operations, and reserve-time `_current_locked(q)` does not replace a fresh full durable verification of the newly selected DB.
 
 ## Known blockers / constraints
 
@@ -47,11 +49,10 @@ No LAB-092 production/regression change was made. Durable evidence: `research/20
 - Keep PR #177 draft until exact regression/full behavioral execution and base/conflict reconciliation are available.
 - Ordinary LAB-092 startup must never reserve/mutate migration provenance on legacy/unmarked/PREPARED state.
 - No marker receipt reauthentication may occur before full provider-history/runtime and activation-record integrity verification on startup, migration confirmation, or public provenance verification.
-- Constructor migration-marker authentication occurs only on the pre-recovery non-mutating confirmation bridge; do not reintroduce post-recovery duplicate `execute()`.
 - Live LAB-092 `reserve()`/`execute()`, `rotate_provider()`, mutation-capable `verify_component()`, and public `provider_history.store_receipt()` must fail closed if post-construction provenance is no longer `COMPLETE`.
-- Do not treat caller-owned direct `attested`/provider mutation as a LAB-092 provenance bypass until LAB-093 defines the capability ownership/public-surface contract.
-- Do not patch mutable provider-history bootstrap only in LAB-092; LAB-094 must define the lower-layer trust-root lifetime contract first.
-- Do not add an exactly-once migration-marker execute or whole-call linearizable runtime-freshness requirement unless a concrete correctness/security contract requires it.
+- Do not patch caller-owned `attested`/provider exposure only in LAB-092; #178/LAB-093 owns that capability-boundary question.
+- Do not patch mutable provider-history bootstrap only in LAB-092; #179/LAB-094 owns the lower-layer trust-root lifetime contract.
+- Do not patch mutable DB path only in LAB-092; #180/LAB-095 owns canonical DB identity/path lifetime and cross-object path divergence.
 - Explicit branch/base reconciliation is required immediately before integration.
 
 ## Exact next action
@@ -60,7 +61,7 @@ LAB-086 first: probe for any newly supported byte-preserving connector/local-fil
 
 If exact source execution becomes available first, execute PR #175 focused/integration/downstream gates on exact head `d9a381dd...`; then execute PR #177 including all four post-construction provenance-deletion regressions on exact head `81673f8f...`. Do not integrate either draft before those gates.
 
-If execution and LAB-086 byte-preserving publication remain unavailable, continue the ledger-owned reference audit with `path` and related retained DB/reference fields. Require a concrete supported-API authority amplification before creating a regression. Keep LAB-094 bootstrap trust-root work separate unless it becomes the highest-value unblocked task after LAB-092 remaining surfaces are exhausted.
+If execution and LAB-086 byte-preserving publication remain unavailable, finish the LAB-092 retained-reference audit for remaining ledger-owned non-underscore references/return objects. Require a concrete supported-API authority amplification before adding regression. If those surfaces are exhausted, promote the highest-value lower-layer READY follow-up among LAB-094 (bootstrap trust root) and LAB-095 (canonical DB identity), with regression-first implementation only when exact execution becomes available or a safe auditable source-only slice is possible.
 
 ## Backlog
 
@@ -68,6 +69,7 @@ If execution and LAB-086 byte-preserving publication remain unavailable, continu
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; four post-construction provenance-deletion mutation surfaces guarded; public return-value/descriptor audit negative; bootstrap trust-root issue split to LAB-094; exact regression/full gate pending.
+- #176 / LAB-092 — IN_PROGRESS; four post-construction provenance-deletion mutation surfaces guarded; bootstrap issue split to LAB-094; DB identity/path issue split to LAB-095; exact regression/full gate pending.
 - #178 / LAB-093 — READY; define `attested`/provider capability encapsulation and supported public-surface ownership boundary.
 - #179 / LAB-094 — READY; immutable provider-history bootstrap trust-root lifetime contract and regression.
+- #180 / LAB-095 — READY; canonical non-rebindable ledger/provider-history DB identity and cross-DB rebinding regression.
