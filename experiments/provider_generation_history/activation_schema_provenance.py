@@ -317,9 +317,6 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
 
         super().__init__(path, attested, bootstrap)
-        marker = self.execute(_completion_intent())
-        if marker.status != "CONFIRMED":
-            raise HistoricalVerificationError("activation schema migration marker is not confirmed")
 
     @classmethod
     def migrate_activation_schema_v1(cls, path, attested, bootstrap):
