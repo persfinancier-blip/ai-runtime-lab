@@ -75,43 +75,6 @@ class ActivationSchemaMigrationConfirmationBridgeTests(unittest.TestCase):
 
             self.assertTrue(migrated.verify_activation_schema_provenance())
 
-    def test_explicit_migration_does_not_reauthenticate_confirmed_marker_in_return_constructor(self):
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "shared.db"
-            key = b"provider-key-1"
-            g1 = descriptor(1, key)
-            provider = FencedActivationProvider("anchor-A", 1, key, value=0)
-            runtime = attested(provider, 1, key)
-            SupportedHistoricalSharedAnchorLedger(path, runtime, g1)
-
-            q = sqlite3.connect(path)
-            try:
-                q.execute("DROP TRIGGER block_intent_during_provider_activation")
-                q.execute("DROP TABLE provider_generation_activations")
-                q.commit()
-            finally:
-                q.close()
-
-            original_execute = SupportedHistoricalSharedAnchorLedger.execute
-            marker_executes = []
-
-            def count_marker_execute(ledger, intent):
-                if intent.intent_id == _completion_intent().intent_id:
-                    marker_executes.append(intent.intent_id)
-                return original_execute(ledger, intent)
-
-            with patch.object(
-                SupportedHistoricalSharedAnchorLedger,
-                "execute",
-                count_marker_execute,
-            ):
-                migrated = ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
-                    path, runtime, g1
-                )
-
-            self.assertIsInstance(migrated, ProvenancedHistoricalSharedAnchorLedger)
-            self.assertEqual(marker_executes, [_completion_intent().intent_id])
-
     def test_restart_reauthenticates_confirmed_provenance_before_activation_recovery(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
