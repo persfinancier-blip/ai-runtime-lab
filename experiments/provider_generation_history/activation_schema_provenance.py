@@ -131,13 +131,21 @@ def _classify(path):
 
 
 def _reservation_surface(path, attested, bootstrap):
-    """Build only inherited reservation primitives; do not run LAB-090 startup."""
+    """Build inherited reservation primitives without initializing durable history."""
     if type(attested) is not AttestedCatchup:
         raise TypeError("exact LAB-036 AttestedCatchup required")
+    bootstrap.validate()
     ledger = object.__new__(SupportedHistoricalSharedAnchorLedger)
     ledger.path = str(path)
     ledger.attested = attested
-    ledger.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
+
+    # DurableProviderHistory.__init__ performs CREATE TABLE IF NOT EXISTS and may
+    # bootstrap an empty provider history. LAB-092 must migrate an already-existing
+    # authority surface, so use a read/verify-only view until the migration lock is held.
+    history = object.__new__(CoordinatorOnlyProviderHistory)
+    history.path = str(path)
+    history.bootstrap = bootstrap
+    ledger.provider_history = history
     return ledger
 
 
@@ -189,7 +197,9 @@ def _install_and_reserve_prepared(path, attested, bootstrap):
         if pending:
             raise PendingIntent("another anchor intent is unresolved")
 
-        durable = ledger.provider_history._current_locked(q)
+        # Verify the entire inherited provider history while holding the same writer
+        # lock that will publish DDL+PREPARED. This is intentionally non-mutating.
+        durable = ledger.provider_history._verify_durable_locked(q)
         runtime = ledger._descriptor_from_attested(attested)
         if runtime.generation_id != durable.generation_id:
             raise CurrentGenerationRequired(
