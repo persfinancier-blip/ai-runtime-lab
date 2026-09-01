@@ -167,6 +167,16 @@ def _install_and_reserve_prepared(path, attested, bootstrap):
         table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
         marker = _marker_state(q)
 
+        # Marker recovery is still an authority-sensitive operation. Verify the full
+        # inherited provider history and exact current runtime before any PREPARED or
+        # CONFIRMED early return, not only on first installation.
+        durable = ledger.provider_history._verify_durable_locked(q)
+        runtime = ledger._descriptor_from_attested(attested)
+        if runtime.generation_id != durable.generation_id:
+            raise CurrentGenerationRequired(
+                "runtime provider is stale relative to durable history"
+            )
+
         if marker == "CONFIRMED":
             if not (table_exact and trigger_exact):
                 raise HistoricalVerificationError(
@@ -196,15 +206,6 @@ def _install_and_reserve_prepared(path, attested, bootstrap):
         ).fetchone()[0]
         if pending:
             raise PendingIntent("another anchor intent is unresolved")
-
-        # Verify the entire inherited provider history while holding the same writer
-        # lock that will publish DDL+PREPARED. This is intentionally non-mutating.
-        durable = ledger.provider_history._verify_durable_locked(q)
-        runtime = ledger._descriptor_from_attested(attested)
-        if runtime.generation_id != durable.generation_id:
-            raise CurrentGenerationRequired(
-                "runtime provider is stale relative to durable history"
-            )
 
         if table_absent and trigger_absent:
             q.execute(_ACTIVATION_TABLE_SQL)
