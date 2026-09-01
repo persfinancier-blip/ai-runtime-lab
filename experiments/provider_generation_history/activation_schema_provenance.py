@@ -280,8 +280,17 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         raise HistoricalVerificationError("invalid activation schema provenance state")
 
     def __init__(self, path, attested, bootstrap):
+        # A locally CONFIRMED row is not authority by itself. Re-authenticate it through
+        # the non-mutating inherited bridge before LAB-090's constructor can reconcile
+        # any provider activation state. This keeps restart fail-closed before side effects.
+        confirmation = _reservation_surface(path, attested, bootstrap)
+        marker = confirmation.execute(_completion_intent())
+        if marker.status != "CONFIRMED":
+            raise HistoricalVerificationError("activation schema migration marker is not confirmed")
+
         super().__init__(path, attested, bootstrap)
-        # Re-authenticate the CONFIRMED completion intent against the external anchor.
+        # Re-check after constructor recovery so the final supported surface is still
+        # bound to the same externally authenticated completion intent.
         marker = self.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
