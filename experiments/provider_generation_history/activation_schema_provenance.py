@@ -94,8 +94,6 @@ def _classify(path):
     q = sqlite3.connect(str(path), timeout=5, isolation_level=None)
     q.execute("PRAGMA busy_timeout=5000")
     try:
-        # LAB-092 migrates an existing LAB-080/081 database. It must never bootstrap
-        # a missing shared-anchor authority surface as a side effect of schema repair.
         ledger_table = q.execute(
             "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
         ).fetchone()
@@ -118,7 +116,6 @@ def _classify(path):
         if table_exact and trigger_exact and marker == "CONFIRMED":
             return "COMPLETE"
 
-        # Once a marker exists, missing or changed DDL is post-install corruption/tamper.
         if marker in {"PREPARED", "CONFIRMED"}:
             raise HistoricalVerificationError(
                 "activation schema provenance exists but activation DDL is missing or mismatched"
@@ -139,9 +136,6 @@ def _reservation_surface(path, attested, bootstrap):
     ledger.path = str(path)
     ledger.attested = attested
 
-    # DurableProviderHistory.__init__ performs CREATE TABLE IF NOT EXISTS and may
-    # bootstrap an empty provider history. LAB-092 must migrate an already-existing
-    # authority surface, so use a read/verify-only view until the migration lock is held.
     history = object.__new__(CoordinatorOnlyProviderHistory)
     history.path = str(path)
     history.bootstrap = bootstrap
@@ -167,9 +161,6 @@ def _install_and_reserve_prepared(path, attested, bootstrap):
         table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
         marker = _marker_state(q)
 
-        # Marker recovery is still an authority-sensitive operation. Verify the full
-        # inherited provider history and exact current runtime before any PREPARED or
-        # CONFIRMED early return, not only on first installation.
         durable = ledger.provider_history._verify_durable_locked(q)
         runtime = ledger._descriptor_from_attested(attested)
         if runtime.generation_id != durable.generation_id:
@@ -249,7 +240,6 @@ def _install_and_reserve_prepared(path, attested, bootstrap):
         if changed != 1:
             raise IntentConflict("shared anchor tail changed during activation schema migration")
 
-        # Re-read both sides of the migration boundary before making either visible.
         if _marker_state(q) != "PREPARED":
             raise HistoricalVerificationError("activation schema PREPARED marker was not reserved")
         table_absent, trigger_absent, table_exact, trigger_exact = _schema_object_state(q)
@@ -280,17 +270,24 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         raise HistoricalVerificationError("invalid activation schema provenance state")
 
     def __init__(self, path, attested, bootstrap):
-        # A locally CONFIRMED row is not authority by itself. Re-authenticate it through
-        # the non-mutating inherited bridge before LAB-090's constructor can reconcile
-        # any provider activation state. This keeps restart fail-closed before side effects.
+        # Ordinary startup is read-only with respect to migration state. In particular,
+        # do not call execute() on a legacy/unmarked database because reserve() would
+        # create the migration marker. Only an already COMPLETE local state proceeds
+        # to non-mutating external re-authentication before LAB-090 recovery side effects.
+        state = _classify(path)
+        if state in {"LEGACY_ABSENT", "DDL_INSTALLED_UNMARKED", "DDL_INSTALLED_PREPARED"}:
+            raise ActivationSchemaMigrationRequired(
+                "activation schema requires explicit migrate_activation_schema_v1()"
+            )
+        if state != "COMPLETE":
+            raise HistoricalVerificationError("invalid activation schema provenance state")
+
         confirmation = _reservation_surface(path, attested, bootstrap)
         marker = confirmation.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
 
         super().__init__(path, attested, bootstrap)
-        # Re-check after constructor recovery so the final supported surface is still
-        # bound to the same externally authenticated completion intent.
         marker = self.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
@@ -307,10 +304,6 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         }:
             raise HistoricalVerificationError("activation schema migration state is not recoverable")
 
-        # Exact DDL and the deterministic authenticated PREPARED intent become
-        # visible in one SQLite commit. Confirm it through the already-verified
-        # non-mutating reservation surface; constructing the full LAB-090 surface
-        # here would run provider-activation recovery before provenance is confirmed.
         _install_and_reserve_prepared(path, attested, bootstrap)
         confirmation = _reservation_surface(path, attested, bootstrap)
         marker = confirmation.execute(_completion_intent())
