@@ -16,55 +16,56 @@ Yes. The pre-fix LAB-092 class validated provenance during construction and in `
 4. call `ledger.execute()` for a new ordinary intent;
 5. pre-fix `reserve()` can append a new PREPARED row and advance `shared_anchor_meta.reserved_position`, after which `execute()` can advance/reconcile the external anchor and confirm the new row.
 
-That violates the post-install provenance deletion boundary: a live object could continue durable mutation after the evidence whose absence would make restart fail closed had already disappeared.
+This is not a whole-call linearizability requirement; marker deletion happens before the mutation call begins.
 
-This is not a whole-call linearizability requirement and does not depend on a concurrent writer racing a validation window; the marker is deleted before the public mutation call begins.
-
-Regression-first branch commit:
-
-- `60c71feb21a88ddac1530fd102913305f8de890f` — added the execute-after-marker-deletion regression.
-
-First fix:
-
-- `3f183bd539ff8547f5d8bd05b4be2d02b35bf995` — added `_require_complete_activation_schema_provenance()` and guarded provenanced `reserve()`.
-
-Because inherited `execute()` calls `self.reserve(intent)`, ordinary execute/reserve mutation now fails before any new durable intent reservation when marker/DDL provenance is incomplete.
+Regression-first commit `60c71feb21a88ddac1530fd102913305f8de890f` added the execute-after-marker-deletion regression. Fix `3f183bd539ff8547f5d8bd05b4be2d02b35bf995` added `_require_complete_activation_schema_provenance()` and guarded provenanced `reserve()`. Because inherited `execute()` calls `self.reserve(intent)`, execute/reserve now fails before new durable reservation when provenance is incomplete.
 
 ## Finding 2 — provider rotation bypassed reserve guard
 
-The first fix did not cover inherited LAB-090 `rotate_provider()`. That mutation path does not call `reserve()`: it can prepare an external activation ticket, insert a `provider_generation_activations` row, rotate durable provider generation history, durably acknowledge/release the provider fence, and replace runtime attestation.
+Inherited LAB-090 `rotate_provider()` does not call `reserve()`. With the marker already deleted, it could still prepare an external activation ticket, insert a `provider_generation_activations` row, rotate durable provider history, durably acknowledge/release the provider fence, and replace runtime attestation.
 
-Therefore the same deterministic post-construction marker deletion left a second reachable mutation path:
+Regression-first commit `78f36768ac8d6b3489d4eb7cf3795f31bd7647ea` added a valid generation-2 rotation case requiring failure after marker deletion. Fix `9debde700f17ed2d4fe6abe70e45edc2bc7d7a95` guarded provenanced `rotate_provider()` with the same COMPLETE-provenance check.
 
-1. obtain a legitimately migrated provenanced ledger;
-2. delete the confirmed migration marker;
-3. call `rotate_provider()` with a valid next generation and activation-capable provider;
-4. pre-second-fix LAB-092 has no provenance check on this path, so LAB-090 rotation can proceed despite local provenance already being `DDL_INSTALLED_UNMARKED`.
+## Finding 3 — component watermark mutation also bypassed reserve guard
 
-Again, no concurrent race is required.
+Inherited `verify_component()` is read-mostly but can durably advance `component_anchor_watermarks`. A concrete no-race sequence exists:
 
-Second regression-first branch commit:
+1. migrate successfully; migration marker occupies position 1;
+2. call `verify_component(component-A)` while provenance is intact, advancing component-A watermark to 1;
+3. execute and confirm an ordinary position-2 intent while provenance is intact;
+4. delete the migration marker at position 1;
+5. call `verify_component(component-A)` again.
 
-- `78f36768ac8d6b3489d4eb7cf3795f31bd7647ea`
-- exact test blob `e83515e7b5d1b6886064072ca31d02e026349705`
-- adds `test_rotate_provider_fails_closed_after_confirmed_marker_is_deleted` and retains the execute regression.
+Because the local watermark already starts at 1, inherited verification reads only position 2, sees a contiguous one-row suffix, and can advance the durable watermark to 2 without revisiting the now-missing provenance row at position 1. Thus marker deletion does not automatically force an `IntentGap` on this path.
 
-Second fix/current PR #177 head:
+Regression-first commit:
 
-- `9debde700f17ed2d4fe6abe70e45edc2bc7d7a95`
-- production blob `experiments/provider_generation_history/activation_schema_provenance.py` = `2f797fcac39d7e65ab4889b405b547b197c1fb35`
-- provenanced `rotate_provider()` now invokes the same local COMPLETE-provenance guard before delegating to LAB-090.
+- `dd17e19c227e29b3262b031d0a1676a7a305fa8f`
+- exact current test blob `4f1409672786ba23e1c258075f03f3c98dbcba9d`
+- test requires `HistoricalVerificationError` and watermark to remain at 1 after marker deletion.
 
-The regression requires rotation to fail with `HistoricalVerificationError`, leave durable generation at 1, and leave no activation row for generation 2.
+Fix/current PR #177 head:
 
-## Migration-path compatibility
+- `ba71515f99060216d7c4698d5566bbc7be207e54`
+- production blob `experiments/provider_generation_history/activation_schema_provenance.py` = `62a35b0fbbbb1c26d155df65d71e2009e01235aa`
+- provenanced `verify_component()` now invokes the same local COMPLETE-provenance guard before inherited verification/watermark mutation.
 
-The explicit migration confirmation path is unaffected by the subclass mutation guards because it deliberately uses the non-initializing inherited `_reservation_surface`, not `ProvenancedHistoricalSharedAnchorLedger`. Constructor marker authentication likewise uses that confirmation surface before `super().__init__()`.
+## Current guarded public mutation surfaces
+
+The provenanced class now performs the local COMPLETE check before:
+
+- `reserve()` (therefore inherited `execute()` reservation/confirmation paths);
+- `rotate_provider()` (provider activation/history mutation);
+- `verify_component()` (component watermark mutation).
+
+Explicit migration confirmation and constructor marker authentication remain on the deliberately non-initializing inherited `_reservation_surface`, so the new subclass guards do not block migration confirmation.
 
 ## Validation status
 
-Exact behavioral RED/GREEN execution was not available in this run because fresh local GitHub transport failed before repository execution with `Could not resolve host: github.com`. Source/branch bytes were re-fetched through the connector, but no behavioral PASS is claimed. PR #177 remains draft.
+Exact behavioral RED/GREEN execution was not available in this run because fresh local GitHub transport failed before repository execution with `Could not resolve host: github.com`. Branch/source blobs were re-fetched through the connector, but no behavioral PASS is claimed. PR #177 remains draft.
+
+At the final PR metadata read in this run GitHub reported `mergeable=false`; no integration action was attempted and this signal must be re-checked because exact execution/base reconciliation is still pending.
 
 ## Remaining audit boundary
 
-The two known direct durable mutation surfaces are now guarded after post-construction provenance deletion: shared-anchor reservation/execute and provider rotation. Future LAB-092 fallback auditing should inspect other methods only when they can demonstrably write provider receipts, activation status, migration marker state, provider history, or another durable authority surface after provenance becomes incomplete. Do not invent a whole-call linearizability contract without a concrete mutation-before-validation path.
+Future LAB-092 fallback auditing should enumerate remaining public/reachable methods and only add further guards when a method can demonstrably write provider receipts, activation status, migration marker state, provider history, watermarks, or another durable authority surface after provenance becomes incomplete. Do not invent a whole-call linearizability contract without a concrete mutation-before-validation path.
