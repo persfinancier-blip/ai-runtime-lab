@@ -1,12 +1,12 @@
-# LAB-092 post-construction provenance-marker deletion / execute gap
+# LAB-092 post-construction provenance-marker deletion / mutation gaps
 
 Date: 2026-09-01
 
 ## Question
 
-Can a live `ProvenancedHistoricalSharedAnchorLedger` continue to make durable shared-anchor mutations after the already-confirmed LAB-092 migration provenance marker is deleted post-construction?
+Can a live `ProvenancedHistoricalSharedAnchorLedger` continue to make durable mutations after the already-confirmed LAB-092 migration provenance marker is deleted post-construction?
 
-## Finding
+## Finding 1 — shared-anchor execute/reserve
 
 Yes. The pre-fix LAB-092 class validated provenance during construction and in `verify_activation_schema_provenance()`, but inherited `SharedAnchorLedger.execute()` dynamically called inherited `reserve()` without re-checking LAB-092 provenance. Therefore this deterministic sequence was reachable without any timing assumption:
 
@@ -20,36 +20,51 @@ That violates the post-install provenance deletion boundary: a live object could
 
 This is not a whole-call linearizability requirement and does not depend on a concurrent writer racing a validation window; the marker is deleted before the public mutation call begins.
 
-## Regression-first change
+Regression-first branch commit:
 
-Regression commit on `lab-092-activation-schema-provenance`:
+- `60c71feb21a88ddac1530fd102913305f8de890f` — added the execute-after-marker-deletion regression.
 
-- `60c71feb21a88ddac1530fd102913305f8de890f`
-- new test `experiments/provider_generation_history/tests/test_activation_schema_postconstruction_marker_deletion.py`
-- exact published test blob `f2757e7de37f4d1402fb4b1da0e7c33513b4c432`
+First fix:
 
-The regression requires `ledger.execute()` to raise `HistoricalVerificationError` after marker deletion and verifies that the requested new intent row was not inserted.
+- `3f183bd539ff8547f5d8bd05b4be2d02b35bf995` — added `_require_complete_activation_schema_provenance()` and guarded provenanced `reserve()`.
 
-Exact behavioral RED execution was not available in this run because local GitHub transport failed before repository execution (`Could not resolve host: github.com`). The RED claim is therefore source-level/deterministic reasoning only, not reported as an executed test result.
+Because inherited `execute()` calls `self.reserve(intent)`, ordinary execute/reserve mutation now fails before any new durable intent reservation when marker/DDL provenance is incomplete.
 
-## Fix
+## Finding 2 — provider rotation bypassed reserve guard
 
-Fix commit on the same branch:
+The first fix did not cover inherited LAB-090 `rotate_provider()`. That mutation path does not call `reserve()`: it can prepare an external activation ticket, insert a `provider_generation_activations` row, rotate durable provider generation history, durably acknowledge/release the provider fence, and replace runtime attestation.
 
-- `3f183bd539ff8547f5d8bd05b4be2d02b35bf995`
-- production blob `experiments/provider_generation_history/activation_schema_provenance.py` = `df99fa6bd9c0d9952008c4671f1f233ed1baaadd`
+Therefore the same deterministic post-construction marker deletion left a second reachable mutation path:
 
-The provenanced class now has a local fail-closed guard:
+1. obtain a legitimately migrated provenanced ledger;
+2. delete the confirmed migration marker;
+3. call `rotate_provider()` with a valid next generation and activation-capable provider;
+4. pre-second-fix LAB-092 has no provenance check on this path, so LAB-090 rotation can proceed despite local provenance already being `DDL_INSTALLED_UNMARKED`.
 
-- `_require_complete_activation_schema_provenance()` requires `_classify(self.path) == "COMPLETE"`;
-- overridden `reserve()` invokes that guard before delegating to LAB-090/LAB-080 reservation logic.
+Again, no concurrent race is required.
 
-Because inherited `execute()` calls `self.reserve(intent)`, ordinary execute/reserve mutation now fails before any new durable intent reservation when the marker or exact activation DDL provenance is missing/mismatched.
+Second regression-first branch commit:
 
-The explicit migration confirmation path is unaffected because it deliberately uses the non-initializing inherited `_reservation_surface`, not the provenanced subclass override. Constructor marker authentication also uses that confirmation surface before `super().__init__()`.
+- `78f36768ac8d6b3489d4eb7cf3795f31bd7647ea`
+- exact test blob `e83515e7b5d1b6886064072ca31d02e026349705`
+- adds `test_rotate_provider_fails_closed_after_confirmed_marker_is_deleted` and retains the execute regression.
 
-## Audit / remaining boundary
+Second fix/current PR #177 head:
 
-This fix is intentionally scoped to shared-anchor reservation/execute mutation. `rotate_provider()` is a separate LAB-090 mutation path that does not call `reserve()` and must be audited separately for the same post-construction marker-deletion condition before claiming the live-object provenance boundary is complete.
+- `9debde700f17ed2d4fe6abe70e45edc2bc7d7a95`
+- production blob `experiments/provider_generation_history/activation_schema_provenance.py` = `2f797fcac39d7e65ab4889b405b547b197c1fb35`
+- provenanced `rotate_provider()` now invokes the same local COMPLETE-provenance guard before delegating to LAB-090.
 
-No exact branch behavioral/full-suite PASS is claimed. PR #177 remains draft.
+The regression requires rotation to fail with `HistoricalVerificationError`, leave durable generation at 1, and leave no activation row for generation 2.
+
+## Migration-path compatibility
+
+The explicit migration confirmation path is unaffected by the subclass mutation guards because it deliberately uses the non-initializing inherited `_reservation_surface`, not `ProvenancedHistoricalSharedAnchorLedger`. Constructor marker authentication likewise uses that confirmation surface before `super().__init__()`.
+
+## Validation status
+
+Exact behavioral RED/GREEN execution was not available in this run because fresh local GitHub transport failed before repository execution with `Could not resolve host: github.com`. Source/branch bytes were re-fetched through the connector, but no behavioral PASS is claimed. PR #177 remains draft.
+
+## Remaining audit boundary
+
+The two known direct durable mutation surfaces are now guarded after post-construction provenance deletion: shared-anchor reservation/execute and provider rotation. Future LAB-092 fallback auditing should inspect other methods only when they can demonstrably write provider receipts, activation status, migration marker state, provider history, or another durable authority surface after provenance becomes incomplete. Do not invent a whole-call linearizability contract without a concrete mutation-before-validation path.
