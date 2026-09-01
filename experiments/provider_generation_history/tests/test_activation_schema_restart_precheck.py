@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
@@ -69,6 +70,37 @@ class ActivationSchemaRestartPrecheckTests(unittest.TestCase):
             self.assertIsNone(marker)
             self.assertIsNone(table)
             self.assertIsNone(trigger)
+
+    def test_complete_restart_does_not_reauthenticate_marker_after_lab090_recovery(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shared.db"
+            key = b"provider-key-1"
+            g1 = descriptor(1, key)
+            provider = FencedActivationProvider("anchor-A", 1, key, value=0)
+            SupportedHistoricalSharedAnchorLedger(path, attested(provider, 1, key), g1)
+
+            q = sqlite3.connect(path)
+            try:
+                q.execute("DROP TRIGGER block_intent_during_provider_activation")
+                q.execute("DROP TABLE provider_generation_activations")
+                q.commit()
+            finally:
+                q.close()
+
+            ProvenancedHistoricalSharedAnchorLedger.migrate_activation_schema_v1(
+                path, attested(provider, 1, key), g1
+            )
+
+            with patch.object(
+                ProvenancedHistoricalSharedAnchorLedger,
+                "execute",
+                side_effect=AssertionError(
+                    "COMPLETE restart must not reauthenticate migration marker after LAB-090 recovery"
+                ),
+            ):
+                ProvenancedHistoricalSharedAnchorLedger(
+                    path, attested(provider, 1, key), g1
+                )
 
 
 if __name__ == "__main__":
