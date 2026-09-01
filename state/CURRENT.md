@@ -12,20 +12,20 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Authoritative pending LAB-086 lineage: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - PR #165 body still describes the older alternate-UNIQUE executable lineage; issue #163 is authoritative for the pending hidden-rowid publication.
 - LAB-090 / #169 fallback remains draft PR #175; branch `lab-090-provider-activation-fencing`; head/base for LAB-092 is `d9a381dd4607a928cd1315adef6431e239995bc1`.
-- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based exactly on LAB-090 head. Current branch head `cc50513cfd867d8711fb29db8f33490200390d0d`; production provenance source blob `fe9322800c41e5cbb641b4d86810e8f2cf0e8b0a`.
+- LAB-092 / #176 remains IN_PROGRESS; branch `lab-092-activation-schema-provenance`, draft PR #177 based exactly on LAB-090 head. Current branch head `3f183bd539ff8547f5d8bd05b4be2d02b35bf995`; production provenance source blob `df99fa6bd9c0d9952008c4671f1f233ed1baaadd`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
 Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues and active PR state. LAB-086 remains priority #1.
 
-Fresh local `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` again failed before repository execution with `Could not resolve host: github.com`. The live branch `strict_fence.py` was conflict-checked through the connector and still reports exact predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`. The retained semantic patch was re-fetched from the LAB-086 branch and is still exact blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`.
+Fresh local `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` again failed before repository execution with `Could not resolve host: github.com`. The connector still exposes file reads and complete-body Contents writes but no observed byte-preserving fetched-bytes/local-file -> Contents replacement bridge. Manual/model reserialization of security-critical LAB-086 `strict_fence.py` remains prohibited, so no LAB-086 mutation was attempted.
 
-The connector can return exact line-ranged predecessor source and the full semantic patch, but the observed Contents write action still requires a complete UTF-8 replacement body and exposes no automatic connector-bytes/local-file reference transfer. Manual/model reserialization of security-critical `strict_fence.py` remains prohibited. No LAB-086 branch mutation was attempted.
+Completed the next allowed LAB-092 concrete durable mutation audit and found a deterministic post-construction provenance deletion defect. After legitimate migration and construction, deleting the confirmed LAB-092 migration marker made `_classify()` return `DDL_INSTALLED_UNMARKED`, but inherited `execute()` still called inherited `reserve()` without re-checking provenance and could append/confirm a new durable intent. This requires no concurrency or whole-call linearizability assumption: marker deletion happens before the public mutation call.
 
-Completed the next allowed LAB-092 mutation/revalidation audit: `verify_activation_schema_provenance()` racing with provider rotation. No new mutation-before-revalidation defect was demonstrated. On the missing-marker-receipt path, inherited LAB-090 `_reauthenticate()` re-reads durable current generation and rejects a historical migration entry after concurrent rotation before external reconcile / receipt storage. On the stored-receipt path, marker verification is non-mutating. Requiring linearizable runtime freshness across the entire unsynchronized public verification call would be a new contract, not a reproduced security/correctness violation, so no regression or production change was added.
+Regression-first branch commit `60c71feb21a88ddac1530fd102913305f8de890f` added `test_activation_schema_postconstruction_marker_deletion.py`, exact blob `f2757e7de37f4d1402fb4b1da0e7c33513b4c432`. Fix commit/current PR #177 head `3f183bd539ff8547f5d8bd05b4be2d02b35bf995` adds `_require_complete_activation_schema_provenance()` and overrides `reserve()` so inherited `execute()` fails before reservation unless local provenance remains `COMPLETE`. Production blob is `df99fa6bd9c0d9952008c4671f1f233ed1baaadd`.
 
-Durable evidence: `research/2026-09-01-lab092-public-verify-concurrent-rotation-negative-audit.md`, main commit `de2aac8d774b5f8adf7e1e8d92b6cbd89f2790c9`; #176 comment `5493111469`.
+Exact behavioral RED/GREEN execution is not claimed because checkout/source execution remains unavailable. Durable evidence: `research/2026-09-01-lab092-postconstruction-marker-deletion-execute-gap.md`, main commit `74cfb98a466ab59e192c5142b05283be47101b86`; #176 comment `5493863932`.
 
 ## Evidence retained
 
@@ -35,7 +35,7 @@ Durable evidence: `research/2026-09-01-lab092-public-verify-concurrent-rotation-
 - LAB-087 merged/DONE with exact 14/14 PASS + compileall.
 - LAB-088 exact focused/core evidence 22/22 PASS + compileall; supported/downstream gate pending.
 - LAB-090 provider primitive/concurrency exact-byte slice 10/10 PASS + compileall; exact published-head behavioral/full-suite execution pending.
-- LAB-092 classifier/atomic-visibility and ordering evidence retained. Atomic DDL+PREPARED, stale runtime/recovery checks, non-mutating confirmation, restart pre-authentication, full-history-before-receipt-recovery, activation-integrity-before-marker-reauth, public post-construction pre-auth integrity, removal of duplicate post-recovery marker reauth, migration-return constructor audit, semantic integration audit, and concurrent-rotation negative audit are persisted; exact PR #177 regression execution remains pending.
+- LAB-092 classifier/atomic-visibility and ordering evidence retained, plus post-construction marker-deletion execute guard. Exact PR #177 regression/full execution remains pending.
 
 ## Known blockers / constraints
 
@@ -47,6 +47,7 @@ Durable evidence: `research/2026-09-01-lab092-public-verify-concurrent-rotation-
 - Ordinary LAB-092 startup must never reserve/mutate migration provenance on legacy/unmarked/PREPARED state.
 - No marker receipt reauthentication may occur before full provider-history/runtime and activation-record integrity verification on startup, migration confirmation, or public provenance verification.
 - Constructor migration-marker authentication occurs only on the pre-recovery non-mutating confirmation bridge; do not reintroduce post-recovery duplicate `execute()`.
+- Live LAB-092 shared-anchor `reserve()`/`execute()` must now fail closed if post-construction provenance is no longer `COMPLETE`.
 - Do not add an exactly-once migration-marker execute or whole-call linearizable runtime-freshness requirement unless a concrete correctness/security contract requires it.
 - Explicit branch/base reconciliation is required immediately before integration.
 
@@ -54,9 +55,9 @@ Durable evidence: `research/2026-09-01-lab092-public-verify-concurrent-rotation-
 
 LAB-086 first: probe for any newly supported byte-preserving connector/local-file -> Contents replacement bridge. If available, conflict-check predecessor `d4a6a40f...`, compose only retained patch `61841b58...`, require candidate Git blob `b78e7c98...`, publish/re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, complete strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall, and final security/reconciliation audit.
 
-If exact source execution becomes available first, execute PR #175 focused/integration/downstream gates on exact head `d9a381dd...`; then execute PR #177 restart-precheck, pre-auth history verification, migration confirmation bridge, stale runtime/PREPARED recovery, atomic boundary, unresolved activation, deletion/mismatch, public verification, and legitimate legacy migration gates on current head/source. Do not integrate either draft before those gates.
+If exact source execution becomes available first, execute PR #175 focused/integration/downstream gates on exact head `d9a381dd...`; then execute PR #177 including the new post-construction marker-deletion regression on current head/source. Do not integrate either draft before those gates.
 
-If execution and LAB-086 byte-preserving publication remain unavailable, continue LAB-092 only at a concrete durable mutation-before-validation boundary. Prefer methods that can write provider receipts, activation status, migration marker state, or provider history after post-construction tamper; record negative audits rather than inventing new contracts.
+If execution and LAB-086 byte-preserving publication remain unavailable, audit inherited LAB-090 `rotate_provider()` under post-construction deletion of the confirmed LAB-092 marker. It does not call `reserve()`, so determine whether provider history / activation status can still mutate after provenance becomes `DDL_INSTALLED_UNMARKED`. If reachable, add a regression first and the smallest fail-closed provenance guard; otherwise record a negative audit. Do not generalize to new concurrency contracts without a concrete mutation-before-validation path.
 
 ## Backlog
 
@@ -64,4 +65,4 @@ If execution and LAB-086 byte-preserving publication remain unavailable, continu
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; concurrent-rotation public verify audit found no new mutation defect; exact regression gate pending.
+- #176 / LAB-092 — IN_PROGRESS; post-construction marker deletion can no longer pass through `reserve()`/`execute()`; exact regression gate and separate `rotate_provider()` tamper audit pending.
