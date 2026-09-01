@@ -143,6 +143,27 @@ def _reservation_surface(path, attested, bootstrap):
     return ledger
 
 
+def _verify_confirmation_authority(ledger, attested):
+    """Read-only full-history/runtime verification before external marker reauthentication."""
+    q = ledger._con()
+    try:
+        q.execute("BEGIN")
+        durable = ledger.provider_history._verify_durable_locked(q)
+        runtime = ledger._descriptor_from_attested(attested)
+        if runtime.generation_id != durable.generation_id:
+            raise CurrentGenerationRequired(
+                "runtime provider is stale relative to durable history"
+            )
+        q.commit()
+        return durable
+    except:
+        if q.in_transaction:
+            q.rollback()
+        raise
+    finally:
+        q.close()
+
+
 def _install_and_reserve_prepared(path, attested, bootstrap):
     """Commit exact activation DDL and its deterministic PREPARED marker atomically."""
     intent = _completion_intent()
@@ -273,7 +294,8 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
         # Ordinary startup is read-only with respect to migration state. In particular,
         # do not call execute() on a legacy/unmarked database because reserve() would
         # create the migration marker. Only an already COMPLETE local state proceeds
-        # to non-mutating external re-authentication before LAB-090 recovery side effects.
+        # to full read-only authority verification, then external re-authentication,
+        # before LAB-090 recovery side effects.
         state = _classify(path)
         if state in {"LEGACY_ABSENT", "DDL_INSTALLED_UNMARKED", "DDL_INSTALLED_PREPARED"}:
             raise ActivationSchemaMigrationRequired(
@@ -283,6 +305,7 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
             raise HistoricalVerificationError("invalid activation schema provenance state")
 
         confirmation = _reservation_surface(path, attested, bootstrap)
+        _verify_confirmation_authority(confirmation, attested)
         marker = confirmation.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema migration marker is not confirmed")
@@ -306,6 +329,7 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
 
         _install_and_reserve_prepared(path, attested, bootstrap)
         confirmation = _reservation_surface(path, attested, bootstrap)
+        _verify_confirmation_authority(confirmation, attested)
         marker = confirmation.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema completion marker was not confirmed")
