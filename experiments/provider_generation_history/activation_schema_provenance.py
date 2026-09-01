@@ -299,10 +299,12 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
             raise HistoricalVerificationError("activation schema migration state is not recoverable")
 
         # Exact DDL and the deterministic authenticated PREPARED intent become
-        # visible in one SQLite commit. External confirmation happens only after.
+        # visible in one SQLite commit. Confirm it through the already-verified
+        # non-mutating reservation surface; constructing the full LAB-090 surface
+        # here would run provider-activation recovery before provenance is confirmed.
         _install_and_reserve_prepared(path, attested, bootstrap)
-        legacy = SupportedHistoricalSharedAnchorLedger(path, attested, bootstrap)
-        marker = legacy.execute(_completion_intent())
+        confirmation = _reservation_surface(path, attested, bootstrap)
+        marker = confirmation.execute(_completion_intent())
         if marker.status != "CONFIRMED":
             raise HistoricalVerificationError("activation schema completion marker was not confirmed")
         return cls(path, attested, bootstrap)
