@@ -318,6 +318,14 @@ class ProvenancedHistoricalSharedAnchorLedger(SupportedHistoricalSharedAnchorLed
 
         super().__init__(path, attested, bootstrap)
 
+    def _require_complete_activation_schema_provenance(self):
+        if _classify(self.path) != "COMPLETE":
+            raise HistoricalVerificationError("activation schema provenance is incomplete")
+
+    def reserve(self, intent):
+        self._require_complete_activation_schema_provenance()
+        return super().reserve(intent)
+
     @classmethod
     def migrate_activation_schema_v1(cls, path, attested, bootstrap):
         state = _classify(path)
