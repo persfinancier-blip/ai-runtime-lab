@@ -14,22 +14,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - LAB-092 / #176 draft PR #177 head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`.
 - LAB-093 / #178 READY: raw capability exposure + public `attested` authority-slot rebinding source-proved; executable RED/GREEN pending.
 - LAB-094 / #179 READY: immutable provider-history bootstrap trust-root lifetime contract; executable RED/GREEN pending.
-- LAB-095 / #180 READY: database identity must be construction-bound; public path rebinding plus unchanged-path filesystem substitution now both covered at source/contract level.
+- LAB-095 / #180 READY: database identity must be construction-bound and authenticated logical-history identity; public path rebinding, unchanged-path filesystem substitution, and self-asserted-UUID insufficiency are source/contract covered.
 - LAB-096 / #181 READY: provider-history strategy/capability slot publicly rebindable; executable RED/GREEN pending.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open PRs and #163. LAB-086 was probed first. Direct local clone again failed before repository execution with `Could not resolve host: github.com`, so no behavioral execution or security-critical source mutation was claimed.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open PRs, #163, and current PR #165 metadata. LAB-086 was probed first. PR #165 head remains `ee210a47221b6df53f3518aa3af74f76c5b0122b`. Direct local clone again failed before repository execution with `Could not resolve host: github.com`, so no behavioral execution or security-critical source mutation was claimed.
 
-Reconciled a stale-looking PR-body statement against durable LAB-086 evidence: PR #165 body still describes an older `eb219835...` publication, but the later durable lineage correction on the current branch explicitly records that subsequent work moved live `strict_fence.py` back to `d4a6a40f...`; #163 and this state remain authoritative for the pending hidden-rowid publication. Compare from historical executable commit `05d8e75a...` to current head shows later modifications to `strict_fence.py`, consistent with that correction.
+With LAB-086 exact publication/execution still blocked, strengthened existing LAB-095 instead of creating a new issue. The prior idea of a durable database-instance identifier is insufficient if the identifier is only stored/checked inside the replaceable SQLite file: it is self-asserted metadata and can be copied or reproduced by a substituted DB. Source review confirms the existing stronger logical trust mechanism is complete provider-history verification against the retained bootstrap/root; ordinary mutation paths only perform shallow current-head checks on newly opened connections.
 
-With LAB-086 publication and exact execution still blocked, strengthened existing LAB-095 rather than creating a new issue. Source audit shows that a private/read-only pathname alone would not bind database authority: `_con()` reopens SQLite by pathname each operation, so an unchanged path can resolve to a replacement DB after construction. LAB-095 therefore needs database-instance/history identity, not merely immutable path spelling. Added a same-path DB-A -> DB-B substitution regression requirement and recommended evaluating one authenticated durable database-instance identifier verified on every fresh connection before authority decisions/mutations.
+LAB-095 acceptance is therefore refined: bind the supported object to authenticated logical history, not pathname/inode/plain UUID. A safe implementation must either revalidate construction-bound authenticated history before authority use on each fresh connection (using a raw-vs-checked connection split to avoid recursion), or use an equivalently strong database-instance binding whose authenticity is anchored outside self-asserted SQLite metadata. Add a regression where same-path DB B has the same superficial current head and the same plain instance UUID as A but invalid bootstrap-to-head continuity; post-fix must fail closed before mutation. A complete authenticated clone remains an external-anchor freshness case rather than an inode-identity case.
 
 ## Evidence produced
 
-- `research/2026-09-02-lab095-pathname-is-not-database-identity.md` — main commit `4ea3a667251dc071b1d803d5ae733c0621e0fd19`; #180 comment `5502895398`.
-- Prior retained evidence: LAB-093 notes/commits `2892b115...`, `5e81524d...`; LAB-094 `90735fdb...`; LAB-095 original `f74f1422...`; LAB-096 `ab541a60...`.
+- `research/2026-09-02-lab095-self-asserted-db-id-is-not-authority.md` — main commit `cdb3bd98355f3f187d16ed8ff0af856880b17da9`; #180 comment `5503327435`.
+- Prior retained evidence: LAB-095 same-path note `4ea3a667...`; LAB-093 `2892b115...`, `5e81524d...`; LAB-094 `90735fdb...`; LAB-095 original `f74f1422...`; LAB-096 `ab541a60...`.
 
 ## Known failures / blockers
 
@@ -39,13 +39,13 @@ With LAB-086 publication and exact execution still blocked, strengthened existin
 - Exact checkout/source execution is unavailable in this run; no fresh behavioral PASS is claimed.
 - Keep PRs #175/#177 draft until their exact focused/integration/downstream gates execute.
 - Do not stage LAB-093/094/095/096 production code before their specified pre-fix REDs execute, or an equivalently strong auditable execution path exists.
-- For LAB-095, do not accept `_path`/read-only property or `Path.resolve()` alone as sufficient; same-path file substitution must fail closed on database-instance identity.
+- For LAB-095, do not accept `_path`/read-only property, `Path.resolve()`, inode/device identity, or a self-asserted database UUID alone. The newly opened target must prove authenticated logical history rooted at construction-bound authority; LAB-094 and LAB-096 must compose so root/verification strategy cannot themselves be rebound.
 
 ## Exact next action
 
 LAB-086 first: re-check PR #165 head and probe for a supported byte-preserving transformation/write path that can consume exact `strict_fence.py` predecessor blob `d4a6a40f...` plus retained unified patch `61841b58...`. If available, conflict-check exact predecessor, compose only that patch, require candidate Git blob `b78e7c98...`, publish/re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, execute PR #175 and #177 full gates, then LAB-093/094/095/096 pre-fix REDs before production changes. LAB-095 must include both explicit path rebinding and unchanged-path DB substitution.
+If exact source execution becomes available first, execute PR #175 and #177 full gates, then LAB-093/094/095/096 pre-fix REDs before production changes. LAB-095 must include explicit path rebinding, unchanged-path DB substitution, and same-plain-UUID/invalid-history substitution.
 
 If both remain unavailable, continue retained-authority audit only where it strengthens an existing LAB-093/094/095/096 issue with a concrete distinct trust/capability violation; do not multiply issues for subsumed findings.
 
@@ -58,5 +58,5 @@ If both remain unavailable, continue retained-authority audit only where it stre
 - #176 / LAB-092 — IN_PROGRESS; exact regression/full gate pending.
 - #178 / LAB-093 — READY; executable RED/GREEN + implementation pending.
 - #179 / LAB-094 — READY; executable RED/GREEN + implementation pending.
-- #180 / LAB-095 — READY; database-instance identity contract now includes same-path substitution; executable RED/GREEN + implementation pending.
+- #180 / LAB-095 — READY; authenticated logical database/history identity contract now rejects path-only and self-asserted-ID fixes; executable RED/GREEN + implementation pending.
 - #181 / LAB-096 — READY; executable RED/GREEN + implementation pending.
