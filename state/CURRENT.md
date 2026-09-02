@@ -17,7 +17,7 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - LAB-095 / #180 READY: construction-bound authenticated logical database/history identity.
 - LAB-096 / #181 READY: provider-history strategy/capability rebinding.
 - LAB-097 / #182 READY: provider-history deletion/rebootstrap + orphan-transition acceptance.
-- LAB-098 / #183 READY: missing/deleted provider activation records can bypass completeness/recovery checks.
+- LAB-098 / #183 READY: activation-record set completeness/bijection — missing/deleted required rows and surplus rows not backed by authenticated transitions.
 - LAB-099 / #184 READY: historical `COMMITTED` activation ticket contents can be coherently rebound because current transition evidence does not authenticate `activation_id`, `expected_position`, or `fence`.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
@@ -25,12 +25,13 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs. LAB-086 remains blocked specifically on a supported byte-preserving machine composition path for `d4a6a40f... + 61841b58... -> b78e7c98...`; no LAB-086 source mutation or behavioral PASS was claimed.
 
-Fallback source audit of PR #175 found a distinct historical-ticket provenance gap. `_verify_activation_records()` structurally validates existing historical `COMMITTED` rows but has no authenticated evidence binding the exact original LAB-090 ticket fields. An isolated file-backed SQLite probe mirrored the current predicates: after changing a legitimate historical activation from `expected_position=7,fence=4` to `expected_position=999,fence=12345` and recomputing its deterministic `activation_id`, all current structural checks still evaluated true.
+Fallback source audit of PR #175 extended LAB-098/#183 in the dual direction. `_verify_activation_records()` checks that each existing activation row references a valid provider generation, but does not require that the generation is the target of an authenticated provider-generation transition. Therefore a structurally valid `COMMITTED` activation row for the bootstrap generation (which has no predecessor transition and no LAB-090 handoff) is accepted by the current predicates.
 
-Created LAB-099/#184, research evidence, and linked the finding back to #169.
+An isolated file-backed SQLite probe mirrored the verifier conditions with bootstrap g1, no transition, and a deterministic `COMMITTED` activation row for g1 (`expected_position=0`, `fence=1`); all current structural predicates evaluated true. LAB-098 therefore requires a bijection between authenticated LAB-090-governed transitions and activation records: no omissions and no extras. Exact PR RED/GREEN remains pending.
 
 ## Evidence produced
 
+- `research/2026-09-02-lab098-surplus-bootstrap-activation-row.md` — commit `6ac5525cd0a832d220066716e637a6500c48d2a6`; #183 comment `5509380250`.
 - `research/2026-09-02-lab099-historical-activation-ticket-rebinding.md` — commit `3b6e311b835d07a347def9643be90294e49ac42b`; issue #184; #169 comment `5508684493`.
 - `research/2026-09-02-lab098-deleted-activation-row-bypasses-recovery.md` — commit `f46e3759a5e3ad41846036d74625cb57f481a1ca`; issue #183.
 - `research/2026-09-02-lab090-malformed-prepare-ticket-reservation-cleanup.md` — commit `2af77704a2f564cfd7b2cdd91fec68f50280f7ee`; #169 comment `5507313237`.
@@ -46,15 +47,15 @@ Created LAB-099/#184, research evidence, and linked the finding back to #169.
 - Keep PRs #175/#177 draft until exact focused/integration/downstream gates execute.
 - LAB-090 constructor: reject runtime-head mismatch before activation-schema mutation; verify complete activation history before any recovery mutation.
 - LAB-090 fresh activation: prepare must not strand a newly-created provider reservation when ticket/status validation fails before SQL; cleanup must never abort unrelated prior activation state.
-- LAB-098: activation-record completeness must be derived from authenticated provider-generation transition history; missing current/historical records must fail closed before mutation.
-- LAB-099: completeness alone is insufficient. Exact ticket contents for each historical activation must also be authenticated by evidence independent of the mutable activation row; a self-hash in the same row is insufficient.
+- LAB-098: derive the exact activation-record set from authenticated provider-generation transitions and require a bijection. Missing required current/historical records and surplus records (including bootstrap activation rows) must fail closed before mutation.
+- LAB-099: completeness/bijection alone is insufficient. Exact ticket contents for each historical activation must also be authenticated by evidence independent of the mutable activation row; a self-hash in the same row is insufficient.
 - Do not stage LAB-093/094/095/096/097/098/099 production code before their pre-fix REDs execute or an equivalently strong auditable execution path exists.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving machine composition operation for predecessor blob `d4a6a40f...` + retained patch `61841b58...`. If available, compose only that patch, require candidate Git blob `b78e7c98...`, conflict-check PR #165 still contains the predecessor, publish through normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: (1) runtime-head mismatch before schema installation; (2) invalid historical activation before recovery side effects; (3) malformed/failed prepare without stranded reservation. Then run LAB-098 REDs for missing current/historical activation records and LAB-099 REDs for historical `COMMITTED` ticket-field rebinding (`expected_position`, `activation_id`, `fence`, including coherent multi-field rewrite). All must fail closed before provider/SQLite mutation. Then run PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
+If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: (1) runtime-head mismatch before schema installation; (2) invalid historical activation before recovery side effects; (3) malformed/failed prepare without stranded reservation. Then run LAB-098 REDs for missing current/historical activation records plus surplus bootstrap/non-transition activation records, requiring fail-closed behavior before provider/SQLite mutation. Then run LAB-099 REDs for historical `COMMITTED` ticket-field rebinding (`expected_position`, `activation_id`, `fence`, including coherent multi-field rewrite). Then run PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
 
 If neither becomes available, continue audit only for concrete distinct trust/capability/fail-closed violations not subsumed by existing issues.
 
@@ -70,5 +71,5 @@ If neither becomes available, continue audit only for concrete distinct trust/ca
 - #180 / LAB-095 — READY; executable RED/GREEN + implementation pending.
 - #181 / LAB-096 — READY; executable RED/GREEN + implementation pending.
 - #182 / LAB-097 — READY; deletion/orphan-transition RED/GREEN + authenticated initialization provenance pending.
-- #183 / LAB-098 — READY; activation-record completeness RED/GREEN + transition-derived completeness design pending.
+- #183 / LAB-098 — READY; activation-record bijection RED/GREEN + transition-derived completeness design pending.
 - #184 / LAB-099 — READY; historical activation ticket provenance RED/GREEN + authenticated ticket-binding design pending.
