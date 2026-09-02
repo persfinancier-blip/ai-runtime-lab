@@ -19,21 +19,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - LAB-097 / #182 READY: provider-history deletion/rebootstrap + orphan-transition acceptance.
 - LAB-098 / #183 READY: activation-record set completeness/bijection.
 - LAB-099 / #184 READY: historical activation ticket contents require independent authenticated binding.
-- LAB-100 / #185 READY: LAB-090 accepts arbitrary `FencedActivationProvider` subclasses as the trusted fencing implementation.
+- LAB-100 / #185 READY: activation-provider implementation/capability authority; exact provider class also inherits identity/key mutation that can strand pending activation state.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and active PRs. Re-probed direct git transport in the current runtime; it failed before repository execution with `Could not resolve host: github.com`.
 
-Re-confirmed PR #165 remains draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; no LAB-086 branch mutation or fresh behavioral PASS was claimed because the supported byte-preserving connector-payload -> patch/hash -> Contents API composition bridge is still absent.
+Re-confirmed PR #165 remains open/draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`. Connector re-fetch of `strict_fence.py` at that head reports exact predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, and direct Git-blob fetch exposes the retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`. No LAB-086 branch mutation or fresh behavioral PASS was claimed because there is still no supported byte-preserving machine bridge from those connector payloads into patch/hash verification + Contents API publication.
 
-Fallback-audited PR #175. Found a distinct trust-boundary weakness: the supported ledger requires exact `AttestedCatchup` but accepts the nested activation provider via `isinstance(provider, FencedActivationProvider)`. Because the activation lifecycle methods are overridable, a subclass can return syntactically valid tickets/statuses while omitting the provider-side reservation/fence side effects that LAB-090 relies on. The exact wrapper check does not constrain `AttestedCatchup.provider`.
+Fallback-audited LAB-100/#185 rather than opening a duplicate issue. Found that exact-type enforcement alone would still leave an activation-state invariant hole: `FencedActivationProvider` inherits `SignedAnchorProvider.rotate()` unchanged. The inherited method mutates provider identity/generation/key without migrating or rejecting a non-quiescent `ActivationState`. A valid pending ticket remains installed, but `activation_status(ticket)` and `abort_activation(ticket)` then reject it because `_ticket_matches_runtime()` sees the rebound generation; `increment()` remains fenced because pending is still non-NULL. An isolated semantics probe reproduced PREPARED -> identity rotate -> status/abort `ActivationTicketMismatch` with the original pending ticket still installed.
 
-Created LAB-100/#185 and durable evidence. No production code was staged because the regression-first RED cannot be executed exactly in this runtime.
+Recorded this as a strengthening of LAB-100, not a new issue. No production code was staged because exact repository RED/GREEN execution remains unavailable.
 
 ## Evidence produced
 
+- `research/2026-09-02-lab100-inherited-provider-rotate-breaks-activation-state.md` — commit `25297f0bb6812114e34b94673134d18c27f3c494`; #185 comment `5511876977`.
 - `research/2026-09-02-lab100-activation-provider-subclass-authority.md` — commit `8b1abf6f9297a80f67a9e0111f19f78fc630bb9d`; issue #185.
 - `research/2026-09-02-lab086-rowid-sentinel-sqlite-semantics-probe.md` — commit `04bdef2f6e94f315e4215da51a839c4633a79ff6`; #163 comment `5510181024`.
 - `research/2026-09-02-lab098-surplus-bootstrap-activation-row.md` — commit `6ac5525cd0a832d220066716e637a6500c48d2a6`; #183 comment `5509380250`.
@@ -50,16 +51,16 @@ Created LAB-100/#185 and durable evidence. No production code was staged because
 - LAB-090 fresh activation: prepare must not strand a newly-created provider reservation when ticket/status validation fails before SQL; cleanup must never abort unrelated prior activation state.
 - LAB-098: derive required activation records from authenticated transitions and require a bijection.
 - LAB-099: bind exact historical activation ticket contents into independent authenticated evidence.
-- LAB-100: decide the supported activation-provider extension model. If only the audited in-process primitive is supported, exact implementation identity is the minimal contract; if custom providers are intended, use an explicitly trusted adapter/capability boundary and do not trust caller-overridable lifecycle return values as sole evidence.
+- LAB-100: exact-type acceptance is not sufficient by itself. Decide the supported activation-provider extension model **and** bind provider identity/key/state-machine authority for the lifetime of pending/committed activation state. Reject generic inherited identity rotation while activation state is non-quiescent, or define/prove an explicit activation-aware rotation transition.
 - Do not stage LAB-093/094/095/096/097/098/099/100 production code before their pre-fix REDs execute or an equivalently strong auditable execution path exists.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving machine composition operation for predecessor blob `d4a6a40f...` + retained patch `61841b58...`. If available, compose only that patch, require candidate Git blob `b78e7c98...`, conflict-check PR #165 still contains the predecessor, publish through normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: (1) runtime-head mismatch before schema installation; (2) invalid historical activation before recovery side effects; (3) malformed/failed prepare without stranded reservation; (4) LAB-100 fake `FencedActivationProvider` subclass returning valid-looking lifecycle values without a real provider-side fence. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
+If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: (1) runtime-head mismatch before schema installation; (2) invalid historical activation before recovery side effects; (3) malformed/failed prepare without stranded reservation; (4) LAB-100 fake `FencedActivationProvider` subclass returning valid-looking lifecycle values without a real provider-side fence; (5) LAB-100 exact `FencedActivationProvider` with a valid pending ticket followed by inherited identity/generation rotation, proving the ticket becomes unreconcilable while the provider remains fenced. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
 
-If neither becomes available, continue audit only for concrete distinct trust/capability/fail-closed violations not subsumed by existing issues.
+If neither becomes available, continue audit only for concrete distinct trust/capability/fail-closed violations not subsumed by existing issues; strengthen an existing issue rather than creating a duplicate when the finding shares the same authority boundary.
 
 ## Backlog
 
@@ -75,4 +76,4 @@ If neither becomes available, continue audit only for concrete distinct trust/ca
 - #182 / LAB-097 — READY.
 - #183 / LAB-098 — READY.
 - #184 / LAB-099 — READY.
-- #185 / LAB-100 — READY; activation-provider implementation/capability authority RED/GREEN pending.
+- #185 / LAB-100 — READY; provider implementation/capability authority now includes exact-class inherited identity-rotation invariant; RED/GREEN pending.
