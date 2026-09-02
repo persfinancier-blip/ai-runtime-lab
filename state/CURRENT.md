@@ -9,22 +9,23 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 ## Active issue / branch / PR
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`; observed head `ee210a47221b6df53f3518aa3af74f76c5b0122b`.
-- Authoritative pending LAB-086 lineage: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 draft PR #175 head `d9a381dd4607a928cd1315adef6431e239995bc1`; constructor ordering, post-prepare cleanup, activation-record integrity, and activation-provider authority defects remain pending exact RED/GREEN.
+- Authoritative pending LAB-086 lineage re-verified this run from GitHub Contents/blob APIs: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required composed target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
+- LAB-090 / #169 draft PR #175 observed head `d9a381dd4607a928cd1315adef6431e239995bc1`; constructor ordering, post-prepare cleanup, activation-record integrity, and activation-provider authority defects remain pending exact RED/GREEN.
 - LAB-092 / #176 draft PR #177 head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`.
 - LAB-093 / #178 READY; LAB-094 / #179 READY; LAB-095 / #180 READY; LAB-096 / #181 READY; LAB-097 / #182 READY; LAB-098 / #183 READY; LAB-099 / #184 READY; LAB-100 / #185 READY.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues/PRs, PR #175 source, and the exact LAB-086 predecessor/patch blobs. Re-probed direct Git transport: it still fails before repository execution with `Could not resolve host: github.com`. The GitHub connector now returned the complete predecessor blob and retained patch in this run, but there is still no supported byte-preserving machine bridge that can consume those exact connector payloads, apply the patch, verify target blob `b78e7c98...`, and publish the complete result through Contents API. No LAB-086 source mutation was attempted.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open PRs, PR #165 metadata/source, and PR #175 activation/coordinator source. Re-verified that PR #165 still contains exact predecessor `strict_fence.py` blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, and fetched the retained patch object exactly as Git blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`. Connector discovery still exposes no supported patch-application or repository-file download primitive that can transfer those exact bytes into the execution filesystem; direct Git was reprobed and still fails before repository execution with `Could not resolve host: github.com`. No LAB-086 source mutation was attempted and no new LAB-086 behavioral PASS is claimed.
 
-Fallback-audited PR #175's `COMMITTED -> provider release` interval. `_mark_activation_committed()` stops the SQL trigger from blocking new intents before `_release_committed_activation()` removes the provider fence. After checking supported surfaces, this is not a new standalone bypass: the rotating object still has the old runtime and `reserve()` rejects runtime/durable-generation mismatch; a new current-generation ledger must complete activation recovery before construction succeeds; stale runtime construction fails; raw SQLite writers remain LAB-087 scope. Recorded this as a composition boundary rather than opening a duplicate issue. It must be included in LAB-093/LAB-100 regressions because capability/runtime rebinding could invalidate those assumptions.
+Fallback-audited PR #175 / LAB-100 and found an additional reconstruction invariant failure: `FencedActivationProvider` accepts a supplied `ActivationState`, but neither construction nor fresh allocation proves `next_fence >= max(existing pending/committed ticket fences)`. Fresh allocation uses only `next_fence += 1`; therefore reconstructed state with historical fence 7 and cursor 0 emits a new fence 1. Exact type, subclass hardening, and exclusive state ownership alone do not establish monotonic fencing after restart/reconstruction. This extends #185 rather than creating a duplicate issue.
 
 No production code was staged and no exact repository behavioral PASS is claimed.
 
 ## Evidence produced
 
+- `research/2026-09-02-lab100-nonmonotonic-fence-reconstruction.md` — commit `fc0bc0feb66086d10f940dbd0814ab06be4dd8e9`; #185 comment `5515838748`.
 - `research/2026-09-02-lab090-committed-before-release-window-audit.md` — commit `6e1e69b051ea35c928cff6b5d58908e7b04fcdbf`; #169 comment `5515032277`.
 - `research/2026-09-02-lab090-cleanup-secondary-sqlite-dependency.md` — commit `7c2dc24f9d42bdef1a487350afb063f6a9733b0a`; #169 comment `5514259088`.
 - `research/2026-09-02-lab090-post-prepare-connection-open-reservation-leak.md` — commit `4c488991a6150e00355d471fb1ec003623ad5574`; #169 comment `5513466831`.
@@ -39,7 +40,7 @@ No production code was staged and no exact repository behavioral PASS is claimed
 ## Known failures / blockers
 
 - LAB-086 remains first priority. Do not manually/model-reserialize security-critical `strict_fence.py`.
-- Connector reads can expose exact predecessor/patch bytes, but this run still lacks a supported machine transformation bridge from connector payload -> patch application -> Git blob verification -> Contents write.
+- Exact predecessor and patch bytes are connector-readable, but this run still lacks a supported machine transformation bridge from connector payload -> patch application -> candidate Git blob verification -> Contents write. Direct Git transport is transiently unavailable by DNS.
 - Exact checkout/source execution remains unavailable in this run; no fresh repository behavioral PASS is claimed.
 - Keep PRs #175/#177 draft until exact focused/integration/downstream gates execute.
 - LAB-090 constructor: reject runtime-head mismatch before activation-schema mutation; verify complete activation history before any recovery mutation.
@@ -47,14 +48,14 @@ No production code was staged and no exact repository behavioral PASS is claimed
 - LAB-090 `COMMITTED -> release` interval is not a standalone supported-surface bypass under current runtime-generation/construction checks, but integration tests must prove that LAB-093/LAB-100 capability rebinding cannot turn it into one.
 - LAB-098: derive required activation records from authenticated transitions and require a bijection.
 - LAB-099: bind exact historical activation ticket contents into independent authenticated evidence.
-- LAB-100: exact-type acceptance alone is insufficient. Bind provider implementation, identity/key/state-machine authority, and activation-state ownership for the lifetime of pending/committed activation; reject generic inherited identity rotation while state is non-quiescent or define a proven activation-aware transition.
+- LAB-100: exact-type acceptance alone is insufficient. Bind provider implementation, identity/key/state-machine authority, activation-state ownership, and monotonic fencing cursor/history for the lifetime of activation state. Reject generic inherited identity rotation while state is non-quiescent or define a proven activation-aware transition. Reconstructed state must fail closed unless its next fence is strictly consistent with all trusted historical/pending tickets; do not canonicalize from arbitrary caller-owned mutable state.
 - Do not stage LAB-093/094/095/096/097/098/099/100 production code before their pre-fix REDs execute or an equivalently strong auditable execution path exists.
 
 ## Exact next action
 
-LAB-086 first: probe for a supported byte-preserving machine composition operation for predecessor blob `d4a6a40f...` + retained patch `61841b58...`. If available, compose only that patch, require candidate Git blob `b78e7c98...`, conflict-check PR #165 still contains the predecessor, publish through normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
+LAB-086 first: probe for a supported byte-preserving machine composition operation for predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` + retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`. If available, compose only that patch, require candidate Git blob `b78e7c98e35138719f77c482c7f1aab36b702de7`, conflict-check PR #165 still contains the predecessor, publish through normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: constructor ordering, malformed/failed prepare cleanup, first post-prepare `_con()` failure, exception-handler `_activation_row()` failure, LAB-100 fake subclass/inherited rotation/caller-owned ActivationState cases, and `COMMITTED` durable acknowledgement with provider still `COMMITTED_FENCED` proving no supported writer path can create/execute a new intent before exact-ticket release. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
+If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: constructor ordering, malformed/failed prepare cleanup, first post-prepare `_con()` failure, exception-handler `_activation_row()` failure, LAB-100 fake subclass/inherited rotation/caller-owned ActivationState/non-monotonic reconstructed fence cases, and `COMMITTED` durable acknowledgement with provider still `COMMITTED_FENCED` proving no supported writer path can create/execute a new intent before exact-ticket release. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
 
 If neither becomes available, continue audit only for concrete distinct trust/capability/fail-closed violations not subsumed by existing issues; strengthen an existing issue rather than creating a duplicate when the finding shares the same authority boundary.
 
@@ -72,4 +73,4 @@ If neither becomes available, continue audit only for concrete distinct trust/ca
 - #182 / LAB-097 — READY.
 - #183 / LAB-098 — READY.
 - #184 / LAB-099 — READY.
-- #185 / LAB-100 — READY; provider implementation/capability/state authority RED/GREEN pending.
+- #185 / LAB-100 — READY; provider implementation/capability/state ownership/monotonic-fence reconstruction RED/GREEN pending.
