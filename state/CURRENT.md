@@ -10,28 +10,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`; observed head `ee210a47221b6df53f3518aa3af74f76c5b0122b`.
 - Authoritative pending LAB-086 lineage: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
-- LAB-090 / #169 draft PR #175 head `d9a381dd4607a928cd1315adef6431e239995bc1`; constructor ordering, post-prepare reservation cleanup, and activation-provider implementation/state-authority defects remain pending exact RED/GREEN.
+- LAB-090 / #169 draft PR #175 head `d9a381dd4607a928cd1315adef6431e239995bc1`; constructor ordering, post-prepare cleanup, activation-record integrity, and activation-provider authority defects remain pending exact RED/GREEN.
 - LAB-092 / #176 draft PR #177 head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`.
-- LAB-093 / #178 READY: outer + nested attested/provider/verifier/keyring capability rebinding.
-- LAB-094 / #179 READY: immutable provider-history bootstrap trust root.
-- LAB-095 / #180 READY: construction-bound authenticated logical database/history identity.
-- LAB-096 / #181 READY: provider-history strategy/capability rebinding.
-- LAB-097 / #182 READY: provider-history deletion/rebootstrap + orphan-transition acceptance.
-- LAB-098 / #183 READY: activation-record set completeness/bijection.
-- LAB-099 / #184 READY: historical activation ticket contents require independent authenticated binding.
-- LAB-100 / #185 READY: activation-provider implementation/capability/state authority; exact provider class inherits identity/key mutation that can strand pending activation state and also accepts/re-exposes caller-owned mutable `ActivationState`.
+- LAB-093 / #178 READY; LAB-094 / #179 READY; LAB-095 / #180 READY; LAB-096 / #181 READY; LAB-097 / #182 READY; LAB-098 / #183 READY; LAB-099 / #184 READY; LAB-100 / #185 READY.
 - LAB-091 / #170 draft PR #173 and LAB-088 / #167 draft PR #172 remain IN_PROGRESS.
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open PRs, LAB-086/#163, LAB-090/#169, and current PR #175 source. Reconfirmed branch `lab/086-asymmetric-break-glass-history` still exposes `experiments/asymmetric_break_glass_history/strict_fence.py` at exact predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; no LAB-086 source mutation was attempted because no supported byte-preserving patch-composition bridge is available in this run.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues/PRs, PR #175 source, and the exact LAB-086 predecessor/patch blobs. Re-probed direct Git transport: it still fails before repository execution with `Could not resolve host: github.com`. The GitHub connector now returned the complete predecessor blob and retained patch in this run, but there is still no supported byte-preserving machine bridge that can consume those exact connector payloads, apply the patch, verify target blob `b78e7c98...`, and publish the complete result through Contents API. No LAB-086 source mutation was attempted.
 
-Fallback-audited PR #175 and strengthened existing LAB-090/#169. Found that the fresh-rotation exception handler itself has another fallible SQLite dependency before provider cleanup: after rollback it calls `_activation_row(...)`, which opens a separate connection, before `provider.abort_activation(ticket)`. If that secondary lookup fails, abort is never reached and a newly-owned PREPARED reservation can remain stranded without a durable activation row. Executed a minimal control-flow probe matching the current ordering: primary SQL failure + injected secondary lookup failure left provider pending set and abort count zero.
+Fallback-audited PR #175's `COMMITTED -> provider release` interval. `_mark_activation_committed()` stops the SQL trigger from blocking new intents before `_release_committed_activation()` removes the provider fence. After checking supported surfaces, this is not a new standalone bypass: the rotating object still has the old runtime and `reserve()` rejects runtime/durable-generation mismatch; a new current-generation ledger must complete activation recovery before construction succeeds; stale runtime construction fails; raw SQLite writers remain LAB-087 scope. Recorded this as a composition boundary rather than opening a duplicate issue. It must be included in LAB-093/LAB-100 regressions because capability/runtime rebinding could invalidate those assumptions.
 
-No production code was staged because exact repository RED/GREEN execution remains unavailable.
+No production code was staged and no exact repository behavioral PASS is claimed.
 
 ## Evidence produced
 
+- `research/2026-09-02-lab090-committed-before-release-window-audit.md` — commit `6e1e69b051ea35c928cff6b5d58908e7b04fcdbf`; #169 comment `5515032277`.
 - `research/2026-09-02-lab090-cleanup-secondary-sqlite-dependency.md` — commit `7c2dc24f9d42bdef1a487350afb063f6a9733b0a`; #169 comment `5514259088`.
 - `research/2026-09-02-lab090-post-prepare-connection-open-reservation-leak.md` — commit `4c488991a6150e00355d471fb1ec003623ad5574`; #169 comment `5513466831`.
 - `research/2026-09-02-lab100-caller-owned-activation-state-authority.md` — commit `ee7b6ae09ecbd63617fded48e210f9292cdcec1b`; #185 comment `5512698359`.
@@ -45,21 +39,22 @@ No production code was staged because exact repository RED/GREEN execution remai
 ## Known failures / blockers
 
 - LAB-086 remains first priority. Do not manually/model-reserialize security-critical `strict_fence.py`.
-- Connector reads expose exact predecessor/patch bytes, but this run still lacks a supported machine transformation bridge that consumes those exact connector payloads, applies only the retained patch, verifies Git blob `b78e7c98...`, and supplies the complete result to the normal Contents API.
+- Connector reads can expose exact predecessor/patch bytes, but this run still lacks a supported machine transformation bridge from connector payload -> patch application -> Git blob verification -> Contents write.
 - Exact checkout/source execution remains unavailable in this run; no fresh repository behavioral PASS is claimed.
 - Keep PRs #175/#177 draft until exact focused/integration/downstream gates execute.
 - LAB-090 constructor: reject runtime-head mismatch before activation-schema mutation; verify complete activation history before any recovery mutation.
-- LAB-090 fresh activation: once this attempt owns a newly-created valid PREPARED reservation, every subsequent fallible coordinator step — including SQLite connection acquisition and cleanup bookkeeping — must be inside exact-ticket cleanup scope. Current cleanup also performs a second `_activation_row()` SQLite open/read before abort; failure there strands the reservation. Ticket/status validation failure and any post-prepare failure must not strand provider state; cleanup must never abort unrelated prior/idempotently returned activation state. If exact ownership cannot be inferred, extend the provider protocol with explicit attempt/provenance ownership instead of depending on a secondary coordinator DB read.
+- LAB-090 fresh activation: once this attempt owns a newly-created valid PREPARED reservation, every subsequent fallible coordinator step must be inside exact-ticket cleanup scope. Cleanup must not depend on a secondary fallible DB read before abort and must never abort unrelated prior/idempotently returned activation state; if ownership cannot be inferred, add explicit provider attempt/provenance identity.
+- LAB-090 `COMMITTED -> release` interval is not a standalone supported-surface bypass under current runtime-generation/construction checks, but integration tests must prove that LAB-093/LAB-100 capability rebinding cannot turn it into one.
 - LAB-098: derive required activation records from authenticated transitions and require a bijection.
 - LAB-099: bind exact historical activation ticket contents into independent authenticated evidence.
-- LAB-100: exact-type acceptance is not sufficient by itself. Bind provider implementation, identity/key/state-machine authority, and ownership of activation state for the lifetime of pending/committed activation. Reject generic inherited identity rotation while activation state is non-quiescent (or define/prove an activation-aware transition), and do not permit caller-owned/raw mutable `ActivationState` to serve as the trusted fence-state authority through the supported capability surface.
+- LAB-100: exact-type acceptance alone is insufficient. Bind provider implementation, identity/key/state-machine authority, and activation-state ownership for the lifetime of pending/committed activation; reject generic inherited identity rotation while state is non-quiescent or define a proven activation-aware transition.
 - Do not stage LAB-093/094/095/096/097/098/099/100 production code before their pre-fix REDs execute or an equivalently strong auditable execution path exists.
 
 ## Exact next action
 
 LAB-086 first: probe for a supported byte-preserving machine composition operation for predecessor blob `d4a6a40f...` + retained patch `61841b58...`. If available, compose only that patch, require candidate Git blob `b78e7c98...`, conflict-check PR #165 still contains the predecessor, publish through normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080->086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: (1) runtime-head mismatch before schema installation; (2) invalid historical activation before recovery side effects; (3) malformed/failed prepare without stranded reservation; (4) valid PREPARED reservation followed by injected failure on the first post-prepare `_con()` acquisition; (5) valid newly-owned PREPARED reservation + entered SQL path + primary SQL failure + injected failure in exception-handler `_activation_row()` lookup, proving current cleanup strands provider state; (6) LAB-100 fake `FencedActivationProvider` subclass returning valid-looking lifecycle values without a real provider-side fence; (7) LAB-100 exact `FencedActivationProvider` with a valid pending ticket followed by inherited identity/generation rotation; (8) LAB-100 exact provider with caller-retained `ActivationState`, valid PREPARED ticket, then out-of-band raw state mutation proving the fence/state authority is externally mutable. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
+If exact source execution becomes available first, run LAB-090 pre-fix REDs before PR #175 production changes: constructor ordering, malformed/failed prepare cleanup, first post-prepare `_con()` failure, exception-handler `_activation_row()` failure, LAB-100 fake subclass/inherited rotation/caller-owned ActivationState cases, and `COMMITTED` durable acknowledgement with provider still `COMMITTED_FENCED` proving no supported writer path can create/execute a new intent before exact-ticket release. Then run LAB-098/099 REDs and PR #175/#177 full gates, followed by LAB-093/094/095/096/097 REDs.
 
 If neither becomes available, continue audit only for concrete distinct trust/capability/fail-closed violations not subsumed by existing issues; strengthen an existing issue rather than creating a duplicate when the finding shares the same authority boundary.
 
@@ -67,7 +62,7 @@ If neither becomes available, continue audit only for concrete distinct trust/ca
 
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending; post-prepare connection-open and cleanup-secondary-SQLite REDs added.
+- #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending; cleanup and composition regressions expanded.
 - #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact regression/full gate pending.
 - #178 / LAB-093 — READY.
@@ -77,4 +72,4 @@ If neither becomes available, continue audit only for concrete distinct trust/ca
 - #182 / LAB-097 — READY.
 - #183 / LAB-098 — READY.
 - #184 / LAB-099 — READY.
-- #185 / LAB-100 — READY; provider implementation/capability authority now includes exact-class inherited identity rotation and caller-owned mutable activation-state authority; RED/GREEN pending.
+- #185 / LAB-100 — READY; provider implementation/capability/state authority RED/GREEN pending.
