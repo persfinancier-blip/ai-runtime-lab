@@ -20,21 +20,22 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Last completed step
 
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues/PRs, #163, and PR #165 metadata. LAB-086 was probed first. PR #165 head remains `ee210a47221b6df53f3518aa3af74f76c5b0122b`. Connector base64 fetch of `strict_fence.py` is still truncated at the presentation boundary, while Contents writes require complete replacement text. Direct local clone again failed before repository execution with `Could not resolve host: github.com`; no behavioral execution or security-critical source mutation was claimed.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues, and active PRs. LAB-086 was probed first. PR #165 head remains `ee210a47221b6df53f3518aa3af74f76c5b0122b`.
 
-With LAB-086 exact publication/execution blocked, strengthened LAB-093 rather than creating a new issue. An outer-slot-only fix is insufficient: `AttestedCatchup` itself publicly retains mutable `provider` and `verifier`, while `AttestationVerifier` publicly retains mutable `expected` and `keyring`. Therefore `_attested` plus a read-only `attested` property returning the raw object would still leak nested aliases that can retarget the provider/verifier authority without assigning a new object to the ledger slot. LAB-093 must expose only immutable/value introspection and keep raw provider/verifier/keyring aliases unreachable from a delegated supported ledger.
+A materially better connector read path was observed: `fetch_blob(d4a6a40f...)` returned the complete 900+ line `strict_fence.py` predecessor through the final function, and `fetch_blob(61841b58...)` returned the complete retained hidden-rowid patch. Therefore the prior broad assumption that connector reads necessarily truncate these blobs is no longer current. The remaining blocker is narrower: there is still no supported machine transformation path that consumes those exact fetched bytes, applies only the retained unified patch, verifies candidate Git blob `b78e7c98...`, and supplies the complete result to the normal Contents API without model/manual reserialization. Direct raw GitHub access from local execution again failed on DNS. `fetch_blob(b78e7c98...)` returned 404, so the known target is not currently reusable as an existing connector-addressable Git blob. No security-critical mutation or behavioral PASS was claimed.
 
 ## Evidence produced
 
-- `research/2026-09-02-lab093-nested-attested-authority-aliasing.md` — main commit `fe484bae42537e01295374fe210beafd36ed0a50`; #178 comment `5503823854`.
-- Prior retained evidence: LAB-095 self-asserted-ID note `cdb3bd98...`; LAB-095 same-path note `4ea3a667...`; LAB-093 `2892b115...`, `5e81524d...`; LAB-094 `90735fdb...`; LAB-095 original `f74f1422...`; LAB-096 `ab541a60...`.
+- `research/2026-09-02-lab086-full-blob-read-bridge-narrowing.md` — main commit `078b95c81250778af5a6adb7626de81cd9971a1e`; #163 comment `5504307268`.
+- Prior retained evidence: LAB-093 nested-alias note `fe484bae...`; LAB-095 self-asserted-ID note `cdb3bd98...`; LAB-095 same-path note `4ea3a667...`; LAB-093 `2892b115...`, `5e81524d...`; LAB-094 `90735fdb...`; LAB-095 original `f74f1422...`; LAB-096 `ab541a60...`.
 
 ## Known failures / blockers
 
 - LAB-086 remains first priority. Do not manually/model-reserialize security-critical `strict_fence.py`.
-- This run still lacks a supported byte-preserving predecessor+patch -> complete Contents payload composition bridge; connector source/base64 presentation truncation is not a safe substitute.
+- Exact predecessor and retained patch are now individually retrievable in full via `fetch_blob`; do not waste future runs re-proving generic read truncation unless connector behavior changes.
+- Missing capability is a supported byte-preserving predecessor+patch -> complete Contents payload composition bridge with pre-write Git-blob verification.
 - Publish LAB-086 only from exact predecessor `d4a6a40f...` + retained patch `61841b58...`, require exact target `b78e7c98...`, then re-fetch/hash-verify and run the complete security gate.
-- Exact checkout/source execution is unavailable in this run; no fresh behavioral PASS is claimed.
+- Exact checkout/source execution remains unavailable in this run; no fresh behavioral PASS is claimed.
 - Keep PRs #175/#177 draft until their exact focused/integration/downstream gates execute.
 - Do not stage LAB-093/094/095/096 production code before their specified pre-fix REDs execute, or an equivalently strong auditable execution path exists.
 - LAB-093 must not be considered fixed by an outer read-only property that returns the raw mutable `AttestedCatchup`; nested provider/verifier/expected/keyring aliases must not be recoverable through delegated introspection.
@@ -42,7 +43,7 @@ With LAB-086 exact publication/execution blocked, strengthened LAB-093 rather th
 
 ## Exact next action
 
-LAB-086 first: re-check PR #165 head and probe for a supported byte-preserving transformation/write path that can consume exact `strict_fence.py` predecessor blob `d4a6a40f...` plus retained unified patch `61841b58...`. If available, conflict-check exact predecessor, compose only that patch, require candidate Git blob `b78e7c98...`, publish/re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
+LAB-086 first: probe specifically for a supported **machine composition** operation that can consume the already-confirmed complete predecessor blob `d4a6a40f...` and retained patch blob `61841b58...` without model reserialization. If such a bridge appears, compose only that patch, calculate/require candidate Git blob `b78e7c98...`, conflict-check PR #165 still contains predecessor `d4a6a40f...`, publish through the normal Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
 If exact source execution becomes available first, execute PR #175 and #177 full gates, then LAB-093/094/095/096 pre-fix REDs before production changes. LAB-093 RED must include nested A→B provider/verifier/keyring retargeting through any proposed public introspection surface, not only outer `ledger.attested` assignment. LAB-095 must include explicit path rebinding, unchanged-path DB substitution, and same-plain-UUID/invalid-history substitution.
 
