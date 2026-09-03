@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Active objective
 LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085 symmetric/HMAC authority to authenticated cutoff + Ed25519 public-only history without auto-promoting legacy rows or weakening root/recovery continuity.
@@ -12,13 +12,16 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - LAB-093/#178 through LAB-100/#185 remain READY follow-ups.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open PR state, #163, and #167. Direct `git ls-remote` again failed before repository access with `Could not resolve host: github.com`, so the LAB-086 exact composition/full execution path is still unavailable in this run.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, and active LAB-086/LAB-091 state. Direct `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` again failed before repository access with `Could not resolve host: github.com`, so the LAB-086 exact composition/full execution path remains unavailable in this run.
 
-With LAB-086 concretely tool-blocked, resumed the highest-value safe fallback LAB-088 and performed a fresh static authority audit of exact PR #172 patch. The production diff changes only four signer collectors, uniformly moving `seen.add(sig.signer_id)` from before HMAC verification to after successful verification. Threshold values, signer membership/key lookup, revocation, payload/digest identity, comparison primitive, durable proof schema, and duplicate-valid counting remain unchanged. Fresh audit verdict: PASS for LAB-088 remaining gate item 3 only; no supported-integration/downstream behavioral PASS was claimed.
+With LAB-086 concretely tool-blocked, resumed LAB-091/#170 and performed a fresh static reentrancy / supported-write-surface audit of the exact PR #173 candidate files. The audit found no new static authority bypass: the permit is exact-tuple, one-shot, consumed before mutation, rejects nesting, and is cleared across statement failure/rollback/transaction exit; provider/network work occurs outside permit scope; each inspected consequential DML has its own exact permit; the final constructor DROP/CREATEs all v2/v3/v4 guard namespaces before validating trigger surface, so same-name persisted-trigger substitution is repaired rather than accepted; restart/adoption routes through the final hardened constructor.
 
-Durable evidence: `research/2026-09-03-lab088-fresh-patch-authority-audit.md`, main commit `5bb50ffd122aa47ba83f54f494656906a1282ac3`, #167 comment `5531622222`.
+Fresh verdict: PASS for the static re-audit portion only. No behavioral/integration PASS is claimed.
+
+Durable evidence: `research/2026-09-04-lab091-fresh-reentrancy-write-surface-audit.md`, main commit `fa4c01c0334f9efc721127e24d6b76ab8a19d9f5`, #170 comment `5532300065`.
 
 ## Evidence produced
+- `research/2026-09-04-lab091-fresh-reentrancy-write-surface-audit.md` — main commit `fa4c01c0334f9efc721127e24d6b76ab8a19d9f5`; #170 comment `5532300065`; fresh static reentrancy/write-surface audit PASS only.
 - `research/2026-09-03-lab088-fresh-patch-authority-audit.md` — main commit `5bb50ffd122aa47ba83f54f494656906a1282ac3`; #167 comment `5531622222`; fresh authority audit PASS only.
 - `research/2026-09-03-lab086-target-blob-object-database-probe.md` — main commit `bb3536ef482500073132abb1a3d05edb19d9972a`; #163 comment `5530915770`.
 - `research/2026-09-03-lab086-current-connector-patch-capability-probe.md` — main commit `c306505f700f91423275618274f44dbabb0c4524`; #163 comment `5530170080`.
@@ -35,6 +38,7 @@ Durable evidence: `research/2026-09-03-lab088-fresh-patch-authority-audit.md`, m
 - Exact checkout/source execution remains unavailable; direct git DNS resolution failed again in this run. No fresh repository behavioral PASS is claimed.
 - Keep PRs #165/#175/#177/#172/#173 draft until their retained exact gates execute.
 - LAB-088 fresh static authority audit is complete; only supported-integration + downstream LAB-084/085/086 execution compatibility gates remain.
+- LAB-091 fresh static reentrancy/write-surface audit is complete; real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 restricted-worker composition and exact full regression/compile gates remain.
 - LAB-090/LAB-100 should be handled through the retained coherent provider-authority redesign contract rather than more unrelated lifecycle conditionals.
 - LAB-092 should be handled through its retained domain-separated certificate + authority-schema/trigger + serialization-bound redesign rather than more independent `_classify()` checks.
 
@@ -43,7 +47,7 @@ LAB-086 first: probe specifically for a supported machine transform/materializat
 
 If a safe machine path appears, conflict-check the predecessor, apply only the retained patch, verify the target blob, publish through Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
-If exact source execution becomes available first, run LAB-088's existing LAB-083 `test_supported_integration.py` suite plus downstream LAB-084/LAB-085/LAB-086 compatibility gates on exact PR #172 head; its fresh authority audit is already complete. Then run the frozen 16-case LAB-090/LAB-100 RED matrix before production changes, followed by the retained LAB-092 regression matrix before production changes there.
+If exact source execution becomes available first, run LAB-088's existing LAB-083 `test_supported_integration.py` suite plus downstream LAB-084/LAB-085/LAB-086 compatibility gates on exact PR #172 head; then run LAB-091 final supported-class real LAB-080/LAB-082 integration + two-worker/crash + timeout-after-commit/UNKNOWN + LAB-087 restricted-worker composition. Both fresh static audits are already complete. Then run the frozen 16-case LAB-090/LAB-100 RED matrix before production changes, followed by the retained LAB-092 regression matrix before production changes there.
 
 If neither exact composition nor exact source execution becomes available, continue only with concrete distinct trust/capability/fail-closed evidence or consolidation that materially strengthens an existing issue; do not create duplicate narrow findings.
 
@@ -51,6 +55,6 @@ If neither exact composition nor exact source execution becomes available, conti
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; fresh patch authority audit PASS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending; unified LAB-090/LAB-100 authority redesign contract recorded.
-- #170 / LAB-091 — IN_PROGRESS fallback; full behavioral gates pending.
+- #170 / LAB-091 — IN_PROGRESS; fresh static reentrancy/write-surface audit PASS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact regression/full gate pending; consolidated redesign contract recorded.
 - #178..#185 / LAB-093..LAB-100 — READY regression-first follow-ups; LAB-100 composes into the unified PR #175 authority redesign contract.
