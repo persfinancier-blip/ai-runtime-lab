@@ -12,15 +12,16 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - LAB-093/#178 through LAB-100/#185 remain READY follow-ups.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, and active LAB-086/LAB-091 state. Direct `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` again failed before repository access with `Could not resolve host: github.com`, so the LAB-086 exact composition/full execution path remains unavailable in this run.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, and current open issues/PRs. Fresh direct repository execution was re-probed with `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git`; it again failed before repository access with `Could not resolve host: github.com`.
 
-With LAB-086 concretely tool-blocked, resumed LAB-091/#170 and performed a fresh static reentrancy / supported-write-surface audit of the exact PR #173 candidate files. The audit found no new static authority bypass: the permit is exact-tuple, one-shot, consumed before mutation, rejects nesting, and is cleared across statement failure/rollback/transaction exit; provider/network work occurs outside permit scope; each inspected consequential DML has its own exact permit; the final constructor DROP/CREATEs all v2/v3/v4 guard namespaces before validating trigger surface, so same-name persisted-trigger substitution is repaired rather than accepted; restart/adoption routes through the final hardened constructor.
+Re-probed the LAB-086 connector path and found one new exact-retrieval capability: `fetch_file` can return `strict_fence.py` as base64 for an exact source line range while preserving/reporting the live predecessor blob SHA `d4a6a40f...`; the retained hidden-rowid patch is also base64-readable on the LAB-086 branch. This removes the earlier assumption that connector source retrieval is only one presentation-truncated whole-file UTF-8 payload.
 
-Fresh verdict: PASS for the static re-audit portion only. No behavioral/integration PASS is claimed.
+The missing step is still a supported connector-response -> filesystem/Python materialization bridge. Copying the security-critical file chunk-by-chunk through model output would violate the retained no-manual/no-model-reserialization contract, and Contents `update_file` still requires a complete replacement body rather than a predecessor+patch transform. Therefore `strict_fence.py` was not mutated and no behavioral PASS is claimed.
 
-Durable evidence: `research/2026-09-04-lab091-fresh-reentrancy-write-surface-audit.md`, main commit `fa4c01c0334f9efc721127e24d6b76ab8a19d9f5`, #170 comment `5532300065`.
+Durable evidence: `research/2026-09-04-lab086-base64-range-fetch-capability.md`, main commit `ea105eb63cdbc8db2054b0c4cf8b6dd8d3e1c522`, #163 comment `5532852452`.
 
 ## Evidence produced
+- `research/2026-09-04-lab086-base64-range-fetch-capability.md` — main commit `ea105eb63cdbc8db2054b0c4cf8b6dd8d3e1c522`; #163 comment `5532852452`; exact line-range/base64 retrieval capability observed, but no machine handoff yet.
 - `research/2026-09-04-lab091-fresh-reentrancy-write-surface-audit.md` — main commit `fa4c01c0334f9efc721127e24d6b76ab8a19d9f5`; #170 comment `5532300065`; fresh static reentrancy/write-surface audit PASS only.
 - `research/2026-09-03-lab088-fresh-patch-authority-audit.md` — main commit `5bb50ffd122aa47ba83f54f494656906a1282ac3`; #167 comment `5531622222`; fresh authority audit PASS only.
 - `research/2026-09-03-lab086-target-blob-object-database-probe.md` — main commit `bb3536ef482500073132abb1a3d05edb19d9972a`; #163 comment `5530915770`.
@@ -33,7 +34,9 @@ Durable evidence: `research/2026-09-04-lab091-fresh-reentrancy-write-surface-aud
 
 ## Known failures / blockers
 - LAB-086 remains first priority. Do not manually/model-reserialize security-critical `strict_fence.py`.
-- Exact predecessor and patch bytes are connector-readable, but the current connector exposes no byte-preserving patch/apply transform: normal Contents `update_file` requires the complete replacement UTF-8 text.
+- Live predecessor was freshly conflict-checked through the connector and is still blob `d4a6a40f...`.
+- Exact predecessor and patch bytes are now known to be retrievable in bounded base64 chunks through the connector, but the current runtime exposes no supported direct connector-response-to-filesystem/Python materialization bridge.
+- Normal Contents `update_file` requires the complete replacement UTF-8 text and does not perform predecessor+patch transformation.
 - The required target blob `b78e7c98...` is not already present in the repository object database, so exact-object reuse is not a fallback.
 - Exact checkout/source execution remains unavailable; direct git DNS resolution failed again in this run. No fresh repository behavioral PASS is claimed.
 - Keep PRs #165/#175/#177/#172/#173 draft until their retained exact gates execute.
@@ -43,16 +46,16 @@ Durable evidence: `research/2026-09-04-lab091-fresh-reentrancy-write-surface-aud
 - LAB-092 should be handled through its retained domain-separated certificate + authority-schema/trigger + serialization-bound redesign rather than more independent `_classify()` checks.
 
 ## Exact next action
-LAB-086 first: probe specifically for a supported machine transform/materialization path that can consume exact predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` and exact retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce` as machine inputs and emit candidate bytes. Require candidate Git blob `b78e7c98e35138719f77c482c7f1aab36b702de7` before publication. Do not use low-level tree/ref manipulation and do not manually/model-reserialize the whole file.
+LAB-086 first: probe specifically for a supported connector/file materialization operation that can consume a GitHub file/blob response (including exact base64 line-range chunks) as machine input into the filesystem/Python runtime without model reserialization.
 
-If a safe machine path appears, conflict-check the predecessor, apply only the retained patch, verify the target blob, publish through Contents API, re-fetch/hash-verify, then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
+If such a bridge appears, mechanically reconstruct predecessor bytes and first require Git blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; mechanically apply only retained patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; require candidate Git blob `b78e7c98e35138719f77c482c7f1aab36b702de7`; publish through normal Contents API; re-fetch/hash-verify; then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final security/reconciliation audit.
 
 If exact source execution becomes available first, run LAB-088's existing LAB-083 `test_supported_integration.py` suite plus downstream LAB-084/LAB-085/LAB-086 compatibility gates on exact PR #172 head; then run LAB-091 final supported-class real LAB-080/LAB-082 integration + two-worker/crash + timeout-after-commit/UNKNOWN + LAB-087 restricted-worker composition. Both fresh static audits are already complete. Then run the frozen 16-case LAB-090/LAB-100 RED matrix before production changes, followed by the retained LAB-092 regression matrix before production changes there.
 
 If neither exact composition nor exact source execution becomes available, continue only with concrete distinct trust/capability/fail-closed evidence or consolidation that materially strengthens an existing issue; do not create duplicate narrow findings.
 
 ## Backlog
-- #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
+- #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending; bounded base64 source retrieval observed, machine handoff still missing.
 - #167 / LAB-088 — IN_PROGRESS; fresh patch authority audit PASS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; exact behavioral/full gate pending; unified LAB-090/LAB-100 authority redesign contract recorded.
 - #170 / LAB-091 — IN_PROGRESS; fresh static reentrancy/write-surface audit PASS; real-stack behavioral gates pending.
