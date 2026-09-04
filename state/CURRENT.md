@@ -7,37 +7,39 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165; branch `lab/086-asymmetric-break-glass-history`; observed head `ee210a47221b6df53f3518aa3af74f76c5b0122b`.
-- Authoritative pending lineage: predecessor `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required composed target `b78e7c98e35138719f77c482c7f1aab36b702de7`.
+- Authoritative pending lineage: predecessor blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; retained hidden-rowid patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; required composed target blob `b78e7c98e35138719f77c482c7f1aab36b702de7`.
 - Draft/IN_PROGRESS stack: LAB-088/#167 PR #172; LAB-090/#169 PR #175; LAB-091/#170 PR #173; LAB-092/#176 PR #177.
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected live open issues and active PRs. GitHub connector is healthy. A fresh direct `git clone --no-checkout` again failed before repository access with `Could not resolve host: github.com`, so no LAB-086 branch mutation and no new behavioral PASS are claimed. The retained exact lineage remains unchanged and manual/model reserialization of security-critical `strict_fence.py` remains prohibited.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected live open issues and active PRs. GitHub connector is healthy.
 
-Completed the pre-recorded distinct fallback: froze `WORKER_REQUEST_ENVELOPE_EFFECT_BOUNDARY_V1_FROZEN` in `research/2026-09-04-worker-request-envelope-effect-boundary-v1.md`, main commit `b46b174d2d8cc5a2526525eaff8e9fcf8f2fd53f`; #178 comment `5543370911` records the result.
+LAB-086 capability probe improved but did not cross the publication safety boundary: `fetch_blob` returned the complete exact predecessor blob `d4a6a40f...` and complete retained patch blob `61841b58...`. However, no supported operation in the current runtime can mechanically apply the patch to connector-returned bytes and feed the exact transformed payload to normal Contents publication. The Contents API still requires a complete replacement text. Copying/reconstructing the ~950-line security-critical source through model text would be prohibited manual/model reserialization. Therefore no LAB-086 branch mutation and no behavioral PASS are claimed.
 
-Worker session validity now authorizes compute only, not a later effect. Every worker request has one canonical immutable value-only envelope/digest and one `(session_id, worker_request_id)` binding. Broker performs both pre-dispatch and fresh pre-effect checks against current session epoch, provider generation, LAB-100 authority digest, authenticated provenance head, aligned evidence and sole-writer state. Duplicate exact requests converge; same id with altered digest fails closed. LAB-080 provider request identity remains authoritative for external effects and is associated one-to-one with the worker request rather than replaced by it. Once an operation reaches PREPARED/UNKNOWN, ownership transfers irreversibly to broker-owned exact-request recovery; stale workers cannot retry or mint a new effect. Lost committed responses are presentation retries only. A 50-case RED-first matrix is frozen.
+Completed the pre-recorded distinct fallback: froze `WORKER_REQUEST_EFFECT_REGISTRY_STORAGE_V1_FROZEN` in `research/2026-09-04-worker-request-effect-registry-storage-v1.md`, main commit `6e559593ab612fffa214100583773d06e1c3e433`; #178 comment `5544096583` records the result.
+
+The durable LAB-093 registry now freezes broker-private STRICT request/binding/result storage. Durability begins only at effect preparation; old worker sessions are never restart-resumable authority. One `(session_id,worker_request_id)` binds one canonical worker request digest; one durable request binds one canonical effect; ANCHORED effects bind one provenance transition and one existing LAB-080 intent rather than minting another provider request namespace. Durable PREPARED is immediately broker recovery-owned, UNKNOWN preserves the exact original LAB-080 request identity, and COMMITTED terminal results are immutable/presentation-only. Restart invalidates all sessions, verifies canonical joins and deletion/rebinding/orphans, and reconstructs only broker-owned recovery duty. A 50-case RED-first matrix is frozen.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
-- Live predecessor/patch/target remain `d4a6a40f...` + `61841b58...` -> `b78e7c98...`; connector can fetch the retained patch blob, but no supported machine path from connector bytes + predecessor to exact transformed bytes has been observed.
+- Exact predecessor and patch connector payloads are now directly observable in full, but no supported byte-preserving transform/materialization bridge from those payloads to a Contents API replacement has been observed.
 - Normal Contents API requires complete replacement text and is not a predecessor+patch transform.
-- Fresh direct Git transport in this run failed DNS before repository access: `Could not resolve host: github.com`; no exact repository behavioral PASS is claimed.
+- Authoritative lineage remains `d4a6a40f...` + `61841b58...` -> `b78e7c98...`.
 - Keep PRs #165/#172/#173/#175/#177 draft until retained exact gates execute.
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 must use the frozen shared canonical V1 encoding, parent-linked chain, atomic append/recovery protocol, durable SQL storage schema, startup verifier/planner, external-evidence continuity, recovery-executor grammar and finite broker startup state machine; no independent locally-valid provenance islands.
-- LAB-093 must additionally implement the frozen least-capability façade, worker-session revocation/re-entry and worker request-envelope/effect-boundary protocols; production implementation waits for executable RED/GREEN.
+- LAB-093 must implement the frozen least-capability façade, worker-session revocation/re-entry, request-envelope/effect-boundary, and durable request/effect registry contracts; production implementation waits for executable RED/GREEN.
 - LAB-093..100 production implementation waits for exact executable RED/GREEN.
 
 ## Exact next action
-LAB-086 first: continue probing only for a genuinely supported machine transform/materialization path that can consume exact GitHub predecessor + patch bytes without model reserialization.
+LAB-086 first: probe only for a genuinely supported machine transform/materialization path that can consume the exact connector-returned predecessor blob plus retained patch bytes without model reserialization.
 
 If such a bridge appears: mechanically reconstruct predecessor and require Git blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; apply only patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; require candidate blob `b78e7c98e35138719f77c482c7f1aab36b702de7`; publish through normal Contents API; re-fetch/hash-verify; then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final audit.
 
-If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for the frozen canonical encoder/chain/atomic-append/storage/verifier/evidence-collector/recovery-executor/broker-state-machine/session-revocation/request-envelope contracts and execute LAB-090/LAB-100, LAB-092, LAB-094..096 and LAB-097..099 RED matrices before production refactors.
+If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for the frozen canonical encoder/chain/atomic-append/storage/verifier/evidence-collector/recovery-executor/broker-state-machine/session-revocation/request-envelope/registry contracts and execute LAB-090/LAB-100, LAB-092, LAB-094..096 and LAB-097..099 RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is to freeze the durable worker-request/effect registry storage + crash-consistency contract: exact tables/keys/state transitions for canonical worker request digest, one-to-one worker-request -> provenance/LAB-080 effect association, atomic PREPARED ownership transfer, terminal-result immutability, restart reconstruction without reviving old session authority, duplicate convergence, and deletion/rebinding detection. Do not implement production code without executable RED/GREEN.
+If neither capability appears: next distinct evidence task is to freeze the worker effect completion/result delivery + application-idempotency bridge contract: distinguish session-scoped worker request idempotency from optional cross-session application idempotency; define canonical application key binding, lookup/authorization after restart, committed-result replay without re-execution, conflict semantics, retention/tombstone rules, and how a new session may discover a prior COMMITTED result without reviving old session authority. Do not implement production code without executable RED/GREEN.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
@@ -45,7 +47,7 @@ If neither capability appears: next distinct evidence task is to freeze the dura
 - #169 / LAB-090 — IN_PROGRESS; activation authority + canonical descriptors + chain binding + atomic recovery/storage/verifier/evidence/executor/broker-startup contracts frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + canonical V1 + parent-linked chain + atomic recovery/storage/verifier/evidence/executor/broker startup; exact RED/full gate pending.
-- #178 / LAB-093 — READY; broker façade + endpoint lifecycle + startup delegation gate + worker-session revocation/re-entry + canonical request/effect boundary frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; broker façade + endpoint lifecycle + startup delegation gate + session revocation/re-entry + canonical request/effect boundary + durable request/effect registry frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + RED matrix frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance + canonical V1 + global chain + atomic recovery/storage/verifier/evidence/executor/broker startup + regression matrices frozen.
 - #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade API + canonical V1 + global chain + atomic recovery/storage/verifier/evidence/executor/broker startup frozen.
