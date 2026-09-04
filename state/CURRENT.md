@@ -12,13 +12,13 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected live open issues and PRs. Fresh direct `git clone --no-checkout` again failed before repository access with `Could not resolve host: github.com`; LAB-086 exact machine composition/source execution remains unavailable. No `strict_fence.py` mutation and no new LAB-086 behavioral PASS are claimed. #163 comment `5540290488` records the observation.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected live open issues and PRs. Fresh direct `git clone --no-checkout` again failed before repository access with `Could not resolve host: github.com`; LAB-086 exact machine composition/source execution remains unavailable. No `strict_fence.py` mutation and no new LAB-086 behavioral PASS are claimed. #163 comment `5541003435` records the observation.
 
-Completed the pre-recorded distinct fallback: froze `PROVENANCE_STARTUP_VERIFIER_RECOVERY_PLANNER_V1_FROZEN` in `research/2026-09-04-provenance-startup-verifier-recovery-planner-v1.md`, main commit `5319a313875a50d48d0829d661451b6d4d1e2a5a`.
+Completed the pre-recorded distinct fallback: froze `EXTERNAL_EVIDENCE_TERMINAL_ANCHOR_CONTINUITY_V1_FROZEN` in `research/2026-09-04-external-evidence-terminal-anchor-continuity-v1.md`, main commit `9ccfddab0743d5a363dc4a6e384ebaed49a6f943`.
 
-The verifier contract separates three authorities: side-effect-free `verify_startup`, pure `plan_recovery`, and later write-capable `execute_recovery` through LAB-080/LAB-091/LAB-087. Startup reads exact schema/initialization identity/head/genesis/full chain/transitions/events/LAB-080 intents/event-specific durable state before requesting any narrow external evidence. Full canonical traversal from genesis, not cached-head/MAX(rowid/epoch), establishes authority.
+The external-evidence contract restricts startup verification to broker-owned observational capabilities only: authenticated provider READ, exact-request RECONCILE, and independently proven observational activation-status reads. Evidence collection may never call provider increment, `AttestedCatchup.catch_up_one`, activation prepare/commit/release/abort, SQLite mutation, LAB-080 execute/reserve/confirm/watermark writes, provider-generation rotation, or authority upgrade. `verify_component()` is explicitly not the startup evidence primitive because it may advance a watermark.
 
-At most one PREPARED provenance transition is recoverable and only when it is the exact immediate child of the authenticated head with byte-identical event/link/transition and LAB-080 bindings. Local LAB-080 PREPARED may yield exact retry or exact reconciled-confirm-then-commit; local CONFIRMED requires exact receipt re-authentication. Every actionable plan carries a preconditions digest and must be rechecked inside the final authorized transaction; stale plans fail closed. A 48-case RED-first matrix covers structural corruption, canonical/type confusion, fork/gap/head rollback, PREPARED classifications, UNKNOWN/reconcile paths, illegal state deltas, historical activation deletion/rebinding, retained-authority drift and LAB-093 confinement.
+Every evidence run is bound to a `snapshot_id` over DB identity, authenticated chain head, provider descriptor, activation-authority descriptor and verifier nonce. `E == H` is ALIGNED; `E == H-1` is only potentially recoverable when there is exactly one authenticated immediate PREPARED transition; larger provider-behind gaps and provider-ahead fail closed. UNKNOWN-after-commit is reconciled only by the exact frozen LAB-080 request id. Evidence is never a lock or mutation capability: later write-capable recovery must revalidate the planner `preconditions_digest` and obtain any action-specific fresh evidence required by the provider contract. A 40-case RED-first matrix covers provider ahead/behind/UNKNOWN, exact historical receipt reauthentication, stale snapshots, provider/authority drift, non-mutation, active-fence continuity and LAB-093 confinement.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
@@ -28,7 +28,7 @@ At most one PREPARED provenance transition is recoverable and only when it is th
 - Keep PRs #165/#172/#173/#175/#177 draft until retained exact gates execute.
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
-- LAB-090/LAB-100, LAB-092 and LAB-097..099 must use the frozen shared canonical V1 encoding, parent-linked chain, atomic append/recovery protocol, durable SQL storage schema and startup verifier/planner; no independent locally-valid provenance islands.
+- LAB-090/LAB-100, LAB-092 and LAB-097..099 must use the frozen shared canonical V1 encoding, parent-linked chain, atomic append/recovery protocol, durable SQL storage schema, startup verifier/planner and external-evidence continuity contract; no independent locally-valid provenance islands.
 - LAB-093..100 production implementation waits for exact executable RED/GREEN.
 
 ## Exact next action
@@ -36,17 +36,17 @@ LAB-086 first: continue probing only for a genuinely supported machine transform
 
 If such a bridge appears: mechanically reconstruct predecessor and require Git blob `d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`; apply only patch blob `61841b58be42b01b97ca223567cbf9f428f7f0ce`; require candidate blob `b78e7c98e35138719f77c482c7f1aab36b702de7`; publish through normal Contents API; re-fetch/hash-verify; then execute hidden-rowid + receipt-NULL + alternate-UNIQUE regressions, strict/thaw subgate, LAB-080→086 real-ledger gate, unsafe legacy-promotion seed, compileall and final audit.
 
-If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement canonical encoder/chain/atomic-append/storage/verifier tests first and execute frozen LAB-090/LAB-100, LAB-092, LAB-094..096 and LAB-097..099 RED matrices before production refactors.
+If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement canonical encoder/chain/atomic-append/storage/verifier/evidence-collector tests first and execute frozen LAB-090/LAB-100, LAB-092, LAB-094..096 and LAB-097..099 RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is to freeze the exact external-evidence collector + terminal-anchor continuity protocol consumed by the new verifier/planner: authenticated-read vs reconcile semantics, exact request/position/receipt inputs and outputs, side-effect classification of provider APIs, snapshot freshness/version binding, handling of provider-ahead/behind/UNKNOWN, and proof that evidence collection cannot itself release activation fences or mutate SQLite/provider generation state. Do not implement production code without executable RED/GREEN.
+If neither capability appears: next distinct evidence task is to freeze the recovery executor command grammar and idempotency contract consumed by the planner: exact allowed commands; required local/external preconditions; provider-call vs SQLite transaction ordering; crash and timeout-after-commit windows; which commands may advance the terminal anchor versus only finalize authenticated local provenance; stale-plan rejection; and activation-fence preservation/release rules. Do not implement production code without executable RED/GREEN.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
-- #169 / LAB-090 — IN_PROGRESS; activation authority + canonical descriptors + chain binding + atomic recovery/storage/verifier frozen; exact RED/GREEN pending.
+- #169 / LAB-090 — IN_PROGRESS; activation authority + canonical descriptors + chain binding + atomic recovery/storage/verifier/evidence continuity frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
-- #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + canonical V1 + parent-linked chain + atomic recovery/storage/verifier; exact RED/full gate pending.
+- #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + canonical V1 + parent-linked chain + atomic recovery/storage/verifier/evidence continuity; exact RED/full gate pending.
 - #178 / LAB-093 — READY; broker façade + endpoint lifecycle frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + 28-case RED matrix frozen.
-- #182..184 / LAB-097..099 — READY; authenticated provenance + canonical V1 + global chain + atomic recovery/storage/verifier + regression matrices frozen.
-- #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade API + canonical V1 + global chain + atomic recovery/storage/verifier frozen.
+- #182..184 / LAB-097..099 — READY; authenticated provenance + canonical V1 + global chain + atomic recovery/storage/verifier/evidence continuity + regression matrices frozen.
+- #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade API + canonical V1 + global chain + atomic recovery/storage/verifier/evidence continuity frozen.
