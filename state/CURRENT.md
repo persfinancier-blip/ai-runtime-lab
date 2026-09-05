@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Active objective
 LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085 symmetric/HMAC authority to authenticated cutoff + Ed25519 public-only history without auto-promoting legacy rows or weakening root/recovery continuity.
@@ -12,21 +12,19 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PRs. LAB-086 remains first priority and the authoritative hidden-rowid lineage is unchanged.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and open PRs. LAB-086 remains first priority and is not superseded.
 
 Probed LAB-086 first in this runtime with a real `git clone --no-checkout`. Git transport again failed before repository access with `Could not resolve host: github.com` (exit 128). The GitHub connector remains readable/writable, but no supported machine bridge was observed that can consume exact connector-returned predecessor bytes plus retained patch bytes and mechanically emit the byte-verified composed target without model reserialization. Security-critical `strict_fence.py` therefore remains untouched; no new LAB-086 behavioral PASS is claimed.
 
-Completed the recorded distinct fallback: froze `OBSERVER_EVIDENCE_DURABILITY_BOUNDED_QUEUE_RECOVERY_JOURNAL_V1_FROZEN` in `research/2026-09-05-observer-evidence-durability-bounded-queue-recovery-journal-v1.md`, main commit `6ed41b4744847ceeeb183549d657c86f73b4144f`; #178 comment `5554534236` records the result.
+Completed the recorded distinct fallback: froze `EVIDENCE_STORE_CAPACITY_COMPACTION_ARCHIVAL_CONTINUITY_V1_FROZEN` in `research/2026-09-06-evidence-store-capacity-compaction-archival-continuity-v1.md`, main commit `26fd617b439cee4845412a3aa86d27d2d9df867e`; #178 comment `5554838046` records the result.
 
-Key durability decision: pre-I/O `SINK_ENTERED` is a synchronous durable barrier and may **not** be deferred to an in-memory/bounded queue. Provider I/O is forbidden until the exact attempt record has crossed the admitted durability boundary and all evidence-store transactions/locks are released. If the barrier cannot commit within a finite budget because of `SQLITE_BUSY`, ENOSPC, IOERR, failed sync, corruption/profile drift or writer failure, the attempt fails closed before sink entry.
+Key storage-authority decision: physical/logical reclamation requires two independent proofs before source evidence can be deleted: (1) semantic deletion eligibility — no unresolved/pinned UNKNOWN/manual-resolution/challenge/quarantine/replay/audit dependency; and (2) authenticated continuity — a verified archive/compaction descendant commits to the exact source range/digests and trusted global evidence frontier. TTL/age, upload success, checkpoint, VACUUM or `max_page_count` are not deletion authority.
 
-Post-I/O observations may be decoupled through a bounded queue, but evidence loss is monotone toward ambiguity: after durable `SINK_ENTERED`, queue overflow, disk-full, consumer crash, missing callback or torn later journal tail can never yield `FAILED_BEFORE_IO`; the attempt remains at least `UNKNOWN` absent a previously durable authenticated protocol-certified non-processing proof.
+Capacity is now explicit authority state. Admission reserve accounts conservatively for live DB + WAL + open recovery-journal segment + archive/compaction staging amplification + filesystem/quota margin + emergency safety bytes. High-water/quarantine removes new consequential SEND/MUTATE/RESUME/TOKEN_MINT before ENOSPC. WAL checkpoint starvation or maintenance backlog therefore reduces admission rather than assuming future truncation will succeed.
 
-The frozen admission profile covers same-host SQLite WAL, `synchronous=FULL` when power-loss durability is claimed, finite busy handling, explicit capacity reserve/high-water quarantine, no SQL/provider/pool lock across network I/O, append-only framed recovery journal with torn-tail handling, idempotent journal-to-SQL replay, multi-process writer/ACK semantics and startup profile/recovery verification. WAL/SQLite is still single-writer and network-filesystem WAL is not admitted.
+`UNKNOWN`, evidence-gap, manual-resolution, active challenge/quarantine and related replay/authority evidence remain pinned until exact authorized terminal resolution. Archive objects are content-addressed/read-after-write verified and bound by authenticated manifest chains; restore checks global/external monotonic provenance so an internally valid but older snapshot is rejected as rollback. A 72-case RED-first matrix is frozen across capacity accounting, WAL/checkpointing, pinning/retention, archive verification, compaction/deletion proof, journal segment rotation, backup/restore and physical reclamation. No production compactor/archiver implementation or behavioral PASS is claimed.
 
-A 64-case RED-first matrix is frozen across barrier ordering, lock discipline, SQLite contention, disk/fsync/corruption, queue overflow, multi-process writer service behavior, recovery-journal replay, restart classification and capacity/topology admission. No production observer implementation or behavioral PASS is claimed.
-
-Primary donors recorded: SQLite WAL, `PRAGMA synchronous`, bounded `sqlite3_busy_timeout`, and SQLite atomic-commit/recovery semantics.
+Primary donors recorded: SQLite WAL/checkpoint semantics, `sqlite3_wal_checkpoint_v2`, SQLite Online Backup API, SQLite page/max-page/vacuum limits, and RFC 9162 Merkle append-only frontier/consistency concepts.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
@@ -38,7 +36,7 @@ Primary donors recorded: SQLite WAL, `PRAGMA synchronous`, bounded `sqlite3_busy
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 must use the frozen shared canonical V1 encoding, parent-linked chain, atomic append/recovery protocol, durable SQL storage, verifier/planner, external evidence continuity, recovery executor and finite broker startup machine; no independent locally-valid provenance islands.
-- LAB-093 must implement the frozen least-capability façade and all retained session/request/effect/idempotency/retention/archive/DR/escrow/reroot/provider-capability/UNKNOWN/manual-resolution/evidence/challenge/quarantine/authority/retry/replay/transport-observer contracts; production implementation waits for executable RED/GREEN.
+- LAB-093 must implement the frozen least-capability façade and all retained session/request/effect/idempotency/retention/archive/DR/escrow/reroot/provider-capability/UNKNOWN/manual-resolution/evidence/challenge/quarantine/authority/retry/replay/transport-observer/capacity-compaction-archive contracts; production implementation waits for executable RED/GREEN.
 - LAB-093..100 production implementation waits for exact executable RED/GREEN.
 - No production post-reroot cutover, re-admission after trust discontinuity, or manual consequential re-attempt may be activated without required explicit product/security/business authorization bound to the exact payload/effect.
 
@@ -49,7 +47,7 @@ If such a bridge appears: mechanically reconstruct predecessor and require Git b
 
 If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for the frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is to freeze a **durable evidence-store capacity reservation / compaction / archival continuity contract**. Specify segment/checkpoint/compaction rules, retention versus replay needs, authenticated archival/restore, disk-reserve accounting, safe deletion proofs, WAL/journal truncation, evidence pinning for unresolved `UNKNOWN`/manual-resolution cases and a RED-first crash/space-amplification matrix. Production observer code remains read-only/offline until executable RED/GREEN exists.
+If neither capability appears: next distinct evidence task is to freeze an **evidence retention / cryptographic-erasure / privacy minimization versus auditability contract**. Define which provider payload/body/header fields must never enter durable evidence; redaction/tokenization before the pre-I/O barrier; digest/commitment forms sufficient for retry/UNKNOWN/manual resolution; secret/key separation and destruction semantics; archive/backup copies; retention/legal/privacy holds versus unresolved-security pinning; and a RED-first matrix proving minimization cannot destroy authority-critical evidence or make erased secrets recoverable from derived stores.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
@@ -57,7 +55,7 @@ If neither capability appears: next distinct evidence task is to freeze a **dura
 - #169 / LAB-090 — IN_PROGRESS; activation authority + canonical/global provenance/recovery contracts frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + global provenance/recovery contracts; exact RED/full gate pending.
-- #178 / LAB-093 — READY; transport observer durability/recovery-journal contract now also frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; evidence-store capacity/compaction/archive continuity contract now also frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + RED matrix frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade/global provenance/recovery contracts frozen.
