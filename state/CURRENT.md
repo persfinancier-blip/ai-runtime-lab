@@ -12,19 +12,21 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open PRs, #163 and live PR #165. LAB-086 remains first priority; PR #165 remains open/draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b` and the authoritative hidden-rowid lineage remains unchanged.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PRs. LAB-086 remains first priority and the authoritative hidden-rowid lineage is unchanged.
 
-Probed LAB-086 first in this runtime with a real `git clone --no-checkout`. Git transport again failed before repository access with `Could not resolve host: github.com` (exit 128). The connector remains readable/writable, but no supported machine bridge was observed that can consume exact connector-returned predecessor bytes plus the retained patch and mechanically emit the byte-verified composed target without model reserialization. Security-critical `strict_fence.py` therefore remains untouched; no new LAB-086 behavioral PASS is claimed.
+Probed LAB-086 first in this runtime with a real `git clone --no-checkout`. Git transport again failed before repository access with `Could not resolve host: github.com` (exit 128). The GitHub connector remains readable/writable, but no supported machine bridge was observed that can consume exact connector-returned predecessor bytes plus retained patch bytes and mechanically emit the byte-verified composed target without model reserialization. Security-critical `strict_fence.py` therefore remains untouched; no new LAB-086 behavioral PASS is claimed.
 
-Completed the recorded distinct fallback: froze `TRANSPORT_OBSERVER_IMPLEMENTATION_ADMISSION_V1_FROZEN` in `research/2026-09-05-transport-observer-implementation-admission-contract-v1.md`, main commit `c4bc78136546934f3d6a72ce2a3a2b91aa3d7251`; #178 comment `5554207590` records the result.
+Completed the recorded distinct fallback: froze `OBSERVER_EVIDENCE_DURABILITY_BOUNDED_QUEUE_RECOVERY_JOURNAL_V1_FROZEN` in `research/2026-09-05-observer-evidence-durability-bounded-queue-recovery-journal-v1.md`, main commit `6ed41b4744847ceeeb183549d657c86f73b4144f`; #178 comment `5554534236` records the result.
 
-Key implementation decision: durable `SINK_ENTERED` is appended and committed **before** entering the first forwarding-capable transport sink, then all DB locks/transactions are released before network I/O. This intentionally trades some availability for safety: after `SINK_ENTERED`, crash/timeout/reset/cancellation/missing callback is at least UNKNOWN absent an authenticated protocol-certified non-processing proof. `FAILED_BEFORE_IO` is legal only when failure is durably known to precede sink entry. This closes the crash-after-I/O-before-observation persistence gap without holding SQL transactions across network operations.
+Key durability decision: pre-I/O `SINK_ENTERED` is a synchronous durable barrier and may **not** be deferred to an in-memory/bounded queue. Provider I/O is forbidden until the exact attempt record has crossed the admitted durability boundary and all evidence-store transactions/locks are released. If the barrier cannot commit within a finite budget because of `SQLITE_BUSY`, ENOSPC, IOERR, failed sync, corruption/profile drift or writer failure, the attempt fails closed before sink entry.
 
-Concrete admission profiles are frozen for Python socket/plain TCP, Python SSL/TLS, HTTP/1 pools, HTTP/2/gRPC and proxy/service-mesh paths. Hidden retries, redirects, hedges, proxy retries, alternate upstream replay or middleware resend are admission failures unless exposed as separate authority-visible attempts. Multiplexed transports require exact stream attribution. Observer callbacks are evidence-only and may not send/retry/reconnect/redirect or synchronously reacquire provider/pool locks. Generic process-global socket monkeypatching is not sufficient proof when native/C-extension/kernel/proxy paths can bypass it.
+Post-I/O observations may be decoupled through a bounded queue, but evidence loss is monotone toward ambiguity: after durable `SINK_ENTERED`, queue overflow, disk-full, consumer crash, missing callback or torn later journal tail can never yield `FAILED_BEFORE_IO`; the attempt remains at least `UNKNOWN` absent a previously durable authenticated protocol-certified non-processing proof.
 
-A 64-case RED-first matrix is frozen covering pre-sink failures, partial write/sendall ambiguity, TLS, HTTP/1 pooling/retry/redirect, HTTP/2 `REFUSED_STREAM`/GOAWAY, gRPC cancellation/hedging, proxy forwarding, reentrancy/deadlock/evidence loss, restart/profile drift and provenance failure. No production observer or behavioral PASS is claimed.
+The frozen admission profile covers same-host SQLite WAL, `synchronous=FULL` when power-loss durability is claimed, finite busy handling, explicit capacity reserve/high-water quarantine, no SQL/provider/pool lock across network I/O, append-only framed recovery journal with torn-tail handling, idempotent journal-to-SQL replay, multi-process writer/ACK semantics and startup profile/recovery verification. WAL/SQLite is still single-writer and network-filesystem WAL is not admitted.
 
-Primary donors recorded: CPython `socket` and `ssl` documentation, urllib3 connection-pool retry/redirect semantics, RFC 9113 HTTP/2 stream non-processing proofs, and gRPC request-hedging behavior.
+A 64-case RED-first matrix is frozen across barrier ordering, lock discipline, SQLite contention, disk/fsync/corruption, queue overflow, multi-process writer service behavior, recovery-journal replay, restart classification and capacity/topology admission. No production observer implementation or behavioral PASS is claimed.
+
+Primary donors recorded: SQLite WAL, `PRAGMA synchronous`, bounded `sqlite3_busy_timeout`, and SQLite atomic-commit/recovery semantics.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
@@ -36,7 +38,7 @@ Primary donors recorded: CPython `socket` and `ssl` documentation, urllib3 conne
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 must use the frozen shared canonical V1 encoding, parent-linked chain, atomic append/recovery protocol, durable SQL storage, verifier/planner, external evidence continuity, recovery executor and finite broker startup machine; no independent locally-valid provenance islands.
-- LAB-093 must implement the frozen least-capability façade, session/request/effect registry, application-idempotency/result delivery, authenticated retention/archive/DR/escrow/re-root/epoch/provider-capability/UNKNOWN-oracle/manual-resolution/canonical-evidence/challenge/quarantine/authority-manifest/effective-authority-lease/retry-authority/replay-capsule/semantic-extractor/final-request-freeze/transport-egress-observation/transport-observer-admission contracts; production implementation waits for executable RED/GREEN.
+- LAB-093 must implement the frozen least-capability façade and all retained session/request/effect/idempotency/retention/archive/DR/escrow/reroot/provider-capability/UNKNOWN/manual-resolution/evidence/challenge/quarantine/authority/retry/replay/transport-observer contracts; production implementation waits for executable RED/GREEN.
 - LAB-093..100 production implementation waits for exact executable RED/GREEN.
 - No production post-reroot cutover, re-admission after trust discontinuity, or manual consequential re-attempt may be activated without required explicit product/security/business authorization bound to the exact payload/effect.
 
@@ -47,7 +49,7 @@ If such a bridge appears: mechanically reconstruct predecessor and require Git b
 
 If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for the frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is to freeze an **observer evidence durability / bounded queue / recovery-journal contract**. Specify how pre-call `SINK_ENTERED` and post-call observations persist under SQLite lock contention, process crash, disk-full, torn write, queue overflow and multi-process writers without holding a blocking SQL transaction around network I/O; define fail-closed admission/backpressure behavior, append/recovery ordering, bounded evidence loss semantics and a RED-first fault matrix. Keep production observer code read-only/offline until executable RED/GREEN exists.
+If neither capability appears: next distinct evidence task is to freeze a **durable evidence-store capacity reservation / compaction / archival continuity contract**. Specify segment/checkpoint/compaction rules, retention versus replay needs, authenticated archival/restore, disk-reserve accounting, safe deletion proofs, WAL/journal truncation, evidence pinning for unresolved `UNKNOWN`/manual-resolution cases and a RED-first crash/space-amplification matrix. Production observer code remains read-only/offline until executable RED/GREEN exists.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
@@ -55,7 +57,7 @@ If neither capability appears: next distinct evidence task is to freeze an **obs
 - #169 / LAB-090 — IN_PROGRESS; activation authority + canonical/global provenance/recovery contracts frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + global provenance/recovery contracts; exact RED/full gate pending.
-- #178 / LAB-093 — READY; façade/session/request/effect/registry/application-idempotency/install-retention/bounded-capacity/archive/DR/escrow/human-reroot/post-reroot/client/provider-capability/UNKNOWN-oracle/manual-resolution/canonical-evidence/challenge/quarantine/authority-manifest/effective-authority-lease/retry-authorization/replay-capsule/semantic-extractor/final-request-freeze/transport-egress-observation/transport-observer-admission contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; transport observer durability/recovery-journal contract now also frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + RED matrix frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade/global provenance/recovery contracts frozen.
