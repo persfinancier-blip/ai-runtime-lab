@@ -20,20 +20,21 @@ Re-probed direct source execution with:
 
 It again failed before repository execution with `Could not resolve host: github.com` (exit 128). No security-critical source mutation was attempted and no new LAB-086 behavioral PASS is claimed.
 
-Completed the recorded distinct fallback: froze `MAPPER_CHECKPOINT_BOOTSTRAP_LATE_AUDITOR_SNAPSHOT_PROVENANCE_COMPACTION_V1_FROZEN` in `research/2026-09-06-mapper-checkpoint-bootstrap-late-auditor-snapshot-provenance-compaction-v1.md`, main commit `ec2925ba72aad1d161adc89f02e27ae6e9932a26`; #178 comment `5559154983` records the result.
+Completed the recorded distinct fallback: froze `PROOF_CARRYING_COMPACTION_DEPENDENCY_GRAPH_EVIDENCE_REACHABILITY_GC_SAFETY_V1_FROZEN` in `research/2026-09-06-proof-carrying-compaction-dependency-graph-evidence-reachability-gc-safety-v1.md`, main commit `2c3b994d586414a4a94758967009c11235c76265`; #178 comment `5559497500` records the result.
 
 Key decisions:
-- snapshot/bootstrap is a trust transition, not merely a storage optimization; a latest self-served signed snapshot is not independent authority;
-- late auditors may avoid genesis replay only from a retained/admitted anchor plus source consistency, mapper-lineage continuity, trust-frontier continuity, and verified snapshot/retained-evidence manifests;
-- a snapshot cannot upgrade an unverified mapper frontier into verified state;
-- compaction cannot delete the only evidence needed to reproduce source ancestry, mapper coverage/execution, fraud/equivocation/revocation findings, unresolved promise/challenge windows, or historical omission verdicts;
-- admitted fraud evidence is not ordinarily compactable; archive relocation requires authenticated manifest binding plus explicit availability policy;
-- pruned source prefixes retain authenticated compact/boundary commitments so the retained suffix remains tied to the original log;
-- assurance classes distinguish full replay, anchored replay, anchored snapshot, policy-authorized threshold bootstrap and non-authoritative unanchored snapshots;
-- generation migration cannot reinterpret old history; recovery preserves bad snapshots/fraud evidence and creates a new corrected lineage;
-- explicit 80-case RED-first matrix is frozen across anchor/ancestry, snapshot reproducibility, skipped-leaf laundering, compaction safety, omission-proof reproducibility, archive availability, late auditors and migration/recovery.
+- destructive evidence GC is authority-sensitive: delete eligibility comes from authenticated roots, typed content-addressed dependency edges, explicit horizons/holds and a reproducible epoch decision, not age or latest-checkpoint heuristics;
+- root set includes consequential verdicts/checkpoints, unresolved challenge/appeal/investigation state, revocation blast-radius revalidation sets, recovery anchors, admitted snapshot/bootstrap anchors and publication grace roots;
+- `UNKNOWN != DEAD`; unrooted cycles do not create liveness, while corrupt reverse indexes cannot erase forward reachability;
+- every consequential object type has a versioned complete dependency schema; later discovery of a missing material dependency moves the affected historical blast radius to `REVALIDATION_REQUIRED` and roots the required old closure;
+- signer/verifier/toolchain/policy revocation can reactivate historical proof closures after ordinary challenge windows; old evidence remains rooted until re-adjudication completes;
+- supersession is not deletion authority without a subsumption proof preserving supported verification/recovery semantics;
+- archive relocation requires authenticated manifest plus independent post-upload retrieval/content-address verification before hot deletion;
+- GC uses explicit epochs, publication grace roots and pre-delete reachability recheck to close publication/compaction races;
+- every destructive epoch emits a canonical independently reproducible GC proof bundle recording policy/graph generations, roots, live/candidate sets, horizon evidence, archive receipts and actual deletions;
+- explicit 80-case RED-first matrix is frozen across roots/reachability, dependency completeness, horizons/challenges, revocation reactivation, archive safety, supersession, concurrent publication/GC and disaster recovery/historical omission-fraud integrity.
 
-Primary donors: RFC 9162 consistency/auditing, transparency-dev compact ranges, current IETF Key Transparency long-term-state/partition semantics, and Trillian signed-root/range/proof mechanisms. Donor mechanisms only; no production snapshotter/bootstrap verifier/compactor or behavioral PASS is claimed.
+Primary donors: Nix GC roots/reachability, Git prune reachability + expiry, TUF rollback/freeze/trusted-root persistence, and Sigstore/Rekor immutable transparency evidence. Donor mechanisms only; no production compactor/GC engine or behavioral PASS is claimed.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
@@ -43,8 +44,8 @@ Primary donors: RFC 9162 consistency/auditing, transparency-dev compact ranges, 
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 remain design-frozen but require exact executable RED/GREEN before production integration.
-- LAB-093 production implementation must compose all frozen evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper-completeness/bootstrap-compaction contracts rather than creating independent locally-valid authority islands.
-- No production omission verdict may treat silence, lookup failure, a missing dense-log inclusion proof, a signed but derivation-unverified subject-map root, or an unanchored snapshot as cryptographic non-membership/completeness evidence.
+- LAB-093 production implementation must compose all frozen evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper-completeness/bootstrap-compaction/GC contracts rather than creating independent locally-valid authority islands.
+- No production omission verdict may treat silence, lookup failure, a missing dense-log inclusion proof, a signed but derivation-unverified subject-map root, an unanchored snapshot, or post-GC absence as cryptographic non-membership/completeness evidence.
 
 ## Exact next action
 LAB-086 first: probe only for a genuinely supported machine transform/materialization path that can consume exact connector-returned predecessor + retained patch bytes without model reserialization.
@@ -53,7 +54,7 @@ If such a bridge appears: mechanically reconstruct predecessor and require Git b
 
 If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is to freeze **proof-carrying compaction dependency graph / evidence reachability / garbage-collection safety semantics**. Define a content-addressed dependency graph from consequential verdicts/checkpoints to every proof object needed for future verification, derive a safe-to-prune set only from authenticated unreachable objects after challenge/revocation/appeal horizons, prevent cyclic/self-asserted reachability from laundering required evidence, and define RED cases for orphaned trust roots, archive loss, later revocation that reactivates historical dependencies, concurrent compaction/publication, and state-loss recovery.
+If neither capability appears: next distinct evidence task is to freeze **GC dependency-schema evolution / historical dependency repair / proof-of-complete-mark semantics**. Define how a new verifier can discover that an old object type omitted a material dependency without allowing the new schema to reinterpret history; specify authenticated dependency-repair records, blast-radius derivation, canonical mark proofs that demonstrate every required edge was traversed, cross-verifier disagreement handling, and RED cases for schema downgrade, dependency omission laundering, repaired-edge cycles, stale mark proofs, and revocation concurrent with graph migration.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
@@ -61,7 +62,7 @@ If neither capability appears: next distinct evidence task is to freeze **proof-
 - #169 / LAB-090 — IN_PROGRESS; activation authority + canonical/global provenance/recovery contracts frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + global provenance/recovery contracts; exact RED/full gate pending.
-- #178 / LAB-093 — READY; evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper-derivation/bootstrap-compaction contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper-derivation/bootstrap-compaction/proof-carrying-GC contracts frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + RED matrix frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade/global provenance/recovery contracts frozen.
