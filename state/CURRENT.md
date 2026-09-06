@@ -15,6 +15,7 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and open PRs. PR #165 remains open/draft on `ee210a47221b6df53f3518aa3af74f76c5b0122b`.
 
 LAB-086 capability status remains blocked at the same safety boundary:
+- direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` was re-probed in this run and failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - connector can read repository/history and normal Contents writes are available;
 - no supported byte-preserving machine transform/materialization path was observed that consumes exact connector-returned predecessor bytes plus retained patch bytes and writes the mechanically composed result;
 - manual/model reserialization of security-critical `strict_fence.py` remains prohibited;
@@ -37,6 +38,7 @@ Primary donor mechanisms: TUF root continuity/key migration; Sigstore TUF trust-
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
+- Direct git transport failed in this run before repository execution with DNS resolution failure.
 - Exact predecessor + retained patch are readable via connector history, but no supported byte-preserving machine composition bridge has been observed in this run.
 - Keep PRs #165/#172/#173/#175/#177 draft until retained exact gates execute.
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
