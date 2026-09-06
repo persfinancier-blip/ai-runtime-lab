@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Active objective
 LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085 symmetric/HMAC authority to authenticated cutoff + Ed25519 public-only history without auto-promoting legacy rows or weakening root/recovery continuity.
@@ -12,7 +12,7 @@ LAB-086 — migrate historical break-glass recovery from durable LAB-084/LAB-085
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues, PRs and branches. PR #165 remains the highest-priority unfinished task.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and active PRs. PR #165 remains the highest-priority unfinished task.
 
 Re-probed the exact LAB-086 execution capability in this run:
 - `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab` failed before repository execution with `Could not resolve host: github.com` (exit 128);
@@ -20,22 +20,22 @@ Re-probed the exact LAB-086 execution capability in this run:
 - manual/model reserialization of security-critical `strict_fence.py` remains prohibited;
 - therefore `strict_fence.py` was not mutated and no new LAB-086 behavioral PASS is claimed.
 
-Completed the recorded distinct fallback: froze `REFRESH_CAMPAIGN_INVENTORY_ATTESTATION_DELTA_CAPTURE_CONCURRENT_MUTATION_V1_FROZEN` in `research/2026-09-06-refresh-campaign-inventory-attestation-delta-capture-concurrent-mutation-v1.md`, main commit `a4391fbfba4bb8b94ba95fecbc3eab026e58a6f3`; #178 comment `5561898982` records the result.
+Completed the recorded distinct fallback: froze `FEDERATED_FINALIZATION_BARRIER_CAUSAL_CLOSURE_PARTIAL_TRANSACTION_V1_FROZEN` in `research/2026-09-07-federated-finalization-barrier-causal-closure-partial-transaction-v1.md`, main commit `538d578bfb10e6e1c8e2a038fb63d36e0151cfe9`; #178 comment `5562255088` records the result.
 
 Key decisions:
-- a refresh campaign universe is authenticated `BaselineSnapshot(F0) ⊕ CanonicalDeltas(F0,F1]`, not the rows observed by a scanner;
-- delta retention/capture starts at the same opening cut as the baseline snapshot; scan-then-subscribe is invalid because it creates an omission gap;
-- finalization requires authenticated `RESOLVED_THROUGH(F1)` evidence from every material source; idle workers, an empty queue or a current high-water read are not completeness proof;
-- snapshot/delta overlap is expected and deterministically deduplicated by immutable obligation identity plus predecessor/generation semantics;
-- federated domains use authenticated vector frontiers, but per-domain resolved positions are not enough unless cross-domain transaction/causal closure is proven;
-- liveness, revocation, appeal, dependency-repair, archive-location/availability, verifier/policy/trust and substitution mutations through F1 can create or reopen obligations;
-- archive relocation is add+retrieve/content-verify before retire; location is not evidence identity;
-- active campaign inputs, delta-retention leases, unresolved closures and originals needed for renewal interlock with GC as temporary roots;
-- crash recovery resumes from durable authenticated source frontiers and idempotent dispositions; missing retained source history yields `GAP_UNRECOVERABLE` rather than guessed completion;
-- independent replay must reproduce the final obligation-set root and exact-one terminal-disposition root;
-- explicit 80-case RED-first matrix is frozen across opening-cut gaps, overlap/dedup, concurrent liveness/repair/revocation, archive relocation, resolved-through finalization, exact-one dispositions, crash/rollback/gaps, GC races and independent verification.
+- a federated campaign finalizes at vector `F1` only after every policy-required material domain supplies a current authenticated `RESOLVED_THROUGH(F1_i)` ack and the combined cut is causally/transactionally closed;
+- local high-water marks alone are insufficient; a recorded material effect must have its authenticated cause represented, while a cause whose consequence crosses the cut becomes an explicit in-flight obligation;
+- cross-domain transactions use authenticated expected participant sets; partial participant completion is `RECORDED_INFLIGHT` or `UNKNOWN`, never global success;
+- delayed deterministic consequences caused at/before F1 stay inside the campaign universe even if execution occurs after candidate F1;
+- closure is computed to a fixed point: discovering a consequence beyond a domain's current ack advances that domain's F1 and requires a fresh ack;
+- frozen membership epochs prevent silent join/remove semantics; an offline material domain blocks destructive finalization unless authenticated drain/decommission proves complete closure;
+- source equivocation, stale ack generations, trust/schema/membership rotation and missing evidence yield `UNKNOWN`/`REVALIDATION_REQUIRED`, never latest-wins;
+- archive relocation is a cross-domain transaction: write + content verification + independent retrieval + manifest must close before old-copy retirement can become eligible;
+- open campaign inputs, source-retention leases and in-flight obligations remain GC roots until a current finalization certificate and all other retention contracts permit deletion;
+- final certificate commits membership, F0/F1 vectors, domain acks, resolved proofs, transaction/causal roots, exact-one dispositions, empty unresolved root, obligation root and policy/trust/schema/verifier frontiers;
+- explicit 80-case RED-first matrix is frozen across frontier semantics, causal cuts, split transactions, revocation/repair/appeal, archive moves, membership/offline domains, equivocation and crash/GC/fixed-point behavior.
 
-Primary donors: PostgreSQL exported logical-replication snapshot + consistent point; Debezium incremental snapshot watermark/window dedup; CockroachDB resolved timestamps; Kafka transactional offset/fencing semantics.
+Primary donors: Chandy-Lamport distributed consistent cut/in-flight channel state; PostgreSQL exported logical-replication snapshot + consistent point; Kafka transaction identity/epochs; CockroachDB resolved timestamp completeness promises.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Do not manually/model-reserialize security-critical `strict_fence.py`.
@@ -45,7 +45,8 @@ Primary donors: PostgreSQL exported logical-replication snapshot + consistent po
 - LAB-088 still needs supported integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 remain design-frozen but require exact executable RED/GREEN before production integration.
-- LAB-093 production implementation must compose all frozen authority/evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper/bootstrap-compaction/GC/schema-repair/materiality/substitution/verifier-agility/sunset-refresh/concurrent-inventory contracts instead of creating locally valid authority islands.
+- LAB-093 production implementation must compose all frozen authority/evidence/privacy/policy/schema/model/proof/adjudicator/trust-frontier/monitoring/non-inclusion/mapper/bootstrap-compaction/GC/schema-repair/materiality/substitution/verifier-agility/sunset-refresh/concurrent-inventory/federated-barrier contracts instead of creating locally valid authority islands.
+- New federated-barrier audit risk: completeness depends on consequential producers emitting authenticated transaction/causal manifests on the same authority path as the effect. An optional observer can miss undeclared edges and make an otherwise valid barrier graph incomplete.
 
 ## Exact next action
 LAB-086 first: probe only for a genuinely supported byte-preserving machine transform/materialization path that consumes exact connector-returned predecessor + retained patch bytes without model reserialization.
@@ -54,7 +55,7 @@ If such a bridge appears: mechanically reconstruct predecessor and require Git b
 
 If exact source execution becomes available first: run LAB-088 supported/downstream gates, LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
-If neither capability appears: next distinct evidence task is **federated finalization barrier / causal-closure attestation / cross-domain partial-transaction detection semantics**. Define the minimum authenticated protocol that lets independent evidence, revocation, repair, liveness and archive domains publish a common F1 without a globally serializable database; determine how barrier epochs, causal transaction manifests and timeout/UNKNOWN states compose with source equivocation, offline domains and GC authority; freeze executable RED cases for split transactions, delayed consequences, domain membership changes and stale barrier acknowledgements.
+If neither capability appears: next distinct evidence task is **causal/transaction manifest emission completeness / undeclared-edge fraud proof / producer-path binding semantics**. Define how every consequential cross-domain mutation proves that all material outgoing edges/participants were declared on the same authenticated authority path; design completeness commitments and compact fraud proofs for an omitted participant/causal edge; prevent a buggy or malicious producer from emitting an effect while hiding the edge that would have kept the federated barrier or GC root open; freeze executable RED cases for undeclared effects, producer/reporter common-mode failure, schema evolution, delayed edge discovery and independent replay.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact hidden-rowid publication/full gate pending.
@@ -62,7 +63,7 @@ If neither capability appears: next distinct evidence task is **federated finali
 - #169 / LAB-090 — IN_PROGRESS; activation authority + canonical/global provenance/recovery contracts frozen; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; migration bound to retained authority graph + global provenance/recovery contracts; exact RED/full gate pending.
-- #178 / LAB-093 — READY; concurrent refresh snapshot+delta completeness contract now frozen in addition to prior evidence/GC/substitution/verifier-agility/sunset-refresh contracts; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; federated finalization barrier/causal-closure contract now frozen in addition to prior evidence/GC/substitution/verifier-agility/sunset-refresh/concurrent-inventory contracts; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; unified retained-authority graph + RED matrix frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; sealed/registered activation authority + construction/restart/upgrade/global provenance/recovery contracts frozen.
