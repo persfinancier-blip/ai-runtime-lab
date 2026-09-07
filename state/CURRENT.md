@@ -6,32 +6,32 @@ Last updated: 2026-09-07
 LAB-086 — finish the exact executable/security gate for asymmetric break-glass history migration, then reconcile/merge only if every real-schema regression and conflict audit passes.
 
 ## Active issue / branch / PR
-- Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; current `get_pr_info` reports open/draft, `mergeable=false`; do not change draft/merge status without the exact retained gate.
-- Other open draft/IN_PROGRESS PRs observed: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
+- Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; keep draft and do not merge without the exact retained gate.
+- Other open draft/IN_PROGRESS PRs observed this run: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open PRs and PR #165.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues/PRs; resumed LAB-086 first.
 
 Current-run capability probe:
-- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto15` failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto16` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes and web research remain available;
 - therefore no new LAB-086 behavioral/compile PASS is claimed and PR #165 remains draft.
 
-Completed the recorded distinct fallback and froze `FRESHNESS_CLOCK_AUTHORITY_SECURE_TIME_ROLLBACK_SUSPEND_LONG_OFFLINE_V1_FROZEN` in `research/2026-09-07-freshness-clock-authority-secure-time-rollback-suspend-long-offline-v1.md`, commit `43109203b1458f6da6e7029b0b877c2e539b38a6`; #178 comment `5574367954` records the result.
+Completed the recorded distinct fallback and froze `SECURE_TIME_SOURCE_KEY_LIFECYCLE_QUORUM_INDEPENDENCE_FAR_FUTURE_POISON_RECOVERY_V1_FROZEN` in `research/2026-09-07-secure-time-source-key-lifecycle-quorum-independence-far-future-poisoning-recovery-v1.md`, commit `5135e9a99fae6b8e511e0fcd3496a1ccd1e460d1`; #178 comment `5574820709` records the result.
 
 Key decisions:
-- `AUTHENTICATED_TIME_SAMPLE != LOCAL_WALL_CLOCK != MONOTONIC_ELAPSED_TIME != CURRENT_AUTHORITY`;
-- persist a nondecreasing `TrustedTimeFloorV1` atomically with the trusted activation/publication frontier; local wall time below the floor is rollback and cannot lower it;
-- authenticated network time such as NTS may advance the floor only with retained uncertainty/delay bounds and policy-approved source identity/independence; it is not itself a durable anti-rollback store;
-- suspend-aware elapsed time is required for freshness expiry, so a clock that pauses during suspend cannot extend authority;
-- VM/filesystem snapshot restore invalidates local-only time continuity unless an external newer monotonic frontier/time source re-establishes it;
-- RTC loss and long-offline operation retain historical verification but return current-authority unknown until fresh authenticated continuation is proved;
-- once E+1 is authenticated, no clock rollback can revive E;
-- crash recovery must preserve activation frontier + time floor + sample/checkpoint evidence atomically or fail closed;
-- added an 80-case RED-first matrix for wall-clock rewind, snapshot rollback, suspend/resume, RTC loss, years-long offline, source disagreement/delay, crash atomicity and stale-epoch revival.
+- `AUTHENTICATED_TIME_SAMPLE != CORRECT_TIME_SAMPLE != INDEPENDENT_TIME_SAMPLE != QUORUM_TIME_DECISION != TRUSTED_TIME_FLOOR`;
+- authenticated time servers can still be falsetickers; advance freshness authority only from a bounded, uncertainty-aware quorum decision;
+- count independence by failure/control domains (operator/control, key custody, hosting/provider, network/AS path, DNS/discovery, jurisdiction, implementation/build, upstream reference-clock lineage), not raw IP/hostname/server count;
+- retain append-only `TimeSourceKeyStatusV1` history with effective compromise/calibration-loss boundaries; unknown compromise onset yields `UNKNOWN_HISTORICAL_TIME_TRUST` where safety depends on that source;
+- ordinary source-key rotation must preserve lineage, activation boundary and historical public verification/status evidence;
+- a far-future poisoned `TrustedTimeFloorV1` cannot be lowered by routine time samples, wall-clock reset, VM rollback, cache deletion or ordinary resynchronization;
+- poison recovery requires a distinct higher-order, independently authorized `TimeFloorPoisonRecoveryV1`, changes generation, preserves the poisoned decision as evidence, and sets only a conservative independently supported replacement interval/floor;
+- recovery authority must not be wholly controlled by the same domains that satisfied the poisoned routine time quorum;
+- added a 64-case RED-first matrix across key lifecycle, source correlation, robust selection, far-future poisoning, recovery authorization, crash/replay and governance.
 
-Primary donors: RFC 8915 NTS authenticated time/bootstrap guidance; RFC 3161 trusted timestamps; TUF monotonic version + expiration/freeze semantics; Linux `CLOCK_BOOTTIME` versus `CLOCK_MONOTONIC` suspend behavior.
+Primary donors: RFC 8915 NTS; RFC 5905 authentication-vs-correctness and falseticker selection; RFC 8633 multiple-source/anycast guidance; RFC 9523 Khronos adversarial multi-source sampling/trimming; RFC 3628 TSA compromise/calibration-loss history; TUF fast-forward attack recovery.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -46,7 +46,7 @@ Primary donors: RFC 8915 NTS authenticated time/bootstrap guidance; RFC 3161 tru
 ## Exact next action
 LAB-086 first: if exact branch source execution becomes available, check out/reconstruct current PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, then execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **secure-time source key lifecycle / time-source quorum independence / far-future poisoning recovery semantics**. Define authenticated time-source identity/key rotation and compromise-time history; independence/correlation requirements across time authorities and network paths; how a malicious or erroneous far-future sample that advanced `TrustedTimeFloorV1` can be recovered without permitting ordinary rollback; and whether recovery must require an explicit higher-order governance/appeal artifact rather than routine time samples.
+If exact execution remains unavailable, next distinct evidence task is **time-floor recovery-authority key lifecycle / recovery-policy rotation / poison-evidence adjudication and emergency-quorum governance semantics**. Define how `TimeFloorRecoveryAuthorityV1` keys are bootstrapped, rotated, compromised and retired; how old+new recovery-policy generations authorize transition without self-authorization; what evidence threshold is sufficient to classify a trusted floor as poisoned versus merely surprising; how emergency recovery avoids governance capture and correlated approvers; and how conflicting valid recovery artifacts are published, appealed and reconciled without silently choosing the lower clock.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -56,7 +56,7 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; secure-time freshness/rollback/suspend/offline contract now also frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; secure-time source lifecycle/quorum/far-future poison-recovery contract now also frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; retained-authority graph contracts frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; activation implementation/capability authority contracts frozen.
