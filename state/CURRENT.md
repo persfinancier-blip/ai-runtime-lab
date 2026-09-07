@@ -14,24 +14,24 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues/PRs; resumed LAB-086 first.
 
 Current-run capability probe:
-- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto16` failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto17` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes and web research remain available;
 - therefore no new LAB-086 behavioral/compile PASS is claimed and PR #165 remains draft.
 
-Completed the recorded distinct fallback and froze `SECURE_TIME_SOURCE_KEY_LIFECYCLE_QUORUM_INDEPENDENCE_FAR_FUTURE_POISON_RECOVERY_V1_FROZEN` in `research/2026-09-07-secure-time-source-key-lifecycle-quorum-independence-far-future-poisoning-recovery-v1.md`, commit `5135e9a99fae6b8e511e0fcd3496a1ccd1e460d1`; #178 comment `5574820709` records the result.
+Completed the recorded distinct fallback and froze `TIME_FLOOR_RECOVERY_AUTHORITY_KEY_LIFECYCLE_POLICY_ROTATION_POISON_ADJUDICATION_EMERGENCY_GOVERNANCE_V1_FROZEN` in `research/2026-09-07-time-floor-recovery-authority-key-lifecycle-policy-rotation-poison-adjudication-emergency-governance-v1.md`, commit `0c85ea29cc5fe780f6c9df4f8902ee8f8f0bb239`; #178 comment `5575274582` records the result.
 
 Key decisions:
-- `AUTHENTICATED_TIME_SAMPLE != CORRECT_TIME_SAMPLE != INDEPENDENT_TIME_SAMPLE != QUORUM_TIME_DECISION != TRUSTED_TIME_FLOOR`;
-- authenticated time servers can still be falsetickers; advance freshness authority only from a bounded, uncertainty-aware quorum decision;
-- count independence by failure/control domains (operator/control, key custody, hosting/provider, network/AS path, DNS/discovery, jurisdiction, implementation/build, upstream reference-clock lineage), not raw IP/hostname/server count;
-- retain append-only `TimeSourceKeyStatusV1` history with effective compromise/calibration-loss boundaries; unknown compromise onset yields `UNKNOWN_HISTORICAL_TIME_TRUST` where safety depends on that source;
-- ordinary source-key rotation must preserve lineage, activation boundary and historical public verification/status evidence;
-- a far-future poisoned `TrustedTimeFloorV1` cannot be lowered by routine time samples, wall-clock reset, VM rollback, cache deletion or ordinary resynchronization;
-- poison recovery requires a distinct higher-order, independently authorized `TimeFloorPoisonRecoveryV1`, changes generation, preserves the poisoned decision as evidence, and sets only a conservative independently supported replacement interval/floor;
-- recovery authority must not be wholly controlled by the same domains that satisfied the poisoned routine time quorum;
-- added a 64-case RED-first matrix across key lifecycle, source correlation, robust selection, far-future poisoning, recovery authorization, crash/replay and governance.
+- `VALID_RECOVERY_SIGNATURE != AUTHORIZED_RECOVERY_POLICY != PROVEN_POISONING != SAFE_REPLACEMENT_FLOOR`;
+- `TimeFloorRecoveryPolicyV1` rotation requires threshold authorization under both predecessor and successor policy generations; successor self-authorization is forbidden;
+- recovery key compromise/retirement is append-only historical status; unknown compromise onset yields `UNKNOWN_HISTORICAL_RECOVERY_AUTHORITY` wherever safety depends on that key;
+- far-future/panic-sized discrepancy is a poison-suspicion trigger only; it cannot itself lower `TrustedTimeFloorV1`;
+- `POISONING_PROVEN` requires reconstruction and defeat of the original floor-advance authority basis plus independently controlled replacement time evidence and adjudicator threshold closure;
+- emergency recovery governance must be pre-bootstrapped, multi-party and control-domain independent; urgency does not authorize one-admin break glass;
+- two incompatible fully valid recovery artifacts create `RECOVERY_FORK_DISPUTE_NO_MUTATION`; min/max/LWW/first-seen selection is forbidden;
+- successful recovery creates a new authenticated generation and explicit supersession while retaining the poisoned decision/history;
+- added a 60-case RED-first matrix across policy/key lifecycle, poison adjudication, replacement safety, emergency governance, fork/equivocation and crash/publication semantics.
 
-Primary donors: RFC 8915 NTS; RFC 5905 authentication-vs-correctness and falseticker selection; RFC 8633 multiple-source/anycast guidance; RFC 9523 Khronos adversarial multi-source sampling/trimming; RFC 3628 TSA compromise/calibration-loss history; TUF fast-forward attack recovery.
+Primary donors: TUF root-key rotation and fast-forward recovery; NIST SP 800-57 Pt1 Rev5 key lifecycle/compromise; RFC 3628 TSA compromise and dual-control recovery; RFC 5905 panic-offset behavior.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -46,7 +46,7 @@ Primary donors: RFC 8915 NTS; RFC 5905 authentication-vs-correctness and falseti
 ## Exact next action
 LAB-086 first: if exact branch source execution becomes available, check out/reconstruct current PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, then execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **time-floor recovery-authority key lifecycle / recovery-policy rotation / poison-evidence adjudication and emergency-quorum governance semantics**. Define how `TimeFloorRecoveryAuthorityV1` keys are bootstrapped, rotated, compromised and retired; how old+new recovery-policy generations authorize transition without self-authorization; what evidence threshold is sufficient to classify a trusted floor as poisoned versus merely surprising; how emergency recovery avoids governance capture and correlated approvers; and how conflicting valid recovery artifacts are published, appealed and reconciled without silently choosing the lower clock.
+If exact execution remains unavailable, next distinct evidence task is **recovery-policy transparency bootstrap / offline root custody / total-loss governance-root reconstitution semantics**. Define whether and how `TimeFloorRecoveryAuthorityV1` can recover after loss/destruction/compromise of every ordinary and emergency recovery signer; distinguish legitimate organizational reconstitution from hostile root replacement; define offline root custody, archived predecessor evidence, transparency/publication requirements, out-of-band bootstrap, survivor/witness/court-or-charter style governance evidence if applicable, and the fail-closed state when no continuity proof remains. Do not silently invent a new root of trust.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -56,7 +56,7 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; secure-time source lifecycle/quorum/far-future poison-recovery contract now also frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; time-floor recovery-authority governance/key-lifecycle/poison-adjudication contract now also frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; retained-authority graph contracts frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; activation implementation/capability authority contracts frozen.
