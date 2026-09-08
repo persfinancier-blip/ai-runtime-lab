@@ -14,25 +14,24 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues/PRs; resumed LAB-086 first.
 
 Current-run capability probe:
-- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto22` failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto23` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes and web research remain available;
 - PR #165 remains open/draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, current connector read `mergeable=false`;
 - therefore no new LAB-086 behavioral/compile PASS is claimed and no draft/merge state was changed.
 
-Completed the recorded distinct fallback and froze `CONVERGENCE_EVIDENCE_REVOCATION_PROPAGATION_POST_COMPLETION_INVALIDATION_CONTINUOUS_ASSURANCE_V1_FROZEN` in `research/2026-09-08-convergence-evidence-revocation-propagation-post-completion-invalidation-continuous-assurance-v1.md`, main commit `b662954e6b99f49f26bce3c9ab248c2ced8005b5`; #178 comment `5577643158` records the result.
+Completed the recorded distinct fallback and froze `CONTINUOUS_ASSURANCE_AUTHORITY_LIFECYCLE_INVALIDATION_INDEPENDENCE_EVENT_LOSS_COMPACTION_V1_FROZEN` in `research/2026-09-08-continuous-assurance-authority-lifecycle-invalidation-independence-event-loss-compaction-v1.md`, main commit `4bdefd62496f7edfb61a420013535c46d1a28bfc`; #178 comment `5578099464` records the result.
 
 Key decisions:
-- `HISTORICALLY_PROVEN_CONVERGENCE != CURRENTLY_VALID_CONVERGENCE`; a close is a freshness-bounded verdict over a specific evidence/topology frontier, not a permanent certificate;
-- later authenticated contradictions create a new monotonic `ConvergenceInvalidationV1`; the old convergence artifact and transparency receipt remain historical evidence but lose current authority where superseded;
-- mandatory reopen triggers include evidence/verifier key compromise intersecting relied-on issuance intervals, verifier-policy supersession, topology omission, resurrected endpoints, stale DR/failover activation, negative-probe steering, effective L0 acceptance, topology-watch continuity loss, freshness expiry and verifier-independence collapse;
-- relying parties persist `TrustedConvergenceFrontierV1`; lower invalidation generations are rollback and equal-generation/different-content is equivocation;
-- topology continuity after close requires authenticated version/watch continuity or a fresh consistent snapshot plus reconciliation; a watch gap degrades current status to `CONVERGENCE_CURRENT_STATUS_UNKNOWN_STALE` until repaired;
-- new/resurrected endpoints do not inherit convergence from service membership and must pass post-close admission before consequential routing;
-- reclosure requires a new verdict generation consuming every contradiction/invalidation since the prior close; failure intervals and losing branches remain append-only history;
-- conflicting same-generation invalidations/reclosures yield `CONVERGENCE_EVIDENCE_CONFLICT_NO_COMPLETION`;
-- frozen a 48-case RED-first matrix spanning key authority, topology resurrection/DR, effective-path contradictions/probe steering, propagation/freshness, reclosure/history and crash/governance semantics.
+- `VALID_INVALIDATION_SIGNATURE != CURRENT_INVALIDATION_ISSUER_AUTHORITY != INDEPENDENT_INVALIDATION_EVIDENCE != APPRAISED_CONTRADICTION != CURRENT_CONVERGENCE_INVALIDATION`;
+- invalidation authority is a first-class generation/freshness-governed authority; routine rotation requires predecessor+successor authorization and compromise intervals affect issuance-time trust;
+- one strong monitor contradiction may trigger immediate local quarantine/fail-closed, but high-assurance global invalidation requires a threshold of independently appraised failure/control domains; correlated monitors do not count as independent votes;
+- an unknown watch/event interval yields `CONVERGENCE_CURRENT_STATUS_UNKNOWN_EVENT_GAP`; event silence is never evidence that no invalidation occurred;
+- recovery after a gap requires fresh authenticated authority/verdict/topology/contradiction state, reconciliation, affected-endpoint proof refresh where continuity was lost, then a new event frontier;
+- reclosure creates a new verdict generation and must consume every intervening contradiction/invalidation; false-positive adjudication supersedes but never deletes the original evidence;
+- compaction is permitted only as a cryptographic checkpoint over an immutable contiguous prefix, chained to prior trusted checkpoints and carrying unresolved contradictions forward; it must never erase invalidations, losing forks, or historical receipts;
+- frozen a 48-case RED-first matrix spanning authority lifecycle, independence/local quarantine, event-loss recovery, reclosure and compaction.
 
-Primary donors: RFC 9334 RATS freshness/appraisal semantics; RFC 9943 SCITT receipt/history semantics; TUF monotonic version/expiration/recovery semantics; Kubernetes `resourceVersion` list/watch and EndpointSlice topology aggregation.
+Primary donors: RFC 9334 RATS verifier/appraisal/freshness separation; RFC 5280 revocation numbering/freshness/base+delta reconstruction; RFC 9943 SCITT append-only receipts; RFC 9162 CT consistency/split-view evidence; Kubernetes `resourceVersion` list/watch and `410 Gone` recovery semantics.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -47,7 +46,7 @@ Primary donors: RFC 9334 RATS freshness/appraisal semantics; RFC 9943 SCITT rece
 ## Exact next action
 LAB-086 first: if exact branch source execution becomes available, check out/reconstruct current PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, then execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **continuous-assurance authority lifecycle / invalidation-issuer independence / event-loss recovery / reclosure freshness compaction semantics**. Define how the authority that issues `ConvergenceInvalidationV1` is itself rotated/revoked and appraised; how independent invalidation sources avoid one compromised monitor becoming unilateral revocation authority; how relying parties recover safely after missing an unknown interval of invalidation/topology events; and whether old verdict/invalidation chains may be compacted into checkpoints without losing contradiction provenance or enabling rollback. Preserve the rule that historical receipts remain verifiable while current authority is monotonic and freshness-bounded.
+If exact execution remains unavailable, next distinct evidence task is **continuous-assurance checkpoint authority / archive availability and survivability / checkpoint transparency split-view detection / proof-of-prefix completeness**. Define who may issue/rotate/revoke `ContinuousAssuranceCheckpointV1`; how relying parties distinguish an unavailable archive from a maliciously pruned contradiction history; what minimum independently replicated/transparency-backed evidence is needed so checkpoint compaction remains auditable after archive loss; and how conflicting checkpoint roots for the same prefix/generation are detected and adjudicated without LWW. Preserve the rule that current operation may be freshness-bounded while historical contradiction provenance remains independently recoverable/auditable.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -57,7 +56,7 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; rebootstrap, convergence, authenticated evidence, verifier-independence/topology/negative-probe and continuous-assurance invalidation/reclosure contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; rebootstrap, convergence, authenticated evidence, verifier-independence/topology/negative-probe, continuous-assurance invalidation/reclosure, and assurance-authority/event-loss/compaction contracts frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; retained-authority graph contracts frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; activation implementation/capability authority contracts frozen.
