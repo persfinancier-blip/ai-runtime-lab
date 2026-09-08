@@ -14,25 +14,25 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and all active PRs; resumed LAB-086 first.
 
 Current-run capability probe:
-- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto32` failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto33` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes and web research remain available;
-- PR #165 remains open/draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, connector read `mergeable=false`;
-- therefore no new LAB-086 behavioral/compile PASS is claimed and no draft/merge state was changed.
+- PR #165 remains open/draft at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; connector reports `mergeable=false`;
+- no new LAB-086 behavioral/compile PASS is claimed and no draft/merge state was changed.
 
-Completed the recorded distinct fallback and froze `FRESHNESS_PUBLICATION_OBLIGATION_LATESTNESS_EVIDENCE_COMPLETENESS_AUTHENTICATED_TIME_QUORUM_DISCOVERY_REGISTRY_V1_FROZEN` in `research/2026-09-08-freshness-publication-obligation-latestness-evidence-completeness-authenticated-time-quorum-discovery-registry-v1.md`, main commit `7fc094eb0f31ad5225de9983a8c4b9ed5f2eb38e`; #178 comment `5584359058` records the result.
+Completed the recorded distinct fallback and froze `FRESHNESS_OBLIGATION_AUTHORITY_ATOMICITY_OMISSION_TRANSPARENCY_TIME_PROVENANCE_V1_FROZEN` in `research/2026-09-08-freshness-obligation-authority-atomicity-omission-transparency-time-provenance-v1.md`, main commit `13ad3962512ebc77c8a97b80ce3e95af054ec371`; #178 comment `5585014618` records the result.
 
 Key decisions:
-- `NO_FRESHNESS_STATEMENT_OBSERVED != FRESHNESS_OMISSION_PROVEN`; bounded non-publication becomes positive misbehavior evidence only after a retained independently provable publication promise/deadline (CT/MMD-style).
-- Silence before admission/promise remains `LATESTNESS_EVIDENCE_ISSUANCE_UNKNOWN`; a compromised self-publisher can suppress before issuing its own promise, so critical transitions should separate admission from publication authority.
-- periodic freshness schedules are authenticated/versioned and cannot be weakened retroactively; a missed deadline can prove publication-liveness failure but not reveal the hidden semantic generation.
-- `DiscoveryRegistryV1` is the authenticated denominator for discovery/mirror/witness channels; timeout, endpoint/key rotation or local config deletion is not retirement, and endpoint count is not independent control-domain count.
-- `AUTHENTICATED_TIME != CORRECT_TIME`; consequential expiry/deadline appraisal uses a versioned quorum of independent time-control domains over authenticated uncertainty intervals.
-- NTS/signatures authenticate provenance/integrity, while RFC 8633/RFC 5905-style diverse-source clustering/outlier rejection supplies the separate semantic robustness layer; no valid quorum => `CURRENT_AUTHORITY_LATESTNESS_UNKNOWN` for consequential operations.
-- one far-future/far-past source must not alone force global expiry/freeze when the active quorum policy is designed to tolerate that failure domain.
-- post-facto time-key compromise reopens current reliance for dependent freshness decisions without rewriting historical receipts.
-- frozen a 48-case RED-first matrix covering publication obligations, issuance completeness, discovery-registry denominator laundering, time-source rollback/equivocation/outliers, and offline catch-up composition.
+- `VALID_PROMISE_SIGNATURE != CURRENT_PROMISE_AUTHORITY != VALID_CANCELLATION != VALID_SUPERSESSION`; a subject publisher cannot erase an already-retained obligation by self-cancellation.
+- `EVENT_ACCEPTED && NO_INDEPENDENTLY_RETAINED_PROMISE` is forbidden. Admission and signed promise creation are one recoverable logical transition; external ACCEPTED is returned only after the promise is durably recoverable.
+- post-deadline promise supersession cannot launder a missed deadline; default effective bound is the minimum still-applicable independently retained deadline unless a bounded renewal mechanism was already authorized.
+- omission evidence has an independent transparency/witness path; a transparency receipt proves registration/survivability/equivocation evidence, not semantic truth of the omission claim.
+- `TIME_ENDPOINT_COUNT != INDEPENDENT_TIME_CONTROL_DOMAINS`; common upstream reference, signer/operator account, firmware/chipset, cloud/admin domain, or other dependency collapses independence for the affected threat dimension.
+- consequential time quorum evaluates authenticated intervals plus a provenance-backed assurance vector; stale/unknown provenance cannot count toward high-assurance freshness quorum.
+- key/DNS/region rotation does not manufacture a new independent time source.
+- later discovery of common-mode time dependency reopens current reliance for affected historical freshness decisions without rewriting historical receipts.
+- frozen a 48-case RED-first matrix covering promise-authority lifecycle, admission/promise crash atomicity, omission-proof transparency, time common-mode provenance, and offline/recovery composition.
 
-Primary donors: RFC 9162 SCT/MMD, TUF freeze/rollback/expiration, Uptane secure-time compromise guidance, RFC 8915 NTS, RFC 8633/RFC 5905 multi-source/falseticker selection, Roughtime nonce-bound signed uncertainty intervals/chaining.
+Primary donors: RFC 9162 SCT/MMD, SCITT Issuer/Transparency-Service separation, RFC 8633 diverse time-source/common-element guidance, RFC 5905 falseticker selection/clustering, Roughtime nonce-bound signed midpoint/radius intervals.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -42,9 +42,9 @@ Primary donors: RFC 9162 SCT/MMD, TUF freeze/rollback/expiration, Uptane secure-
 - LAB-093 and LAB-094..100 design freezes do not substitute for executable RED/GREEN proof.
 
 ## Exact next action
-LAB-086 first: if exact branch source execution becomes available, check out/reconstruct PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
+LAB-086 first: if exact branch source execution becomes available, check out/reconstruct PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, hidden-rowid collision/sentinel, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **freshness obligation authority lifecycle / admission-publication atomicity / omission-proof transparency / time-quorum membership rotation and cross-source common-mode provenance**. Define who can issue/cancel/supersede `FreshnessPublicationPromiseV1`, how admission and promise creation survive crash/partition without creating unprovable accepted events, how omission proofs themselves are transparently/witnessed so a publisher cannot selectively show breach evidence, and how time-source independence is authenticated when nominally separate clocks share upstream reference, signer, cloud/account, firmware or operator control. Preserve `silence -> UNKNOWN` unless an independently retained bounded obligation exists.
+If exact execution remains unavailable, next distinct evidence task is **obligation/admission authority recovery after total promise-authority loss / cross-domain durable admission-journal survivability / semantic negative-proof construction where the underlying log exposes no canonical absence proof**. Define fail-closed behavior when the promise-authority threshold is unavailable or compromised after PREPARED admission, how independently retained admission evidence survives loss of one administrative/destructive domain, and what positive evidence can establish bounded non-publication without pretending that a bare 404/empty query is a cryptographic absence proof.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -54,5 +54,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability through anti-freeze/freshness-publication/time-quorum contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability through freshness-obligation atomicity/omission-transparency/time-common-mode-provenance contracts frozen; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen as recorded in their issues; exact executable gates pending.
