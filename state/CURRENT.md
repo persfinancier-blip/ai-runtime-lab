@@ -20,17 +20,17 @@ Current-run capability probe:
 - retained prior evidence still says the strict/thaw subgate passed 31/31 distinct tests + compileall on the pinned executable source; the remaining LAB-086 gate is the complete LAB-080→086 real-ledger suite, unsafe expected-failure seed, full compileall and final security/reconciliation/conflict audit;
 - no supported automated connector-to-local exact-source materialization path was observed, so no large security-critical source closure was manually/model reserialized and no new LAB-086 behavioral/compile PASS is claimed.
 
-Completed the recorded distinct fallback and froze `POLICY_SNAPSHOT_ROLLOVER_CROSSLOG_MIGRATION_CONFIDENTIAL_REVEAL_ADJUDICATION_FINALITY_V1_FROZEN` in `research/2026-09-09-policy-snapshot-key-rollover-crosslog-migration-confidential-reveal-adjudication-finality-v1.md`, main commit `75e2b0d1ea6fd25b7ad6eda77016ee63ba0681f5`; #178 comment `5592621577` records the result.
+Completed the recorded distinct fallback and froze `POLICY_DEPENDENCY_ANTIOMISSION_CLOCK_MIGRATION_ESCROW_SELECTIVE_DISCLOSURE_V1_FROZEN` in `research/2026-09-09-policy-dependency-antiomission-clock-migration-escrow-selective-disclosure-v1.md`, main commit `f626639bfeb7c67b037f5d379c9d569f11eb9b35`; #178 comment `5593193924` records the result.
 
 Key decisions:
-- historical consequential evidence binds exact immutable policy bytes/digest; `SUPERSEDED != GC_ELIGIBLE`; policy GC requires an authenticated complete dependency census and independently durable migration/retention evidence, and missing historical policy bytes fail closed rather than substituting current policy;
-- witness/collector logical identity is distinct from key epoch; normal rollover requires predecessor+successor authorization, exact effective boundary and transparent non-equivocating publication; rollover/retirement never recomputes historical quorum denominators;
-- cross-log proof packages retain source/destination log IDs, key epochs, parameters, checkpoints, proof bytes and crypto-policy lineage; signature/timestamp renewal is distinct from hash-tree renewal, and post-break rehashing without a pre-break independent anchor cannot restore historical authenticity;
-- semantic commit-before-reveal now has explicit confidentiality phases, hiding commitments and optional independently governed threshold-decryption escrow; a committed non-reveal contributes no semantic verdict unless the predeclared escrow path opens the exact committed value;
-- compromise-boundary adjudication now has immutable provisional/final/superseded/reopened/void states; ordinary appeal does not erase the prior decision, and moving a boundary later (rehabilitating distrusted history) requires stricter independent new evidence plus recovery/higher-root authorization;
-- frozen 64-case RED-first matrix across policy snapshot/GC safety, identity-key rollover, cross-log crypto migration, confidential semantic reveal and adjudication appeal/finality.
+- dependency index is a derived authenticated view over append-only evidence dependency events, not sole truth; policy GC requires a positive anti-omission proof against an authenticated complete admission/event frontier and CAS/serialization against concurrent evidence admission;
+- effective-time boundaries use authenticated interval/order evidence (RFC 3161-style `genTime + accuracy + ordering` semantics), not ambient wall clock; overlapping uncertainty intervals without separate ordering evidence are `BOUNDARY_TIME_AMBIGUOUS`;
+- partial archive recovery is judged against an explicit `ProofDependencyClosure`; redundant/regenerable derivative loss may be tolerated only when regeneration derives from authenticated retained state, while loss of non-regenerable historical bindings/policy bytes/pre-break renewal inputs blocks migration;
+- threshold-decryption escrow share releases are append-only exposure events; abort after any valid share is `ESCROW_ABORTED_PARTIAL_EXPOSURE`, ciphertext threshold/membership cannot be lowered/reinterpreted after commitment, and pre-reveal threshold compromise downgrades confidential anti-copy assurance;
+- adjudication selective disclosure must remain cryptographically linked to a complete authenticated evidence manifest; commitments/hashes prove binding rather than hidden semantics, and hidden decision-relevant evidence carries an explicit confidential-review assurance limitation;
+- frozen 64-case RED-first matrix across dependency anti-omission, authenticated effective time, partial archive/migration closure, escrow compromise/abort, and selective disclosure/adjudication confidentiality.
 
-Primary donors: TUF trust-chain/key-migration retention; RFC 9162 append-only checkpoint/log identity; RFC 4998 timestamp vs hash-tree renewal; NIST SP 800-57 key lifecycle/archive guidance.
+Primary donors: RFC 9162, RFC 3161, RFC 4998, NIST Multi-Party Threshold Cryptography / NIST IR 8214C, RFC 9901.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution of the complete real-ledger closure.
@@ -43,7 +43,7 @@ Primary donors: TUF trust-chain/key-migration retention; RFC 9162 append-only ch
 ## Exact next action
 LAB-086 first: if an automated exact-source path becomes available, reconstruct/check out pinned executable source `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` / PR head lineage, verify every dependency/test blob against `research/2026-08-27-lab086-exact-gate-manifest.md`, execute every normal LAB-086 real-schema test, run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure, run full compileall, then perform final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **policy-dependency index authority and positive anti-omission proof + key-rollover effective-time clock provenance + cross-log migration completeness under partial archive loss + threshold-decryption escrow compromise/abort semantics + adjudication evidence-disclosure confidentiality/selective disclosure**.
+If exact execution remains unavailable, next distinct evidence task is **dependency-event log equivocation/recovery and source-frontier survivability + multi-time-source anti-backdating/clock-authority rollover + proof-closure authority/versioning for regenerated evidence + proactive escrow share refresh/reconfiguration across key epochs + selective-disclosure/ZK predicate circuit provenance and verifier-policy lifecycle**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -53,5 +53,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability/evidence architecture now also covers historical policy/GC safety, identity-key rollover, cross-log crypto migration, confidential semantic reveal, and compromise-boundary adjudication appeal/finality; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability/evidence architecture now also covers positive policy-dependency anti-omission, authenticated effective-time provenance, partial-loss proof-closure migration, escrow compromise/abort semantics, and selective-disclosure confidentiality; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen as recorded in their issues; exact executable gates pending.
