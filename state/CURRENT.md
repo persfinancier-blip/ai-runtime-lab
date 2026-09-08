@@ -19,22 +19,21 @@ Current-run capability probe:
 - PR #165 remains open/draft at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; connector reports `mergeable=false`;
 - no new LAB-086 behavioral/compile PASS is claimed and no draft/merge state was changed.
 
-Completed the recorded distinct fallback and froze `INDEPENDENCE_REGISTRY_AUTHORITY_RECURSION_RANDOMNESS_WITHHOLDING_STALE_REPAIR_PQ_VERIFIER_DIVERSITY_V1_FROZEN` in `research/2026-09-08-independence-registry-compromise-randomness-withholding-stale-repair-pq-verifier-diversity-v1.md`, main commit `d90874ed24558fd5b2d22a65756c8801e4cadf4f`; #178 comment `5589083533` records the result.
+Completed the recorded distinct fallback and froze `REGISTRY_RECOVERY_TRANSPARENCY_RANDOMNESS_FALLBACK_REPAIR_MANIFEST_VERIFIER_PROVENANCE_V1_FROZEN` in `research/2026-09-08-registry-recovery-transparency-randomness-fallback-repair-manifest-verifier-provenance-v1.md`, main commit `3242ee97a8dc334a6cf7ca2e1855fde868dfb3da`; #178 comment `5589794363` records the result.
 
 Key decisions:
-- valid registry signature != trustworthy current registry authority != factual destructive-domain independence; authority compromise reopens current reliance but never erases historical registry generations or shrinks the historical denominator;
-- a compromised registry authority cannot self-install a trusted successor; recovery requires separately controlled continuity authority, otherwise same-lineage recovery is unproven/new-lineage rebootstrap is required;
-- member re-admission after a compromise interval requires fresh independence evidence; endpoint/key rotation does not inherit independence;
-- challenge population must be committed before randomness; randomness withholding may fail a round but cannot authorize same-epoch population recommit/reselection or undeclared scheduler-local fallback randomness;
-- repeated contributor withholding is availability/compromise evidence rather than a challenge-target selection knob;
-- repair plans bind source manifest/checkpoint, registry/member generation, independence-evidence frontier and crypto policy; both placement and commit revalidate current state and commit is CAS-like against the exact predecessor manifest;
-- `>=k` reconstructability and destructive-domain independence are separate success gates; repairing share count under common control yields `RECONSTRUCTABLE_BUT_INDEPENDENCE_DEGRADED`;
-- hybrid-required evidence never silently falls back to classical-only/PQ-only because one component verifier is unavailable or compromised;
-- verifier process count != implementation diversity; high-assurance PQ verification may require independent implementation families over the exact same canonical payload, while disagreement fails closed;
-- algorithm compromise, verifier implementation compromise, parser/canonicalization compromise and key compromise remain separate re-appraisal causes;
-- frozen a 48-case RED-first matrix across registry-authority compromise recursion, randomness withholding, stale/concurrent repair and PQ verifier diversity/downgrade.
+- valid authority generation, transparent publication, witness observation and latestness are separate assurance classes;
+- registry/recovery authority cannot be the sole source of truth for its own compromise/successor; independently authorized + transparently published later generations can make an older still-valid generation provably stale;
+- same lineage/generation + different authenticated digest is equivocation, never LWW/newest/fastest-mirror resolution;
+- challenge population is committed before randomness; fallback must be versioned and declared before commitment, with no post-value subset selection or same-epoch reselection after withholding;
+- beacon endpoint/key count does not equal independent beacon/control-domain count; resharing that preserves a chain key does not itself prove unchanged administrative independence;
+- repair manifests are immutable, predecessor/CAS-linked and require configured transparency/witness publication before authoritative finality; witnessed publication does not prove semantic reconstructability/independence;
+- verifier process/binary count != implementation diversity; provenance separately tracks source lineage, parser/canonicalizer, crypto implementation, toolchain, build control and runtime domains;
+- independent reproducible byte equality corroborates build inputs but does not prove source/parser/crypto correctness or implementation independence;
+- late common-mode provenance disclosure re-appraises current verifier-diversity assurance without erasing historical evidence;
+- frozen 64-case RED-first matrix across authority transparency/recovery, randomness fallback, repair-manifest equivocation/offline catch-up and PQ verifier provenance/diversity.
 
-Primary donors: drand threshold-beacon specification; RFC 9381 VRFs; Tahoe-LAFS k-of-N/repair semantics; current NIST PQC guidance; current IETF PQ/T composite/hybrid signature and anti-downgrade work.
+Primary donors: TUF root continuity/freeze semantics; RFC 9162 transparency consistency/auditing; drand threshold beacon/resharing; SLSA verified-reproducible independence guidance; Reproducible Builds byte/hash comparison.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -46,7 +45,7 @@ Primary donors: drand threshold-beacon specification; RFC 9381 VRFs; Tahoe-LAFS 
 ## Exact next action
 LAB-086 first: if exact branch source execution becomes available, check out/reconstruct PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, hidden-rowid collision/sentinel, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **registry/recovery transparency under authority compromise + randomness-beacon set rotation and cross-beacon fallback policy + authoritative repair-manifest publication/witnessing + verifier-attestation provenance and reproducible-build diversity**. Define how relying parties learn that a registry/recovery authority generation was superseded or compromised without trusting that authority alone; how beacon membership/threshold rotation and predeclared multi-beacon fallback avoid withholding-driven downgrade; how repair manifests become append-only/witnessed so a compromised repair coordinator cannot hide a losing/stale generation; and what evidence is sufficient to count two PQ verifiers as genuinely independent implementations rather than nominally different processes around one common parser/library/build chain.
+If exact execution remains unavailable, next distinct evidence task is **transparency-log/witness authority lifecycle and cross-log anchoring + randomness-fallback anti-bias composition under partial compromise + repair-manifest semantic attestation quorum + verifier-provenance attestation authority/revocation**. Define how transparency/witness sets themselves rotate/recover without circular self-trust; when cross-log anchoring gives positive equivocation/suppression evidence versus merely more replicas; which multi-beacon combination rules remain unbiased when some contributors can selectively withhold after learning their values; how semantic repair attestations are independently reproduced/adjudicated rather than merely cosigned; and who is allowed to issue/revoke verifier provenance attestations without letting a verifier certify its own independence.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -56,5 +55,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability through registry-compromise/randomness-withholding/stale-repair/PQ-verifier-diversity contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability through registry/recovery transparency, randomness fallback, repair-manifest witnessing and verifier-provenance contracts frozen; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen as recorded in their issues; exact executable gates pending.
