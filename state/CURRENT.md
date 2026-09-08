@@ -11,29 +11,30 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 - Frozen design follow-ups: LAB-093/#178; LAB-094..096/#179..181; LAB-097..099/#182..184; LAB-100/#185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and PR #165; resumed LAB-086 first.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open PRs and PR #165; resumed LAB-086 first.
 
 Current-run capability probe:
-- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto25` failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab-auto26` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes and web research remain available;
 - PR #165 remains open/draft at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, current connector read `mergeable=false`;
 - therefore no new LAB-086 behavioral/compile PASS is claimed and no draft/merge state was changed.
 
-Completed the recorded distinct fallback and froze `SEMANTIC_EVENT_INGESTION_COMPLETENESS_SOURCE_INVENTORY_OMISSION_MONITOR_CATCHUP_V1_FROZEN` in `research/2026-09-08-semantic-event-ingestion-completeness-source-inventory-omission-detection-monitor-catchup-v1.md`, main commit `1d1ea146fa7809e5588a231b9ee7bb4d69c8b540`; #178 comment `5579140264` records the result.
+Completed the recorded distinct fallback and froze `SOURCE_INVENTORY_AUTHORITY_KEY_LIFECYCLE_SOURCE_IDENTITY_ROTATION_FRONTIER_FRESHNESS_PROMISE_INDEPENDENCE_V1_FROZEN` in `research/2026-09-08-source-inventory-authority-key-lifecycle-source-identity-rotation-frontier-freshness-promise-independence-v1.md`, main commit `2ea62b4ba5f927f37a7a034e48a8a629cfabd0ac`; #178 comment `5579684546` records the result.
 
 Key decisions:
-- `APPEND_ONLY_LOG != COMPLETE_EVENT_INGESTION`; log consistency/inclusion cannot prove that required events were never suppressed before admission;
-- `EventSourceInventoryV1` is the authenticated monotonic denominator; currently reporting sources are not the required source set, and a producer cannot silently shrink it;
-- source retirement requires an authenticated final/drain frontier with zero unresolved obligations; timeout, DNS/CMDB disappearance or telemetry silence do not retire a required source;
-- governed sources use authenticated event/frontier semantics; sequence-gap evidence is valid only when the source contract declares contiguous issuance;
-- `IngestionPromiseV1` creates a CT-like pre-inclusion obligation: after its deadline, a retained valid promise plus a covered checkpoint lacking the event is positive omission evidence;
-- independent monitors reconcile source inventory/frontiers/promises against checkpoint coverage; log self-attestation is insufficient for source completeness;
-- monitor loss creates an unknown interval until inventory continuity, per-source frontiers, promises, log checkpoints and unresolved contradictions are reconstructed;
-- partitions/timeouts alone yield UNKNOWN unless independent evidence proves omission; fraud attribution must distinguish producer omission from source failure/misbehavior;
-- late omitted events discovered after `PREFIX_COMPLETE_PROVEN` invalidate/reopen through the existing continuous-assurance generation chain instead of rewriting history;
-- frozen a 60-case RED-first matrix spanning inventory authority, promise/inclusion, source chains, partitions/delay, catch-up, anti-steering challenges, retirement/resurrection and crash atomicity.
+- `VALID_SIGNATURE != CURRENT_AUTHORITY != SAME_LOGICAL_SOURCE != FRESH_FRONTIER != INDEPENDENT_INGESTION_OBLIGATION`;
+- source-inventory authority and per-source identity authority are separate roles; a source cannot sign itself out of the required-source denominator;
+- `SOURCE_KEY_ROTATION != SOURCE_RETIREMENT != NEW_LOGICAL_SOURCE`; stable logical source identity is independent of rotating keys, workload instances, hostnames and epochs;
+- inventory/source authority rotations use monotonic generations with predecessor+successor authorization; self-authorized and skipped-generation replacements fail closed;
+- planned private-key retirement preserves public verification history; compromise intervals downgrade only dependent evidence, and unknown compromise onset cannot silently preserve trusted historical status;
+- a new source key/epoch must prove continuity to the same logical source and carry unresolved promises/gaps/contradictions forward; `NEW_EPOCH != CLEAN_SLATE`;
+- per-monitor `TrustedSourceFrontierV1` rejects lower authority generations/epochs/frontiers and same-frontier conflicting digests; wall-clock-newer does not mean frontier-fresher;
+- monitor catch-up reconstructs inventory authority -> inventory -> source authority chains -> retained frontiers -> promise obligations -> current frontiers -> log coverage, in that order;
+- `IngestionPromiseAuthorityV1` is separate from log authority; explicit P0..P3 assurance profiles distinguish self-promise from independent admission/witness authority;
+- a retained producer-signed promise can prove breach of that promise, but a producer that controls both log and sole promise issuance can selectively suppress promises, so absence of a promise is not completeness proof;
+- frozen a 48-case RED-first matrix spanning inventory/source authority lifecycle, denominator laundering, epoch/frontier rollback/equivocation, promise independence, catch-up/crash and late contradiction reopening.
 
-Primary donors: RFC 9162 CT signed inclusion promise/MMD and monitors; RFC 9943 SCITT issuer-vs-registration separation; NIST SP 800-53 Rev.5 AU-12 component/event-source audit denominator; Apache Kafka producer sequence/idempotence semantics.
+Primary donors: TUF sequential root rotation + rollback protection; SPIFFE stable trust-domain identity with rotating bundles; NIST SP 800-57 historical verification-key lifecycle; RFC 9162 signed inclusion promises/monitors; RFC 9943 Issuer vs Transparency Service separation.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution.
@@ -43,12 +44,12 @@ Primary donors: RFC 9162 CT signed inclusion promise/MMD and monitors; RFC 9943 
 - LAB-088 still needs supported-integration + LAB-084/085/086 downstream execution.
 - LAB-091 still needs real LAB-080/LAB-082 integration, two-worker/crash, timeout-after-commit/UNKNOWN, LAB-087 composition and full exact regressions.
 - LAB-090/LAB-100, LAB-092 and LAB-097..099 remain design-frozen but require exact executable RED/GREEN before production integration.
-- LAB-093 exact implementation must compose all frozen capability/delegation/revocation/lease/handoff/provider-fence/receipt/historical-trust/archive/verifier/conformance/oracle/publication/witness/recovery/freshness/secure-time/rebootstrap/convergence/evidence/continuous-assurance/checkpoint/source-ingestion contracts with LAB-087 isolation; none of the design freezes substitute for executable proof.
+- LAB-093 exact implementation must compose all frozen capability/delegation/revocation/lease/handoff/provider-fence/receipt/historical-trust/archive/verifier/conformance/oracle/publication/witness/recovery/freshness/secure-time/rebootstrap/convergence/evidence/continuous-assurance/checkpoint/source-ingestion/source-authority contracts with LAB-087 isolation; none of the design freezes substitute for executable proof.
 
 ## Exact next action
 LAB-086 first: if exact branch source execution becomes available, check out/reconstruct current PR head `ee210a47221b6df53f3518aa3af74f76c5b0122b`, verify exact branch-local source/blob lineage, then execute the retained strict/thaw subgate (alternate-UNIQUE, primary-key/history/proof replacement, NULL identities, minimal thaw, conflict algorithms), compileall, exact branch-local LAB-080→086 dependency-blob verification, every normal LAB-086 real-schema test, unsafe legacy-promotion expected-failure seed, and final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **source-inventory authority key lifecycle / event-source identity rotation / source-frontier freshness and rollback / ingestion-promise issuer independence**. Define how source inventory and per-source identity keys rotate/revoke without retroactively invalidating safe history; how source epoch/key replacement binds to the same logical source instead of creating denominator laundering; how stale/replayed source frontiers are rejected after monitor catch-up; and how ingestion-promise signing authority is kept independent enough from the log producer that a compromised producer cannot forge, suppress, or selectively repudiate its own completeness obligations.
+If exact execution remains unavailable, next distinct evidence task is **source/promise authority transparency and compromise-notification propagation / conflicting authority views / post-facto completeness invalidation**. Define how monitors learn source-inventory, source-identity and ingestion-promise authority revocations/compromise notices with bounded freshness; how same-generation conflicting authority views are exposed through transparency/witnesses rather than resolved by LWW; how offline monitors recover missed revocations; and how a late compromise notice invalidates current reliance on an earlier completeness verdict without rewriting the historical verdict/receipt.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -58,7 +59,7 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; checkpoint/source-ingestion and prior capability/recovery/convergence/continuous-assurance contracts frozen; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; source-authority/promise-independence plus checkpoint/source-ingestion and prior capability/recovery/convergence/continuous-assurance contracts frozen; exact RED/GREEN pending.
 - #179..181 / LAB-094..096 — READY; retained-authority graph contracts frozen.
 - #182..184 / LAB-097..099 — READY; authenticated provenance/global chain/recovery contracts frozen.
 - #185 / LAB-100 — READY; activation implementation/capability authority contracts frozen.
