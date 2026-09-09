@@ -16,21 +16,22 @@ Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open i
 Current-run capability probe:
 - direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes remain available;
-- PR #165 is confirmed open/draft at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; connector reports `mergeable=false`;
-- retained prior evidence still says the strict/thaw subgate passed 31/31 distinct tests + compileall on the pinned executable source; the remaining LAB-086 gate is the complete LAB-080→086 real-ledger suite, unsafe expected-failure seed, full compileall and final security/reconciliation/conflict audit;
+- PR #165 is confirmed `open`, `draft`, `mergeable=false` at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`;
+- retained prior evidence still says the strict/thaw subgate passed 31/31 distinct tests + compileall on pinned executable source; remaining LAB-086 gate is the complete LAB-080→086 real-ledger suite, unsafe expected-failure seed, full compileall and final security/reconciliation/conflict audit;
 - no supported automated connector-to-local exact-source materialization path was observed, so no large security-critical source closure was manually/model reserialized and no new LAB-086 behavioral/compile PASS is claimed.
 
-Completed the recorded distinct fallback and froze `POLICY_DEPENDENCY_ANTIOMISSION_CLOCK_MIGRATION_ESCROW_SELECTIVE_DISCLOSURE_V1_FROZEN` in `research/2026-09-09-policy-dependency-antiomission-clock-migration-escrow-selective-disclosure-v1.md`, main commit `f626639bfeb7c67b037f5d379c9d569f11eb9b35`; #178 comment `5593193924` records the result.
+Completed the recorded distinct fallback and froze `DEPENDENCY_LOG_TIME_PROOFCLOSURE_ESCROW_ZK_LIFECYCLE_V1_FROZEN` in `research/2026-09-09-dependency-log-time-proofclosure-escrow-zk-lifecycle-v1.md`, main commit `b4318732b561ccce27e88a71f4a12b850577821c`; #178 comment `5593804610` records the result.
 
 Key decisions:
-- dependency index is a derived authenticated view over append-only evidence dependency events, not sole truth; policy GC requires a positive anti-omission proof against an authenticated complete admission/event frontier and CAS/serialization against concurrent evidence admission;
-- effective-time boundaries use authenticated interval/order evidence (RFC 3161-style `genTime + accuracy + ordering` semantics), not ambient wall clock; overlapping uncertainty intervals without separate ordering evidence are `BOUNDARY_TIME_AMBIGUOUS`;
-- partial archive recovery is judged against an explicit `ProofDependencyClosure`; redundant/regenerable derivative loss may be tolerated only when regeneration derives from authenticated retained state, while loss of non-regenerable historical bindings/policy bytes/pre-break renewal inputs blocks migration;
-- threshold-decryption escrow share releases are append-only exposure events; abort after any valid share is `ESCROW_ABORTED_PARTIAL_EXPOSURE`, ciphertext threshold/membership cannot be lowered/reinterpreted after commitment, and pre-reveal threshold compromise downgrades confidential anti-copy assurance;
-- adjudication selective disclosure must remain cryptographically linked to a complete authenticated evidence manifest; commitments/hashes prove binding rather than hidden semantics, and hidden decision-relevant evidence carries an explicit confidential-review assurance limitation;
-- frozen 64-case RED-first matrix across dependency anti-omission, authenticated effective time, partial archive/migration closure, escrow compromise/abort, and selective disclosure/adjudication confidentiality.
+- dependency-event truth lives in an authenticated append-only log; the materialized dependency index remains derived. Same-size/different-root checkpoints are equivocation, and recovery after log-key/operator compromise requires a new authenticated epoch/identity rather than silently redefining old history;
+- positive anti-omission/GC authority requires a survivable reproducible source frontier. A retained root without complete authenticated event-prefix material is `FRONTIER_AUTHENTIC_BUT_NONEXHAUSTIVELY_REPRODUCIBLE`, not proof of no dependencies;
+- consequential effective time uses a `TimeEvidenceSet`: authority/key epoch, nonce/challenge where supported, signed interval/radius, policy and ordering evidence. RFC3161-style overlapping uncertainty without stronger ordering is `TIME_ORDER_AMBIGUOUS`; Roughtime-style chaining is a donor for cryptographic after-order across independently governed sources;
+- regenerated evidence is a new immutable object under a versioned `ProofClosureManifest` binding exact source frontier, inputs, parser/schema, algorithm/parameters, generator provenance, policy and predecessor evidence. The generator cannot be sole authority for semantic equivalence;
+- proactive escrow share refresh is distinct from threshold/membership reconfiguration. Partial refresh is fail-closed, old/new shares are not assumed mixable, and refresh cannot erase exposure if threshold shares were already compromised;
+- adjudication-grade ZK evidence binds exact predicate/circuit, public-input schema, setup/parameter epoch, prover/verifier provenance and verifier policy. `ZK_PROOF_VALID != CLAIM_POLICY_CORRECT`; circuit/verifier upgrades never retroactively reinterpret old proofs;
+- frozen 40-case RED-first matrix across dependency-log/frontier, time provenance, proof regeneration, escrow refresh/reconfiguration and ZK lifecycle.
 
-Primary donors: RFC 9162, RFC 3161, RFC 4998, NIST Multi-Party Threshold Cryptography / NIST IR 8214C, RFC 9901.
+Primary donors: RFC 9162, RFC 3161, IETF Roughtime draft-ietf-ntp-roughtime-19, NIST IR 8214C / Threshold Cryptography.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution of the complete real-ledger closure.
@@ -43,7 +44,7 @@ Primary donors: RFC 9162, RFC 3161, RFC 4998, NIST Multi-Party Threshold Cryptog
 ## Exact next action
 LAB-086 first: if an automated exact-source path becomes available, reconstruct/check out pinned executable source `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` / PR head lineage, verify every dependency/test blob against `research/2026-08-27-lab086-exact-gate-manifest.md`, execute every normal LAB-086 real-schema test, run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure, run full compileall, then perform final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **dependency-event log equivocation/recovery and source-frontier survivability + multi-time-source anti-backdating/clock-authority rollover + proof-closure authority/versioning for regenerated evidence + proactive escrow share refresh/reconfiguration across key epochs + selective-disclosure/ZK predicate circuit provenance and verifier-policy lifecycle**.
+If exact execution remains unavailable, next distinct evidence task is **dependency-log witness/checkpoint survivability and complete-frontier anti-omission under witness loss + Byzantine multi-time-source aggregation/independence denominator + proof-closure reproducible-generator provenance and parser migration + proactive escrow refresh authorization/rollback across offline members + ZK setup-ceremony/parameter compromise and proof-system migration semantics**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -53,5 +54,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability/evidence architecture now also covers positive policy-dependency anti-omission, authenticated effective-time provenance, partial-loss proof-closure migration, escrow compromise/abort semantics, and selective-disclosure confidentiality; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability/evidence architecture now also covers dependency-log equivocation/recovery, survivable source frontiers, multi-source authenticated time, versioned regenerated-proof closure, proactive escrow refresh/reconfiguration and ZK predicate/verifier lifecycle; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen as recorded in their issues; exact executable gates pending.
