@@ -14,6 +14,7 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and PR #165; resumed LAB-086 first.
 
 Current-run capability/state:
+- direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` was re-probed and failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes are available;
 - PR #165 is confirmed `open`, `draft`, `mergeable=false` at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; no draft/merge-state change was attempted;
 - retained prior evidence still says strict/thaw subgate passed on pinned executable source; remaining LAB-086 gate is complete LAB-080→086 real-ledger execution, unsafe expected-failure seed, full compileall and final security/reconciliation/conflict audit;
@@ -33,6 +34,7 @@ Primary donors: RFC 9162; RFC 9381; drand distributed randomness beacon document
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution of the complete real-ledger closure.
+- Direct container Git/raw transport is unavailable in this run due DNS resolution failure.
 - Connector can read/write repository content, but no supported automated connector-to-local materialization path for the full exact executable closure was observed; manual/model reserialization of the large security-critical closure remains prohibited by the retained byte-hash gate.
 - PR #165 must remain draft until branch-local dependency-blob verification, complete real-schema LAB-086 tests, unsafe expected-failure seed, compileall, security reconciliation and branch/main conflict audit execute on exact source.
 - Keep PRs #165/#172/#173/#175/#177 draft until their retained exact gates execute.
