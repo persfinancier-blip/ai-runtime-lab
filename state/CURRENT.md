@@ -13,25 +13,25 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 ## Last completed step
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues and active PRs; resumed LAB-086 first.
 
-Current-run capability probe:
+Current-run capability/state probe:
 - direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com` (exit 128);
 - GitHub connector reads/writes remain available;
-- PR #165 is confirmed `open`, `draft`, `mergeable=false` at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`;
+- PR #165 is confirmed `open`, `draft` at exact head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; no draft/merge-state change was attempted;
 - retained prior evidence still says the strict/thaw subgate passed 31/31 distinct tests + compileall on pinned executable source; remaining LAB-086 gate is the complete LAB-080→086 real-ledger suite, unsafe expected-failure seed, full compileall and final security/reconciliation/conflict audit;
 - no supported automated connector-to-local exact-source materialization path was observed, so no large security-critical source closure was manually/model reserialized and no new LAB-086 behavioral/compile PASS is claimed.
 
-Completed the recorded distinct fallback and froze `DEPENDENCY_LOG_TIME_PROOFCLOSURE_ESCROW_ZK_LIFECYCLE_V1_FROZEN` in `research/2026-09-09-dependency-log-time-proofclosure-escrow-zk-lifecycle-v1.md`, main commit `b4318732b561ccce27e88a71f4a12b850577821c`; #178 comment `5593804610` records the result.
+Completed the recorded distinct fallback and froze `WITNESS_TIME_PROOFCLOSURE_ESCROW_ZK_MIGRATION_V1_FROZEN` in `research/2026-09-09-witness-time-proofclosure-escrow-zk-migration-v1.md`, main commit `9ec40e0ced916b29a771d54e7a4c69a6220227d6`; #178 comment `5594296110` records the result.
 
 Key decisions:
-- dependency-event truth lives in an authenticated append-only log; the materialized dependency index remains derived. Same-size/different-root checkpoints are equivocation, and recovery after log-key/operator compromise requires a new authenticated epoch/identity rather than silently redefining old history;
-- positive anti-omission/GC authority requires a survivable reproducible source frontier. A retained root without complete authenticated event-prefix material is `FRONTIER_AUTHENTIC_BUT_NONEXHAUSTIVELY_REPRODUCIBLE`, not proof of no dependencies;
-- consequential effective time uses a `TimeEvidenceSet`: authority/key epoch, nonce/challenge where supported, signed interval/radius, policy and ordering evidence. RFC3161-style overlapping uncertainty without stronger ordering is `TIME_ORDER_AMBIGUOUS`; Roughtime-style chaining is a donor for cryptographic after-order across independently governed sources;
-- regenerated evidence is a new immutable object under a versioned `ProofClosureManifest` binding exact source frontier, inputs, parser/schema, algorithm/parameters, generator provenance, policy and predecessor evidence. The generator cannot be sole authority for semantic equivalence;
-- proactive escrow share refresh is distinct from threshold/membership reconfiguration. Partial refresh is fail-closed, old/new shares are not assumed mixable, and refresh cannot erase exposure if threshold shares were already compromised;
-- adjudication-grade ZK evidence binds exact predicate/circuit, public-input schema, setup/parameter epoch, prover/verifier provenance and verifier policy. `ZK_PROOF_VALID != CLAIM_POLICY_CORRECT`; circuit/verifier upgrades never retroactively reinterpret old proofs;
-- frozen 40-case RED-first matrix across dependency-log/frontier, time provenance, proof regeneration, escrow refresh/reconfiguration and ZK lifecycle.
+- historical witness/checkpoint assurance keeps its original witness-policy denominator, log identity and key epoch. Later witness loss or replacement cannot retroactively shrink historical quorum requirements;
+- a survivable historical checkpoint package needs the exact signed checkpoint plus historical policy/denominator and enough consistency ancestry/material to reproduce the append-only relation; retaining only a digest is insufficient for positive anti-GC authority;
+- Byzantine multi-time-source aggregation precommits eligible population, denominator, threshold and aggregation policy before observing responses; it evaluates authenticated intervals/order evidence and source independence rather than naively averaging scalar timestamps or adaptively dropping inconvenient sources;
+- proof-closure parser/generator migration creates a new immutable generation linked to the exact authenticated source frontier and predecessor. Reproducible output is useful build-relation evidence but does not by itself prove parser/generator semantic correctness; decision-relevant interpretation differences require explicit equivalence adjudication;
+- proactive escrow share refresh is epoch-atomic and distinct from membership/threshold reconfiguration. Offline members do not justify post-observation threshold reduction, runtime rollback must not resurrect retired share epochs, and refresh cannot erase recorded prior threshold compromise;
+- ZK proof validity is relative to an exact circuit/predicate, verifier policy, proof-system version and parameter/SRS epoch. Credible setup-parameter compromise reopens current reliance; successor parameters/proof systems protect successor evidence only unless the underlying authenticated witness/source survives and is re-proved under a semantically equivalent successor predicate;
+- frozen 40-case RED-first matrix across witness/checkpoint survivability, Byzantine time aggregation, proof-closure parser/generator migration, escrow refresh/rollback/offline-member handling, and ZK setup/proof-system migration.
 
-Primary donors: RFC 9162, RFC 3161, IETF Roughtime draft-ietf-ntp-roughtime-19, NIST IR 8214C / Threshold Cryptography.
+Primary donors: RFC 9162; IETF Roughtime `draft-ietf-ntp-roughtime-19`; NIST Multi-Party Threshold Cryptography; Ethereum KZG ceremony / Perpetual Powers of Tau.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact source execution of the complete real-ledger closure.
@@ -44,7 +44,7 @@ Primary donors: RFC 9162, RFC 3161, IETF Roughtime draft-ietf-ntp-roughtime-19, 
 ## Exact next action
 LAB-086 first: if an automated exact-source path becomes available, reconstruct/check out pinned executable source `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` / PR head lineage, verify every dependency/test blob against `research/2026-08-27-lab086-exact-gate-manifest.md`, execute every normal LAB-086 real-schema test, run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure, run full compileall, then perform final security/reconciliation + branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If exact execution remains unavailable, next distinct evidence task is **dependency-log witness/checkpoint survivability and complete-frontier anti-omission under witness loss + Byzantine multi-time-source aggregation/independence denominator + proof-closure reproducible-generator provenance and parser migration + proactive escrow refresh authorization/rollback across offline members + ZK setup-ceremony/parameter compromise and proof-system migration semantics**.
+If exact execution remains unavailable, next distinct evidence task is **checkpoint-package archival denominator and positive anti-GC proof + Byzantine time-source membership recovery after authority compromise + proof-closure semantic-diff attestation and canonical corpus versioning + escrow refresh concurrency/epoch-fork adjudication + ZK ceremony transcript availability, contributor-independence evidence, and recursive proof renewal across parameter deprecation**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -54,5 +54,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability/evidence architecture now also covers dependency-log equivocation/recovery, survivable source frontiers, multi-source authenticated time, versioned regenerated-proof closure, proactive escrow refresh/reconfiguration and ZK predicate/verifier lifecycle; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability/evidence architecture now also covers historical witness/checkpoint survivability, Byzantine time-source denominator discipline, immutable parser/generator proof-closure migration, proactive escrow refresh/rollback/offline-member semantics, and ZK setup/parameter/proof-system migration; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen as recorded in their issues; exact executable gates pending.
