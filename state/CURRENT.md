@@ -19,18 +19,18 @@ Current-run capability observation:
 - No supported non-model connector-to-local-filesystem byte-exact materialization primitive is exposed in this run. Manual/model reserialization of the security-critical LAB-086 closure remains prohibited by the retained exact-byte gate.
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation or conflict PASS is claimed; PR #165 remains draft.
 
-Completed the recorded distinct fallback and froze `WITNESS_SUCCESSOR_HOLDOUT_CACHE_PRIVACY_REVOCATION_RECEIPT_EQUIVOCATION_TICKET_GC_V1_FROZEN` in `research/2026-09-10-witness-successor-holdout-cache-privacy-revocation-receipt-equivocation-ticket-gc-v1.md`, main commit `607b678d19ac817ae62951eb6b23cd2be04941b5`; #178 comment `5621845253` records the result.
+Completed the recorded distinct fallback and froze `RECOVERY_ROOT_ROLLBACK_HOLDOUT_CACHE_GC_PRIVACY_OSCILLATION_RECEIPT_KEY_ROTATION_TICKET_DELAYED_AUTHORITY_V1_FROZEN` in `research/2026-09-10-recovery-root-holdout-cache-gc-privacy-oscillation-receipt-key-rotation-ticket-backup-discovery-v1.md`, main commit `9cf522e4feea8e092c2afecabc6df00435881eed`; #178 comment `5622673901` records the result.
 
 Key decisions:
-- `SUCCESSOR_QUORUM_VALID != SUCCESSOR_LINEAGE_AUTHORIZED`: successor witness membership must prove continuity from the last non-disputed predecessor state; re-keying/renaming does not create a new independent domain and removed witnesses do not erase prior conflict evidence.
-- `CHECKPOINT_COMPACTED != CHECKPOINT_HISTORY_DISPENSABLE`: cross-log checkpoint GC requires completeness commitments across membership epochs and conflict intervals; unresolved split-view evidence blocks GC.
-- `DISTINCT_DATASET_ROWS != INDEPENDENT_HOLDOUT_INFORMATION`: shared feature/embedding/statistics caches derived from holdout data inherit disclosure ancestry and exposure budget even when raw rows are hidden or deleted.
-- `DISJOINTNESS_PROOF_VALID_AT_T0 != DISJOINTNESS_PROOF_VALID_AFTER_GRAPH_MERGE`: privacy disjointness evidence is bound to identity-graph/resolver/evidence epochs; graph merges revoke affected proofs and cumulative spend is reconciled conservatively.
-- `VALID_PROVIDER_RECEIPT != UNIQUE_PROVIDER_EFFECT_HISTORY`: mutually inconsistent but valid provider receipts trigger equivocation; compensation is a new effect with bounded generation, not erasure of the original effect.
-- `TICKET_EXPIRED_LOCALLY != PREDECESSOR_AUTHORITY_EXTINCT_GLOBALLY`: ticket-security-epoch GC waits for provable extinction across active/retired keys, KMS/HSM wrapped copies, backup/DR, regions, replay state and recovery credentials.
+- `SUCCESSOR_ROOT_PRESENT != SUCCESSOR_ROOT_MONOTONICALLY_AUTHORIZED`: recovery-root transitions are predecessor-bound and monotonic; incompatible overlapping old/new quorum authorizations enter explicit equivocation rather than threshold shopping.
+- `COMPACT_ROOT_SIGNATURE_VALID != COMPACT_ROOT_RECONSTRUCTABLE`: cross-log GC requires enough retained membership/conflict/witness-lineage evidence to reconstruct authority-relevant history after witness loss.
+- `CACHE_OBJECT_DELETED != HOLDOUT_EXPOSURE_REVOKED`: holdout-derived embeddings/features/statistics and downstream derivatives preserve the predecessor exposure floor until every reachable derivative is fenced or continuity is explicitly inherited.
+- `GRAPH_SPLIT_AFTER_MERGE != PRIVACY_SPEND_REFUND`: identity-graph split/merge oscillation cannot refund or mint privacy budget; reconciliation uses a monotonic subject-lineage spend/unknown-loss floor.
+- `RECEIPT_KEY_ROTATED != RECEIPT_HISTORY_LINEARIZED`: unresolved provider effects span receipt-key epochs; incompatible valid receipts are provider equivocation, and compensation remains a separately sequenced effect.
+- `GC_ACK_QUORUM_COMPLETE_AT_T0 != PREDECESSOR_AUTHORITY_EXTINCT_AFTER_LATE_DISCOVERY`: delayed discovery of backup/wrapped/recovery authority reopens ticket extinction proof without lowering the monotonic ticket-security floor; affected restore domains remain resumption-quarantined.
 - Frozen 40-case RED-first matrix across those six domains.
 
-Primary donors: RFC 9162; Dwork et al. 2015 adaptive holdout reuse; NIST SP 800-226; RFC 8446/RFC 9846 TLS 1.3; RFC 9325.
+Primary donors: RFC 9162; Dwork et al. 2015 adaptive holdout reuse; NIST SP 800-226; RFC 9325; NIST SP 800-88 Rev. 2.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact local execution of the complete real-ledger closure.
@@ -43,7 +43,7 @@ Primary donors: RFC 9162; Dwork et al. 2015 adaptive holdout reuse; NIST SP 800-
 ## Exact next action
 LAB-086 first: probe once for a newly supported non-model materialization path for pinned connector bytes at exact executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize the exact manifest-listed implementation closure plus all `test_*.py` and the pinned LAB-085 fixture helper; verify every file with `git hash-object` against the pinned blob before import; execute all normal LAB-086 real-schema tests; run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall; then perform final security/reconciliation and branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **successor witness recovery-root rollback and overlapping old/new quorum ambiguity + cross-log compact-root witness loss/reconstruction + revocation/garbage-collection of holdout-derived feature caches with proof of exposure-floor continuity + privacy identity-graph split/merge oscillation and monotonic spend reconciliation + provider receipt equivocation across key rotation and partial compensation + ticket-security-epoch GC under delayed backup discovery and recovery-credential rotation**.
+Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **recovery-root successor quorum intersection under delayed member-compromise discovery + compact-root reconstruction when retained witness attestations themselves rotate/expire + holdout exposure continuity through lossy compression/distillation and approximate indexes + privacy spend reconciliation under identity deletion/tombstoning and later relinking + provider effect reconciliation across receipt-key compromise/revocation and reordered delayed receipts + ticket-security-epoch authority discovery through external KMS import/replication and cross-region credential escrow**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -53,5 +53,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; architecture now additionally covers successor witness authorization, checkpoint GC completeness, holdout leakage through derived caches, privacy disjointness revocation after identity-graph changes, provider receipt equivocation/compensation bounds, and ticket-security-epoch GC after provable predecessor-authority extinction; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; architecture now additionally covers monotonic recovery-root rollback/equivocation, compact-root reconstruction after witness loss, holdout-derived cache GC with exposure continuity, privacy graph split/merge monotonic spend, provider receipt-key rotation/equivocation, and delayed ticket-authority discovery after apparent GC; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen; exact executable gates pending.
