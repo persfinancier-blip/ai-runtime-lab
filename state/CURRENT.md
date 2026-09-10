@@ -6,8 +6,8 @@ Last updated: 2026-09-10
 LAB-086 — finish the exact executable/security gate for asymmetric break-glass history migration, then reconcile/merge only if every real-schema regression and conflict audit passes.
 
 ## Active issue / branch / PR
-- Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; current inspection confirms `open`, `draft=true`, `mergeable=false`. Keep draft.
-- Other open drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
+- Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; current inspection confirms `open`, `draft=true`. Keep draft.
+- Other open drafts remain LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
 - Frozen design follow-up: LAB-093/#178 plus LAB-094..100/#179..185.
 
 ## Last completed step
@@ -19,18 +19,18 @@ Current-run capability observation:
 - No supported non-model connector-to-local-filesystem byte-exact materialization primitive is exposed in this run. Manual/model reserialization of the security-critical LAB-086 closure remains prohibited by the retained exact-byte gate.
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation or conflict PASS is claimed; PR #165 remains draft.
 
-Completed the recorded distinct fallback and froze `WITNESS_MEMBERSHIP_HOLDOUT_CORRELATION_PRIVACY_PROOF_FRESHNESS_EXTERNAL_RECEIPTS_TICKET_CUTOFF_V1_FROZEN` in `research/2026-09-10-witness-membership-holdout-correlation-privacy-proof-freshness-external-receipts-ticket-cutoff-v1.md`, main commit `332cc68507aafc97d20ef56fc1e49995a082286d`; #178 comment `5621072937` records the result.
+Completed the recorded distinct fallback and froze `WITNESS_SUCCESSOR_HOLDOUT_CACHE_PRIVACY_REVOCATION_RECEIPT_EQUIVOCATION_TICKET_GC_V1_FROZEN` in `research/2026-09-10-witness-successor-holdout-cache-privacy-revocation-receipt-equivocation-ticket-gc-v1.md`, main commit `607b678d19ac817ae62951eb6b23cd2be04941b5`; #178 comment `5621845253` records the result.
 
 Key decisions:
-- `CURRENT_WITNESS_SET_SIGNED != WITNESS_MEMBERSHIP_HISTORY_CONTINUOUS`: recovery binds authenticated witness membership lineage; removals do not erase prior conflict evidence.
-- `EACH_LOG_INTERNALLY_CONSISTENT != CROSS_LOG_RECOVERY_CONSISTENT`: cross-log recovery binds the same `(log_id, tree_size, root_hash, recovery_epoch, membership_epoch, conflict_digest)` semantics rather than relying on independent local consistency.
-- `DISTINCT_WITNESS_IDS != INDEPENDENT_HOLDOUT_WITNESSES`: shared operator/controller/data-plane lineage makes holdout witnesses correlated; dataset copies/transforms inherit disclosure ancestry.
-- `NO_MATCH_FOUND != PROOF_OF_DISJOINTNESS`: privacy identity/disjointness proofs have subject-set/model/evidence cutoff and expiry; stale or negative-only evidence preserves overlap uncertainty and cumulative spend.
-- `RECEIPT_SIGNATURE_VALID != RECEIPT_AUTHORITY_CURRENT`: receipt-key rotation keeps old receipts verifiable evidence but retired keys cannot authorize new effects; compensation is a new effect, not erasure/reversal; multi-provider operations remain unresolved while any sub-effect is unknown.
-- `ACTIVE_KMS_KEY_RETIRED != ALL_OLD_TICKET_AUTHORITY_UNSPENDABLE`: ticket cutoff survives KMS/backup/DR restore through a monotonic security epoch; stale regions remain resumption-quarantined, and replay-state loss keeps 0-RTT disabled through the overlapping window.
-- Frozen 40-case RED-first matrix across those five domains.
+- `SUCCESSOR_QUORUM_VALID != SUCCESSOR_LINEAGE_AUTHORIZED`: successor witness membership must prove continuity from the last non-disputed predecessor state; re-keying/renaming does not create a new independent domain and removed witnesses do not erase prior conflict evidence.
+- `CHECKPOINT_COMPACTED != CHECKPOINT_HISTORY_DISPENSABLE`: cross-log checkpoint GC requires completeness commitments across membership epochs and conflict intervals; unresolved split-view evidence blocks GC.
+- `DISTINCT_DATASET_ROWS != INDEPENDENT_HOLDOUT_INFORMATION`: shared feature/embedding/statistics caches derived from holdout data inherit disclosure ancestry and exposure budget even when raw rows are hidden or deleted.
+- `DISJOINTNESS_PROOF_VALID_AT_T0 != DISJOINTNESS_PROOF_VALID_AFTER_GRAPH_MERGE`: privacy disjointness evidence is bound to identity-graph/resolver/evidence epochs; graph merges revoke affected proofs and cumulative spend is reconciled conservatively.
+- `VALID_PROVIDER_RECEIPT != UNIQUE_PROVIDER_EFFECT_HISTORY`: mutually inconsistent but valid provider receipts trigger equivocation; compensation is a new effect with bounded generation, not erasure of the original effect.
+- `TICKET_EXPIRED_LOCALLY != PREDECESSOR_AUTHORITY_EXTINCT_GLOBALLY`: ticket-security-epoch GC waits for provable extinction across active/retired keys, KMS/HSM wrapped copies, backup/DR, regions, replay state and recovery credentials.
+- Frozen 40-case RED-first matrix across those six domains.
 
-Primary donors: RFC 9162; Dwork et al. 2015; Generic Holdout 2018; NIST SP 800-226 guidance; RFC 8446; RFC 9325; RFC 9149.
+Primary donors: RFC 9162; Dwork et al. 2015 adaptive holdout reuse; NIST SP 800-226; RFC 8446/RFC 9846 TLS 1.3; RFC 9325.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact local execution of the complete real-ledger closure.
@@ -43,7 +43,7 @@ Primary donors: RFC 9162; Dwork et al. 2015; Generic Holdout 2018; NIST SP 800-2
 ## Exact next action
 LAB-086 first: probe once for a newly supported non-model materialization path for pinned connector bytes at exact executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize the exact manifest-listed implementation closure plus all `test_*.py` and the pinned LAB-085 fixture helper; verify every file with `git hash-object` against the pinned blob before import; execute all normal LAB-086 real-schema tests; run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall; then perform final security/reconciliation and branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **witness-membership successor authorization under partial predecessor compromise + cross-log checkpoint retention/GC proofs + holdout correlation disclosure through shared feature/embedding caches + privacy disjointness proof revocation after identity-graph merges + external receipt-provider equivocation and compensation-loop bounds + ticket security-epoch garbage collection only after backup/KMS/region/replay-window predecessor authority is provably extinct**.
+Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **successor witness recovery-root rollback and overlapping old/new quorum ambiguity + cross-log compact-root witness loss/reconstruction + revocation/garbage-collection of holdout-derived feature caches with proof of exposure-floor continuity + privacy identity-graph split/merge oscillation and monotonic spend reconciliation + provider receipt equivocation across key rotation and partial compensation + ticket-security-epoch GC under delayed backup discovery and recovery-credential rotation**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -53,5 +53,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; architecture now additionally covers authenticated witness-membership continuity/cross-log recovery, correlated holdout witnesses/data planes, privacy identity-proof freshness/negative-disjointness evidence, external receipt rotation/compensation/multi-provider reconciliation, and ticket cutoff after KMS/DR restore/replay-window rollover; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; architecture now additionally covers successor witness authorization, checkpoint GC completeness, holdout leakage through derived caches, privacy disjointness revocation after identity-graph changes, provider receipt equivocation/compensation bounds, and ticket-security-epoch GC after provable predecessor-authority extinction; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen; exact executable gates pending.
