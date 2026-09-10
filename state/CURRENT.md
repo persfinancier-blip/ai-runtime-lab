@@ -11,7 +11,7 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 - Frozen design follow-up: LAB-093/#178 plus LAB-094..100/#179..185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues/PRs/branches; resumed LAB-086 first.
+Re-read `AGENTS.md`, this handoff, and `prompts/SELF_RESUME.md`; inspected open issues/PRs; resumed LAB-086 first.
 
 Current-run capability observation:
 - Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com`.
@@ -19,17 +19,17 @@ Current-run capability observation:
 - No supported non-model connector-to-local-filesystem materialization primitive is exposed in this run. Manual/model reserialization of the security-critical LAB-086 closure remains prohibited by the retained byte-exact gate.
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation, or conflict PASS is claimed; PR #165 remains draft.
 
-Completed the recorded distinct fallback and froze `WITNESS_NONCE_RECOVERY_ADAPTIVE_ORACLE_PRIVACY_REVOCATION_TIME_MEMBERSHIP_PQ_TICKET_EVICTION_V1_FROZEN` in `research/2026-09-10-witness-nonce-recovery-adaptive-oracle-privacy-revocation-time-membership-pq-ticket-eviction-v1.md`, main commit `270214f636f3542e4f69ec50d54efa43ea8ab7c8`; #178 comment `5610654368` records the result.
+Completed the recorded distinct fallback and froze `NONCE_ANTI_ENTROPY_ORACLE_REDUCTION_PRIVACY_IDEMPOTENCY_RETENTION_EPOCH_PQ_REVOCATION_V1_FROZEN` in `research/2026-09-10-nonce-anti-entropy-oracle-reduction-privacy-idempotency-retention-epoch-pq-revocation-v1.md`, main commit `8eb966347ae179c9adc27e11c07af3d6d69320a0`; #178 comment `5611222639` records the result.
 
 Key decisions:
-- `NONCE_ABSENT_LOCALLY != ACKNOWLEDGEMENT_FRESH`: witness acknowledgement nonce/spend state is authority state and must remain monotonic across snapshot rollback, GC, failover and rebuild. A successor key/quorum requires an authenticated recovery bridge and cannot retroactively repair predecessor assurance after compromise.
-- `ADAPTIVE_SEARCH_SCORE_HIGH != SECURITY_COVERAGE_HIGH`: authenticated test evidence separates corpus root, mutation operators, adaptive search algorithm, search budget/stopping rule, reward features, oracle/generator/build provenance, metamorphic relations, differential peers and semantic coverage floor. Common pipeline failures do not count as independent oracle evidence.
-- `DELEGATION_REVOKED != IN_FLIGHT_SPEND_ERASED`: privacy-budget delegation uses durable reserve/commit/reconcile semantics. Revocation, credential rotation, subject split/merge, purpose relabeling and restore cannot manufacture new global disclosure budget.
-- `CLOCK_STILL_TICKS != TIME_AUTHORITY_STILL_CURRENT`: retention time quorum binds membership epoch, source/key generation, uncertainty, holdover state and transitive failure domains. Cross-epoch vote mixing and destructive actions beyond holdover uncertainty fail closed.
-- `ROUTE_CONVERGED != OLD_TICKET_REAUTHORIZED`: DNSSEC/SVCB/ECH recovery does not automatically revive TLS/PQ resumption authority minted under an incompatible route, backend, ALPN, ECH config, PQ/hybrid policy or replay-authority generation. Ticket invalidation must cover edge/mesh/DR authorities.
-- Frozen 40-case RED-first matrix across nonce rollback/GC and compromised-key bridges, adaptive oracle collusion/metamorphic checks, privacy delegation revocation races, retention time membership/holdover, and PQ/ECH/SVCB ticket eviction.
+- `NONCE_NOT_IN_LOCAL_LOG != NONCE_UNSPENT`: compacted/restored/stale replicas must consult an authenticated monotonic spend-checkpoint lineage. Raw nonce GC is allowed only after successor checkpoint coverage; stale promotion fails closed until anti-entropy reaches the accepted floor.
+- `MINIMIZED_FAILURE_REPRODUCES != MINIMIZED_FAILURE_PRESERVES_SECURITY_CAUSE`: corpus reducers must preserve the exact violated security predicate. Adaptive search cannot rewrite frozen oracle truth, and correlated oracle/build/parser failure domains do not count as independent evidence.
+- `RESERVATION_RETRY != NEW_PRIVACY_BUDGET`: privacy reserve/commit is globally idempotent by protected subject/purpose/request lineage. Ambiguous egress remains charged/unknown until reconciliation; corrective disclosure cannot erase prior privacy loss.
+- `VALID_OLD_TIME_ATTESTATION != CURRENT_RETENTION_AUTHORITY`: retention authorization binds membership epoch, key/policy generation, uncertainty/holdover and a monotonic recovery counter. Snapshot/membership rollback cannot roll destructive authority backward.
+- `TICKET_KEY_ROTATED != OLD_TICKETS_REVOKED_GLOBALLY`: PQ/ECH resumption compromise recovery requires revocation-generation propagation to every decrypt/spend authority. Regions missing the current revocation/replay floor reject affected 0-RTT; restart/DR replay gaps fail closed.
+- Frozen 40-case RED-first matrix across nonce anti-entropy, oracle poisoning/reduction, privacy idempotency, retention epoch rollback, and multi-region ticket revocation.
 
-Primary donors: RFC 9162; RFC 5011; RFC 6781; RFC 9846; SLSA reproducibility guidance; NIST SP 800-226.
+Primary donors: etcd disaster-recovery revision bump/mark-compacted semantics; RFC 5011; RFC 9846; RFC 9849; SLSA provenance/reproducibility guidance; NIST SP 800-226.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Remaining blocker is exact local execution of the complete real-ledger closure.
@@ -42,7 +42,7 @@ Primary donors: RFC 9162; RFC 5011; RFC 6781; RFC 9846; SLSA reproducibility gui
 ## Exact next action
 LAB-086 first: probe once for a newly supported non-model materialization path for pinned connector bytes at exact executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize the exact manifest-listed implementation closure plus all `test_*.py` and the pinned LAB-085 fixture helper; verify every file with `git hash-object` against the pinned blob before import; execute all normal LAB-086 real-schema tests; run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall; then perform final security/reconciliation and branch/main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **nonce checkpoint/compaction anti-entropy and recovery from stale replica promotion + adaptive oracle state poisoning/corpus minimization and failure-preserving reduction + privacy reservation idempotency/double-commit and compensating-disclosure semantics + retention membership-epoch rollback and monotonic recovery counters + PQ/ECH ticket-key compromise, generation revocation propagation and 0-RTT disablement through multi-region recovery**.
+Do not manually copy connector payloads into the executor. If no supported materialization path exists, record the per-run observation and move directly to the next distinct evidence task: **checkpoint quorum/anti-entropy equivocation and compaction-proof survivability + reducer nondeterminism and predicate-preserving delta debugging + privacy reservation reconciliation after cross-region partition + retention recovery-counter witness compromise/rekey + PQ/ECH revocation-floor acknowledgement, ticket-key erasure proof and 0-RTT re-enable criteria after incident recovery**.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement tests first for frozen LAB-090..100 contracts and execute their RED matrices before production refactors.
 
@@ -52,5 +52,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #178 / LAB-093 — READY; capability/evidence architecture now also covers nonce rollback/GC and compromised-key recovery bridges, adaptive oracle independence, privacy delegation revocation races, retention time membership/holdover, and PQ/ECH/SVCB ticket-generation eviction; exact RED/GREEN pending.
+- #178 / LAB-093 — READY; capability/evidence architecture now also covers nonce anti-entropy/checkpoint continuity, predicate-preserving reduction, privacy idempotent reserve/commit, retention epoch rollback, and multi-region TLS/PQ ticket revocation propagation; exact RED/GREEN pending.
 - #179..185 / LAB-094..100 — READY/design-frozen; exact executable gates pending.
