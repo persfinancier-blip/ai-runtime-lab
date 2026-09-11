@@ -17,7 +17,7 @@ Current-run capability/evidence:
 - Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com`.
 - GitHub connector reads/writes/compare remain available, but no supported byte-exact connector-to-local-executor materialization primitive is exposed. Manual/model reserialization of the security-critical LAB-086 closure remains prohibited.
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation or conflict PASS is claimed; PR #165 remains draft/open.
-- Fresh compare before the research commit: PR #165 is `diverged`, ahead 195 / behind 840, merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`, main/base then `c38dc23d359a59517d3ff84839a6e56bc5d61e87`. Refresh before integration because main advanced again.
+- Fresh compare after the research + first state commit: PR #165 is `diverged`, ahead 195 / behind 842, merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`, main/base then `4491265f2b11c661a0309a84248330b33bac2098`. This final state-only commit advances main once more, so refresh again immediately before any integration decision.
 
 Completed the recorded distinct fallback and froze `RECOVERY_OF_RECOVERY_RETIREMENT_REVOKE_UNLEARNING_REJOIN_PRIVACY_OVERRUN_PROVIDER_COMPENSATION_GC_ROOT_V1_FROZEN` in `research/2026-09-11-recovery-of-recovery-retirement-revocation-unlearning-rejoin-privacy-overrun-provider-compensation-gc-root-v1.md`, main commit `9e2c6b18c8e851d85a77d1ecb314c006d10d2697`; #178 comment `5635858225` records the result.
 
@@ -37,7 +37,7 @@ Primary donors re-verified this run: TUF predecessor+successor root continuity a
 - Direct shell transport cannot currently resolve `github.com`.
 - Connector can read pinned source but cannot byte-exactly materialize the whole pinned closure into the executor in this run.
 - Complete real-schema LAB-086 tests, unsafe expected-failure seed, full compileall, security reconciliation and current-main conflict audit remain pending.
-- PR #165 is at least 840 commits behind the pre-research main; this research commit and state commit advance main again. Refresh compare before integration.
+- PR #165 was 842 commits behind at the latest compare, and this final state-only commit advances main again; refresh compare before integration.
 - Keep PRs #165/#172/#173/#175/#177 draft until their retained exact gates execute.
 - LAB-093..100 and subsequent design freezes do not substitute for executable RED/GREEN proof.
 
