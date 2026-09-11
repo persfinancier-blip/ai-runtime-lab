@@ -17,7 +17,7 @@ Current-run capability/evidence:
 - Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com`.
 - GitHub connector reads/writes and compare remain available, but no supported non-model connector-to-local-filesystem byte-exact materialization primitive is exposed. Manual/model reserialization of the security-critical LAB-086 closure remains prohibited by the retained exact-byte gate.
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation or conflict PASS is claimed; PR #165 remains draft/open.
-- PR #165 was re-read at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; fresh compare after this run's research commit is `diverged`, ahead 195 / behind 836, merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`.
+- PR #165 was re-read at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`; the latest compare taken immediately after the research commit (before subsequent state-only commits) was `diverged`, ahead 195 / behind 836, merge base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`. Refresh again before any merge/conflict conclusion.
 
 Completed the recorded distinct fallback and froze `COMPACT_CUTSET_ROTATION_RETIREMENT_REEXPORT_UNLEARNING_HEAL_PRIVACY_LINEAGE_PROVIDER_LATE_COMPLETION_GC_SCOPE_V1_FROZEN` in `research/2026-09-11-compact-cutset-rotation-retirement-reexport-unlearning-heal-privacy-lineage-collision-provider-late-completion-gc-scope-rotation-v1.md`, main research commit `dc9e0ad8e8c06a44c206baca2c18584ccd82b91c`; #178 comment `5634307153` records the result.
 
@@ -37,7 +37,7 @@ Primary donors re-verified this run: TUF predecessor+successor threshold/root ro
 - Direct shell transport cannot currently resolve `github.com`.
 - Connector can read pinned source but cannot byte-exactly materialize the whole pinned closure into the executor in this run.
 - Complete real-schema LAB-086 tests, unsafe expected-failure seed, full compileall, security reconciliation and current-main conflict audit remain pending.
-- PR #165 is now 836 commits behind `main`; do not infer merge safety from historical conflict observations.
+- PR #165 was already 836 commits behind `main` before the state-only commits at the end of this run; refresh compare before any integration decision.
 - Keep PRs #165/#172/#173/#175/#177 draft until their retained exact gates execute.
 - LAB-093..100 and subsequent design freezes do not substitute for executable RED/GREEN proof.
 
