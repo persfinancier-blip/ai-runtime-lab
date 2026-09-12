@@ -2,12 +2,12 @@
 
 This file is intentionally NOT named ``test_*.py`` so normal repository discovery does
 not accidentally treat an unexecuted contract as a passing regression. Run it
-explicitly once the LAB-099 precursor-cutover surface exists and exact repository
-materialization is available.
+explicitly once the LAB-099 precursor-cutover surface and its test-only fixture adapter
+exist and exact repository materialization is available.
 
-The tests are deliberately written against a narrow future seam rather than changing
-production behavior on the LAB-092 branch. They freeze the first six source-proved
-cutover cases from the durable LAB-099 contract.
+The tests freeze the first six source-proved cutover cases without changing LAB-092
+production behavior. Test-only corruption/crash injection belongs in a sibling test
+fixture adapter; production code must not expose ``*_for_test_only`` mutation hooks.
 """
 
 from __future__ import annotations
@@ -32,6 +32,9 @@ from experiments.provider_generation_history.supported import SupportedHistorica
 
 
 LAB099_MODULE = "experiments.provider_generation_history.activation_reservation_provenance"
+LAB099_FIXTURE_MODULE = (
+    "experiments.provider_generation_history.tests.lab099_precursor_fixture_adapter"
+)
 
 
 def descriptor(generation: int, key: bytes) -> GenerationDescriptor:
@@ -62,12 +65,24 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
             "PrecursorCutoverVerificationError",
             "PrecursorGovernedHistoricalSharedAnchorLedger",
             "classify_precursor_cutover_v1",
+            "migrate_precursor_cutover_v1",
+            "resume_precursor_cutover_v1",
         )
         missing = [name for name in required if not hasattr(module, name)]
         if missing:
             self.fail(
                 "RED intent: LAB-099 precursor-cutover surface is incomplete: "
                 + ", ".join(missing)
+            )
+        return module
+
+    def _fixture_adapter(self):
+        try:
+            module = importlib.import_module(LAB099_FIXTURE_MODULE)
+        except ModuleNotFoundError as exc:
+            self.fail(
+                "RED intent: LAB-099 test-only fixture adapter does not exist yet: "
+                f"{exc}"
             )
         return module
 
@@ -98,8 +113,7 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
         surface = self._future_surface()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
-            state = surface.classify_precursor_cutover_v1(path)
-            self.assertEqual(state, "ABSENT")
+            self.assertEqual(surface.classify_precursor_cutover_v1(path), "ABSENT")
             with self.assertRaises(surface.PrecursorCutoverMigrationRequired):
                 surface.PrecursorGovernedHistoricalSharedAnchorLedger(
                     path, attested(provider, 1, key), g1
@@ -107,9 +121,10 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
 
     def test_orphan_precursor_ddl_without_prepared_fails_closed(self):
         surface = self._future_surface()
+        fixture = self._fixture_adapter()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
-            surface.install_precursor_relation_for_test_only(path)
+            fixture.install_precursor_relation_without_prepared(path)
             self.assertEqual(
                 surface.classify_precursor_cutover_v1(path),
                 "ORPHAN_UNAUTHENTICATED_SCHEMA",
@@ -121,9 +136,10 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
 
     def test_atomic_ddl_prepared_crash_resumes_only_exact_prepared(self):
         surface = self._future_surface()
+        fixture = self._fixture_adapter()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
-            prepared = surface.install_atomic_prepared_cutover_for_test_only(
+            prepared = fixture.install_atomic_prepared_cutover(
                 path, attested(provider, 1, key), g1
             )
             self.assertEqual(
@@ -142,24 +158,26 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
 
     def test_stale_or_forked_parent_epoch_replay_is_rejected(self):
         surface = self._future_surface()
+        fixture = self._fixture_adapter()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
-            prepared = surface.build_prepared_cutover_for_test_only(
+            prepared = fixture.build_uncommitted_prepared_cutover(
                 path, attested(provider, 1, key), g1
             )
-            surface.advance_provenance_parent_for_test_only(path)
+            fixture.advance_authenticated_provenance_parent(path)
             with self.assertRaises(surface.PrecursorCutoverVerificationError):
-                surface.commit_prepared_cutover_for_test_only(path, prepared)
+                fixture.commit_prepared_cutover(path, prepared)
 
     def test_confirmed_binds_exact_prepared_digest(self):
         surface = self._future_surface()
+        fixture = self._fixture_adapter()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
-            prepared = surface.install_atomic_prepared_cutover_for_test_only(
+            prepared = fixture.install_atomic_prepared_cutover(
                 path, attested(provider, 1, key), g1
             )
-            sibling = surface.build_sibling_prepared_for_test_only(path, prepared)
-            surface.install_confirmed_for_test_only(
+            sibling = fixture.build_sibling_prepared(path, prepared)
+            fixture.install_confirmed_event(
                 path,
                 prepared_event_digest=sibling.prepared_event_digest,
             )
@@ -170,13 +188,14 @@ class Lab099PrecursorCutoverRedIntentTests(unittest.TestCase):
 
     def test_confirmed_forbids_downgrade_after_precursor_relation_deletion(self):
         surface = self._future_surface()
+        fixture = self._fixture_adapter()
         td, path, key, provider, g1 = self._legacy_lab092_complete()
         with td:
             surface.migrate_precursor_cutover_v1(
                 path, attested(provider, 1, key), g1
             )
             self.assertEqual(surface.classify_precursor_cutover_v1(path), "CONFIRMED")
-            surface.delete_precursor_relation_for_test_only(path)
+            fixture.delete_precursor_relation(path)
             with self.assertRaises(surface.PrecursorCutoverVerificationError):
                 surface.PrecursorGovernedHistoricalSharedAnchorLedger(
                     path, attested(provider, 1, key), g1
