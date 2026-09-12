@@ -1,12 +1,13 @@
 """Test-only LAB-099 precursor-cutover corruption/crash adapter.
 
-This module deliberately does not define LAB-099 protocol bytes, SQL DDL, authenticators,
-or provenance events. Those are security authority, not test conveniences.
+This module deliberately does not define LAB-099 protocol bytes, authenticators, or
+provenance events. Those are security authority, not test conveniences.
 
-The adapter accepts only an independently frozen fixture-vector module whose values are
-byte-exact protocol/DDL evidence. Until that vector module exists, every mutation helper
-fails closed. This prevents RED-intent tests from accidentally inventing a second,
-unauthenticated LAB-099 protocol while production behavior is still absent.
+The physical precursor relation identity is already frozen independently, so the adapter
+may install/delete that exact literal DDL directly from the side-effect-free relation
+reference oracle. Authority-bearing PREPARED/CONFIRMED/provenance mutations remain
+separately gated on an independently frozen fixture-vector module and fail closed until
+that module exists.
 
 Nothing in this module is imported by production code.
 """
@@ -21,6 +22,10 @@ from types import ModuleType
 from typing import Any, Iterable
 
 
+_RELATION_REFERENCE_MODULE = (
+    "experiments.provider_generation_history.tests."
+    "lab099_precursor_relation_reference"
+)
 _VECTOR_MODULE = (
     "experiments.provider_generation_history.tests."
     "lab099_precursor_fixture_vectors"
@@ -28,11 +33,11 @@ _VECTOR_MODULE = (
 
 
 class FixtureVectorUnavailable(RuntimeError):
-    """Exact LAB-099 test vectors are not frozen/materialized yet."""
+    """Exact LAB-099 authority-bearing fixture vectors are not materialized yet."""
 
 
 class FixtureVectorContractError(RuntimeError):
-    """The independent fixture-vector module violates the test harness contract."""
+    """An independent LAB-099 test fixture oracle violates the harness contract."""
 
 
 @dataclass(frozen=True)
@@ -53,7 +58,7 @@ class PreparedCutoverFixture:
 
 @dataclass(frozen=True)
 class SqlMutation:
-    """One exact SQL statement supplied by the independent fixture-vector oracle."""
+    """One exact SQL statement supplied by an independent fixture oracle."""
 
     sql: str
     params: tuple[Any, ...] = ()
@@ -67,47 +72,70 @@ class SqlMutation:
             )
 
 
-def _vectors() -> ModuleType:
+def _simple_identifier(value: Any, *, field: str) -> str:
+    if type(value) is not str or not value:
+        raise FixtureVectorContractError(f"{field} must be exact non-empty text")
+    if not value.replace("_", "a").isalnum() or value[0].isdigit():
+        raise FixtureVectorContractError(f"{field} must be a simple SQLite identifier")
+    return value
+
+
+def _relation_reference() -> ModuleType:
     try:
-        module = importlib.import_module(_VECTOR_MODULE)
+        module = importlib.import_module(_RELATION_REFERENCE_MODULE)
     except ModuleNotFoundError as exc:
-        if exc.name == _VECTOR_MODULE:
+        if exc.name == _RELATION_REFERENCE_MODULE:
             raise FixtureVectorUnavailable(
-                "exact LAB-099 precursor fixture vectors are not present; "
-                "do not synthesize DDL/provenance/authenticator bytes in the adapter"
+                "frozen LAB-099 precursor relation reference is not present"
             ) from exc
         raise
 
     required = (
         "PRECURSOR_RELATION_NAME",
-        "PRECURSOR_RELATION_SQL",
-        "orphan_relation_plan",
-        "atomic_prepared_plan",
-        "uncommitted_prepared_plan",
-        "advance_provenance_parent_plan",
-        "commit_prepared_plan",
-        "sibling_prepared_plan",
-        "confirmed_event_plan",
+        "PRECURSOR_RELATION_DDL_V1",
+        "FROZEN_RELATION_DEFINITION_DIGEST",
+        "validate_precursor_relation_reference",
     )
     missing = [name for name in required if not hasattr(module, name)]
     if missing:
         raise FixtureVectorContractError(
-            "fixture-vector module is incomplete: " + ", ".join(missing)
+            "relation-reference module is incomplete: " + ", ".join(missing)
         )
 
-    relation_name = module.PRECURSOR_RELATION_NAME
-    relation_sql = module.PRECURSOR_RELATION_SQL
-    if type(relation_name) is not str or not relation_name:
+    _simple_identifier(module.PRECURSOR_RELATION_NAME, field="PRECURSOR_RELATION_NAME")
+    if (
+        type(module.PRECURSOR_RELATION_DDL_V1) is not str
+        or not module.PRECURSOR_RELATION_DDL_V1.strip()
+    ):
         raise FixtureVectorContractError(
-            "PRECURSOR_RELATION_NAME must be exact non-empty text"
+            "PRECURSOR_RELATION_DDL_V1 must be exact non-empty text"
         )
-    if not relation_name.replace("_", "a").isalnum() or relation_name[0].isdigit():
+    digest = module.FROZEN_RELATION_DEFINITION_DIGEST
+    if type(digest) is not bytes or len(digest) != 32:
         raise FixtureVectorContractError(
-            "PRECURSOR_RELATION_NAME must be a simple SQLite identifier"
+            "FROZEN_RELATION_DEFINITION_DIGEST must be exact 32-byte digest"
         )
-    if type(relation_sql) is not str or not relation_sql.strip():
+    if module.validate_precursor_relation_reference() is not True:
+        raise FixtureVectorContractError("precursor relation reference self-check failed")
+    return module
+
+
+def _vectors(*required: str) -> ModuleType:
+    try:
+        module = importlib.import_module(_VECTOR_MODULE)
+    except ModuleNotFoundError as exc:
+        if exc.name == _VECTOR_MODULE:
+            raise FixtureVectorUnavailable(
+                "authority-bearing LAB-099 fixture vectors are not present; "
+                "do not synthesize provenance/authenticator bytes in the adapter"
+            ) from exc
+        raise
+
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
         raise FixtureVectorContractError(
-            "PRECURSOR_RELATION_SQL must be exact non-empty text"
+            "fixture-vector module is incomplete for requested operation: "
+            + ", ".join(missing)
         )
     return module
 
@@ -165,8 +193,8 @@ def _digest(value: Any, *, field: str) -> bytes:
 def install_precursor_relation_without_prepared(path: Path | str) -> None:
     """Install only the exact frozen precursor relation, intentionally no PREPARED."""
 
-    vectors = _vectors()
-    _apply_plan(path, vectors.orphan_relation_plan())
+    reference = _relation_reference()
+    _apply_plan(path, ((reference.PRECURSOR_RELATION_DDL_V1, ()),))
 
 
 def install_atomic_prepared_cutover(
@@ -176,14 +204,20 @@ def install_atomic_prepared_cutover(
 ) -> PreparedCutoverFixture:
     """Atomically install exact DDL + independently authenticated PREPARED evidence."""
 
-    vectors = _vectors()
+    vectors = _vectors("atomic_prepared_plan")
     result = vectors.atomic_prepared_plan(path, attested, bootstrap)
     if type(result) is not tuple or len(result) != 2:
         raise FixtureVectorContractError(
             "atomic_prepared_plan must return (mutation_plan, prepared_event_digest)"
         )
     plan, prepared_digest = result
-    _apply_plan(path, plan)
+    mutations = list(_coerce_plan(plan))
+    reference = _relation_reference()
+    if not mutations or mutations[0].sql != reference.PRECURSOR_RELATION_DDL_V1:
+        raise FixtureVectorContractError(
+            "atomic PREPARED plan must begin with the exact frozen precursor DDL"
+        )
+    _apply_plan(path, mutations)
     return PreparedCutoverFixture(
         _digest(prepared_digest, field="prepared_event_digest")
     )
@@ -196,7 +230,7 @@ def build_uncommitted_prepared_cutover(
 ) -> Any:
     """Build exact PREPARED fixture bytes without mutating the target database."""
 
-    vectors = _vectors()
+    vectors = _vectors("uncommitted_prepared_plan")
     prepared = vectors.uncommitted_prepared_plan(path, attested, bootstrap)
     digest = getattr(prepared, "prepared_event_digest", None)
     _digest(digest, field="prepared.prepared_event_digest")
@@ -206,14 +240,14 @@ def build_uncommitted_prepared_cutover(
 def advance_authenticated_provenance_parent(path: Path | str) -> None:
     """Apply an exact independently-authenticated successor-head fixture transition."""
 
-    vectors = _vectors()
+    vectors = _vectors("advance_provenance_parent_plan")
     _apply_plan(path, vectors.advance_provenance_parent_plan(path))
 
 
 def commit_prepared_cutover(path: Path | str, prepared: Any) -> None:
     """Attempt to commit exact PREPARED bytes against the target's current parent."""
 
-    vectors = _vectors()
+    vectors = _vectors("commit_prepared_plan")
     _digest(
         getattr(prepared, "prepared_event_digest", None),
         field="prepared.prepared_event_digest",
@@ -224,7 +258,7 @@ def commit_prepared_cutover(path: Path | str, prepared: Any) -> None:
 def build_sibling_prepared(path: Path | str, prepared: Any) -> Any:
     """Build a semantically distinct exact sibling fixture under the same parent."""
 
-    vectors = _vectors()
+    vectors = _vectors("sibling_prepared_plan")
     _digest(
         getattr(prepared, "prepared_event_digest", None),
         field="prepared.prepared_event_digest",
@@ -244,7 +278,7 @@ def install_confirmed_event(
 ) -> None:
     """Install exact CONFIRMED fixture evidence referring to supplied PREPARED digest."""
 
-    vectors = _vectors()
+    vectors = _vectors("confirmed_event_plan")
     digest = _digest(prepared_event_digest, field="prepared_event_digest")
     _apply_plan(path, vectors.confirmed_event_plan(path, digest))
 
@@ -252,8 +286,11 @@ def install_confirmed_event(
 def delete_precursor_relation(path: Path | str) -> None:
     """Delete the exact frozen precursor relation to model post-cutover corruption."""
 
-    vectors = _vectors()
-    name = vectors.PRECURSOR_RELATION_NAME
+    reference = _relation_reference()
+    name = _simple_identifier(
+        reference.PRECURSOR_RELATION_NAME,
+        field="PRECURSOR_RELATION_NAME",
+    )
     q = _con(path)
     try:
         q.execute("BEGIN IMMEDIATE")
@@ -264,6 +301,10 @@ def delete_precursor_relation(path: Path | str) -> None:
         if row is None or row[0] != "table":
             raise FixtureVectorContractError(
                 "precursor relation is absent before deletion fixture"
+            )
+        if row[1] is None:
+            raise FixtureVectorContractError(
+                "precursor relation has no SQLite definition before deletion fixture"
             )
         q.execute(f'DROP TABLE "{name}"')
         q.commit()
