@@ -8,7 +8,7 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`. Keep draft.
 - Fresh PR read this run: #165 remains open, draft, `mergeable=false`.
-- Current compare after this run's main commits: LAB-086 branch is diverged, ahead 195 / behind 876, merge-base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`.
+- Current compare after this run's main commits: LAB-086 branch is diverged, ahead 195 / behind 878, merge-base `d2c9781f5a60dc9b8b94fc8dba651f804a73e509`.
 - Other open drafts retained: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
 - Frozen design follow-up: LAB-093/#178 plus LAB-094..100/#179..185.
 
