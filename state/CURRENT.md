@@ -8,12 +8,12 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165 at head `ee210a47221b6df53f3518aa3af74f76c5b0122b`. Keep draft.
 - LAB-092: #176 / draft PR #177, head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`, base LAB-090.
-- LAB-099 RED-intent staging: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, head `fc4456690b732b3e111379200bba58cf21af9ec8`, base PR #177 branch.
+- LAB-099 RED-intent staging: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, head `96f0b9c9fa28142e1379e2a1c0932c808d4941d3`, base PR #177 branch.
 - Other open drafts retained: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175.
 - Frozen design follow-up: LAB-093/#178 plus LAB-094..100/#179..185.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected current open issues and active PRs; resumed LAB-086 first and re-probed exact materialization.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected active PR state; resumed LAB-086 first and re-probed exact materialization.
 
 Current-run capability/evidence:
 - Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/ai-runtime-lab` again failed before repository execution with `Could not resolve host: github.com` (exit 128).
@@ -21,32 +21,33 @@ Current-run capability/evidence:
 - Therefore no new LAB-086 behavioral, unsafe-seed, compileall, security-reconciliation, conflict, LAB-099 RED, or LAB-099 GREEN PASS is claimed.
 
 Completed the recorded LAB-099 fallback slice on PR #186:
-- re-read the frozen precursor relation/DDL, canonical provenance-chain, logical-DB/history identity and PREPARED/CONFIRMED contracts;
-- found that exact precursor SQL spelling is intentionally still implementation-gated, while PREPARED/CONFIRMED and precursor authorization require canonical authenticated bytes and parent/head/epoch lineage;
-- therefore rejected a helper design that would guess DDL or synthesize self-asserted phase rows/digests/authenticators;
-- added test-only `experiments/provider_generation_history/tests/lab099_precursor_fixture_adapter.py` at branch commit `fc4456690b732b3e111379200bba58cf21af9ec8`;
-- adapter owns only mechanical SQLite mutation and fails closed unless a future independent byte-exact fixture-vector module supplies the exact authority-bearing plans/bytes;
-- no production `*_for_test_only` hooks and no production files were added or changed.
+- source-audited the frozen `YTIMPRV1` canonical framing/type/hash contract, current dual-HMAC provider-transition prototype, the precursor authenticator/identity contract, and PREPARED/CONFIRMED cutover domains;
+- added independent test-only `experiments/provider_generation_history/tests/lab099_precursor_reference_vectors.py` at branch commit `96f0b9c9fa28142e1379e2a1c0932c808d4941d3`;
+- froze exact reference bytes/digests for precursor, PREPARED and CONFIRMED plus distinct predecessor/successor HMAC-prototype vectors over the same precursor canonical bytes;
+- CONFIRMED reference field 2 is the exact PREPARED digest;
+- kept exact precursor SQL deliberately unfrozen: the reference module uses a visibly synthetic DIGEST32 only to exercise the relation-definition field and deliberately does not satisfy `lab099_precursor_fixture_adapter`'s DDL/mutation-plan contract;
+- an independent stdlib encoder recomputed the staged byte/digest/HMAC arithmetic before publication, but the committed repository snapshot itself was not executed.
 
 Post-write topology against pinned PR #177 head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`:
-- ahead 3 / behind 0;
-- exactly two changed files, both under `experiments/provider_generation_history/tests/`;
+- ahead 4 / behind 0;
+- exactly three changed files, all under `experiments/provider_generation_history/tests/`;
 - PR #186 remains open, draft and mergeable.
 
 Durable evidence:
-- `research/2026-09-12-lab099-test-fixture-adapter-vector-boundary.md`, main commit `386d2ef29a48245d4e5f2d90697ebbf4ee593205`;
-- decision `LAB099_TEST_FIXTURE_INDEPENDENT_VECTOR_BOUNDARY_V1_FROZEN`;
-- #184 comment `5645318427`;
-- PR #186 body updated with current adapter/vector boundary and execution caveat.
+- `research/2026-09-12-lab099-independent-authority-reference-vectors.md`, main commit `d11358a5d685dedcc4bf8c1cfcf641c24018d178`;
+- decision `LAB099_INDEPENDENT_AUTHORITY_REFERENCE_VECTORS_V1_FROZEN`;
+- #184 comment `5645563478`;
+- PR #186 body updated with the exact vector/DDL boundary and execution caveat.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1. Exact local execution of the complete real-ledger closure is unavailable in this run.
 - Direct shell transport cannot resolve `github.com`.
-- Connector can read pinned source but cannot byte-exactly materialize the whole pinned closure into the executor in this run.
+- Connector can read/write pinned source but cannot byte-exactly materialize the whole pinned closure into the executor in this run.
 - Complete real-schema LAB-086 tests, unsafe expected-failure seed, full compileall, security reconciliation and current-main conflict audit remain pending.
 - Keep PRs #165/#172/#173/#175/#177/#186 draft until their retained exact gates execute.
-- PR #186 is RED-intent staging only. The test-only adapter now exists, but the independent byte-exact fixture-vector bundle and LAB-099 production module do not; no RED execution has been observed.
-- The adapter must not invent precursor relation DDL, PREPARED/CONFIRMED evidence, provenance-parent advancement, or dual authenticator bytes. Missing/incomplete exact vectors must remain fail-closed.
+- PR #186 is RED-intent staging only. Independent authority vectors now exist, but exact precursor DDL/mutation plans and LAB-099 production behavior do not; no RED execution has been observed.
+- The fixture adapter must not invent precursor relation DDL, PREPARED/CONFIRMED evidence, provenance-parent advancement, or dual authenticator bytes. Missing/incomplete exact vectors must remain fail-closed.
+- The synthetic `REFERENCE_ONLY_RELATION_DEFINITION_DIGEST` is not SQL authority and must never be promoted into production or treated as a schema-definition commitment.
 - LAB-090..100 source/design evidence does not substitute for executable RED/GREEN proof.
 - LAB-100 retains concrete regressions: verify historical activation evidence before restart recovery side effects; validate provider/verifier authority pairing before mutating `prepare_activation()`; bind activation state/anchor CAS/idempotency/identity under one provider authority; reject mutable caller-owned/fake subclass authority.
 - LAB-098 source-level completeness/order seam is pinned, but exact repository RED/GREEN is pending.
@@ -55,7 +56,7 @@ Durable evidence:
 ## Exact next action
 LAB-086 first: probe once for a newly supported non-model materialization path for pinned connector bytes at exact executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize the exact manifest-listed implementation closure plus all `test_*.py` and the pinned LAB-085 fixture helper; verify every file with `git hash-object` against the pinned blob before import; execute all normal LAB-086 real-schema tests; run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall; then perform final security/reconciliation and a fresh current-main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If no supported exact materialization path exists, continue only PR #186 without production behavior changes. Next smallest safe slice: source-audit the frozen canonical provenance encoder and add an **independent test-vector contract/module** for authority bytes that are already fully specified (precursor canonical fields/domain, dual predecessor/successor authenticator reference inputs, PREPARED domain/fields, CONFIRMED exact-PREPARED binding, parent/head/epoch reference values). Do not guess the still implementation-gated exact precursor SQL spelling; leave DDL mutation plans unavailable/fail-closed until an exact RED-owned DDL identity is legitimately frozen. Keep vector generation independent from future production LAB-099 behavior. If exact execution is still unavailable, persist only source-audited reference vectors/contracts and do not claim RED.
+If no supported exact materialization path exists, continue only PR #186 without production behavior changes. Next smallest safe slice: source-audit the already-frozen precursor relation/DDL requirements and determine whether one exact RED-owned SQLite DDL identity can be derived without introducing a new product/security choice. If the requirements uniquely determine it, freeze that exact repository-owned DDL plus schema-definition digest in an independent test fixture contract and only then supply adapter mutation plans. If they do not uniquely determine it, record the unresolved alternatives and keep the adapter fail-closed; do not guess. Do not make the RED-intent tests discoverable or write production LAB-099 behavior until the DDL fixture is exact and executable RED can actually be observed.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement/execute frozen LAB-090..100 RED matrices before production refactors.
 
@@ -68,5 +69,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #178 / LAB-093 — READY/design-frozen; exact RED/GREEN pending.
 - #179..182 / LAB-094..097 — READY/design-frozen; exact executable gates pending.
 - #183 / LAB-098 — READY; exact RED/GREEN pending.
-- #184 / LAB-099 — READY + isolated RED-intent draft PR #186; strict test-only fixture adapter staged; independent exact vectors and observed REDs pending before production behavior.
+- #184 / LAB-099 — READY + isolated RED-intent draft PR #186; strict test-only fixture adapter and independent authority vectors staged; exact DDL/mutation fixture and observed REDs pending before production behavior.
 - #185 / LAB-100 — READY/design-frozen; exact executable gates pending.
