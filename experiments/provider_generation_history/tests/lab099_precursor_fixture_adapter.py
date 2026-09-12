@@ -62,6 +62,7 @@ class SqlMutation:
 
     sql: str
     params: tuple[Any, ...] = ()
+    expected_rowcount: int | None = None
 
     def __post_init__(self) -> None:
         if type(self.sql) is not str or not self.sql.strip():
@@ -69,6 +70,12 @@ class SqlMutation:
         if type(self.params) is not tuple:
             raise FixtureVectorContractError(
                 "fixture SQL params must be an exact tuple"
+            )
+        if self.expected_rowcount is not None and (
+            type(self.expected_rowcount) is not int or self.expected_rowcount < 0
+        ):
+            raise FixtureVectorContractError(
+                "expected_rowcount must be an exact non-negative int or None"
             )
 
 
@@ -147,14 +154,16 @@ def _coerce_plan(plan: Iterable[Any]) -> tuple[SqlMutation, ...]:
             mutation = item
         elif (
             type(item) is tuple
-            and len(item) == 2
+            and len(item) in {2, 3}
             and type(item[0]) is str
             and type(item[1]) is tuple
         ):
-            mutation = SqlMutation(item[0], item[1])
+            expected_rowcount = None if len(item) == 2 else item[2]
+            mutation = SqlMutation(item[0], item[1], expected_rowcount)
         else:
             raise FixtureVectorContractError(
-                "fixture plan entries must be SqlMutation or exact (sql, params) tuples"
+                "fixture plan entries must be SqlMutation or exact "
+                "(sql, params[, expected_rowcount]) tuples"
             )
         mutations.append(mutation)
     if not mutations:
@@ -174,7 +183,15 @@ def _apply_plan(path: Path | str, plan: Iterable[Any]) -> None:
     try:
         q.execute("BEGIN IMMEDIATE")
         for mutation in mutations:
-            q.execute(mutation.sql, mutation.params)
+            cursor = q.execute(mutation.sql, mutation.params)
+            if (
+                mutation.expected_rowcount is not None
+                and cursor.rowcount != mutation.expected_rowcount
+            ):
+                raise FixtureVectorContractError(
+                    "fixture mutation rowcount mismatch: "
+                    f"expected {mutation.expected_rowcount}, got {cursor.rowcount}"
+                )
         q.commit()
     except:
         if q.in_transaction:
