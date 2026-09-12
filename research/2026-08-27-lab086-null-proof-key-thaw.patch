@@ -1,0 +1,16 @@
+--- a/experiments/asymmetric_break_glass_history/strict_fence.py
++++ b/experiments/asymmetric_break_glass_history/strict_fence.py
+@@
+         q.execute(
+             f"""CREATE TRIGGER {no_replace_name}
+             BEFORE INSERT ON {table}
+             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+-             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
++             AND (
++               NEW.{key_column} IS NULL
++               OR EXISTS(SELECT 1 FROM {table} WHERE {key_column} IS NEW.{key_column})
++             )
+             BEGIN
+               SELECT RAISE(ABORT,'LAB-086 existing post-cutoff evidence key cannot be replaced');
+             END"""
+         )

@@ -1,0 +1,57 @@
+diff --git a/experiments/asymmetric_break_glass_history/strict_fence.py b/experiments/asymmetric_break_glass_history/strict_fence.py
+--- a/experiments/asymmetric_break_glass_history/strict_fence.py
++++ b/experiments/asymmetric_break_glass_history/strict_fence.py
+@@
+ def _all_post_cutoff_evidence_trigger_names():
+@@
+     )
++
++
++def _all_post_cutoff_evidence_creation_trigger_names():
++    return tuple(
++        insert_name
++        for _, insert_name, _, _ in POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS.values()
++    )
+@@
+ def remove_public_mutation_fence_locked(q):
+     for name in (
+         *PUBLIC_MUTATION_TRIGGER_NAMES,
+         *_all_inherited_trigger_names(),
+         *ROOT_HEAD_MUTATION_TRIGGER_NAMES,
+         *CURRENT_AUTHORITY_WRITER_TRIGGER_NAMES,
++        *_all_post_cutoff_evidence_creation_trigger_names(),
+         *OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES,
+     ):
+         q.execute(f"DROP TRIGGER IF EXISTS {name}")
+@@
+ def _install_post_cutoff_evidence_freeze_locked(q):
+@@
+         q.execute(
+             f"""CREATE TRIGGER {insert_name}
+             BEFORE INSERT ON {table}
+             WHEN EXISTS(SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1)
+-             AND EXISTS(SELECT 1 FROM {table} WHERE {key_column}=NEW.{key_column})
+             BEGIN
+-              SELECT RAISE(ABORT,'LAB-086 committed post-cutoff evidence cannot be replaced');
++              SELECT RAISE(ABORT,'LAB-086 post-cutoff evidence creation requires final supported writer');
+             END"""
+         )
+         _install_history_immutability(
+             q, table, update_name, delete_name, "post-cutoff evidence history"
+         )
+diff --git a/experiments/asymmetric_break_glass_history/final_supported.py b/experiments/asymmetric_break_glass_history/final_supported.py
+--- a/experiments/asymmetric_break_glass_history/final_supported.py
++++ b/experiments/asymmetric_break_glass_history/final_supported.py
+@@
+             existing = q.execute('SELECT old_public_authority_id,root_authority_id,root_version,root_generation,intent_digest,root_signatures_json FROM provider_asymmetric_recovery_public_root_proofs WHERE new_public_authority_id=?', (new_public.authority_id,)).fetchone()
+             if existing is not None and existing != proof:
+                 raise PublicRecoveryRotationError('public recovery root proof substitution')
+-            if existing is None:
+-                q.execute('INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)', (new_public.authority_id, *proof))
+             remove_public_mutation_fence_locked(q)
+             try:
++                if existing is None:
++                    q.execute('INSERT INTO provider_asymmetric_recovery_public_root_proofs VALUES(?,?,?,?,?,?,?)', (new_public.authority_id, *proof))
+                 ledger.public_recovery_custody.rotate_locked(q, new_public, root.authority_id, old_valid, new_valid)
+             finally:
+                 install_public_mutation_fence_locked(q)
