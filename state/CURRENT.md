@@ -8,7 +8,7 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165. Keep draft.
 - LAB-092: #176 / draft PR #177, pinned head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`, base LAB-090.
-- LAB-099 RED-intent staging: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, head `f6c0ebeaaed6e0e34156a8c78b5804eedf5db0ab`, based on PR #177 branch.
+- LAB-099 RED-intent staging: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, head `3ce932e1e20813644b14c0916b5802e5f96cfa85`, based on PR #177 branch.
 - Other retained drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175.
 - Frozen design follow-up: LAB-093/#178 plus LAB-094..100/#179..185.
 
@@ -20,24 +20,33 @@ Current-run capability/evidence:
 - GitHub connector reads/writes remain available, but no supported byte-exact connector-to-local-executor materialization primitive for the complete pinned LAB-086 closure is exposed;
 - therefore no new LAB-086 behavioral/unsafe-seed/compileall/security/conflict PASS and no LAB-099 repository RED/GREEN PASS is claimed.
 
-Completed LAB-099 durable cutover-evidence storage freeze without production changes:
-- source-audited `shared_anchor_intents` and provider-history persistence on PR #177;
-- froze `LAB099_DURABLE_CUTOVER_EVIDENCE_STORAGE_V1_FROZEN` in `research/2026-09-12-lab099-durable-cutover-evidence-storage-v1.md`;
-- selected a small materialization relation `provider_activation_reservation_cutovers` for exact PREPARED bytes/nonce/indexable lineage, while retaining the existing `shared_anchor_intents` PREPARED/CONFIRMED row + externally reauthenticated `receipt_binding` as the authority-bearing phase transition;
-- exact normalized materialization-relation definition digest: `0db2587bae8861d0233d939b4283a58b438b947c5336f7af9d0f1687856c860e`;
-- deterministic anchor intent identity: `migration:provider-activation-reservation-precursor-cutover:v1:<prepared_digest>`; component `provider-activation-reservation-precursor`; type `migration`; payload commits exact PREPARED digest + exact 32-byte confirmation nonce;
-- CONFIRMED is reconstructed deterministically from the verified PREPARED + confirmed shared-anchor `LedgerEntry`; no second phase row, key, signer, receipt mechanism or provenance ledger is introduced;
-- migration ownership is explicit-only: ordinary startup verifies but never creates/repairs/adopts/backfills the precursor or cutover materialization relations.
+Completed LAB-099 test-owned PREPARED fixture slice on PR #186:
+- added `experiments/provider_generation_history/tests/lab099_precursor_fixture_vectors.py`;
+- `atomic_prepared_plan()` now composes exact frozen precursor DDL + exact cutover materialization DDL + exact materialization row + matching shared-anchor PREPARED + `shared_anchor_meta` CAS;
+- updated `lab099_precursor_fixture_adapter.py` so plan entries may require exact rowcounts and any mismatch rolls back the same `BEGIN IMMEDIATE` transaction;
+- audit caught a provider-generation-head race in the first draft: the published shared-anchor PREPARED insertion now uses `INSERT ... SELECT` from the current durable provider head constrained to the preflight provider/generation and requires rowcount 1;
+- stale provider head or stale reserved-position CAS therefore fails closed and rolls back earlier fixture DDL/materialization/PREPARED mutations;
+- frozen PREPARED digest remains `77ffdf5f657510a285d75e866d3418a85d1aeb0ca0f2c830617c850a5277b53e`;
+- frozen anchor payload digest remains `8aee140ac30142fac83fe03f95f36e56be94583b4ef100060610bb9ec59089e9`.
 
-PR #186 test-owned progress:
-- added `experiments/provider_generation_history/tests/lab099_cutover_storage_reference.py` at branch commit `f6c0ebeaaed6e0e34156a8c78b5804eedf5db0ab`, blob `89c796b6dd59d5ca9490cfa0b8e7803a76cf7b1f`;
-- oracle freezes exact cutover materialization DDL, definition digest, deterministic anchor ID/payload digest and confirmed-head digest adapter;
-- compare versus pinned PR #177 head: ahead 11 / behind 0, exactly seven changed files, all under `experiments/provider_generation_history/tests/`; no production file changed.
+Observed scratch validation only, not repository RED/GREEN:
+- initially authored fixture-vector module `py_compile` PASS and static self-check PASS before publication;
+- semantically equivalent SQLite success path installed cutover materialization + PREPARED and advanced reserved position exactly once;
+- stale tail CAS simulation rolled back DDL/materialization/PREPARED completely;
+- stale provider-generation-head simulation produced PREPARED insert rowcount 0 and rolled back.
+
+PR #186 topology versus pinned PR #177 head:
+- ahead 14 / behind 0;
+- exactly eight changed files;
+- all changed files under `experiments/provider_generation_history/tests/`;
+- PR remains open, draft and mergeable; no production LAB-099 file changed.
 
 Durable evidence:
-- main research commit `0df2d0ff562a9d4e96e188f2cdae7929dcb93b62`;
-- PR #186 branch commit `f6c0ebeaaed6e0e34156a8c78b5804eedf5db0ab`;
-- #184 comment `5647785396`.
+- PR #186 head `3ce932e1e20813644b14c0916b5802e5f96cfa85`;
+- fixture-vector blob `8ca5f2fb508500758a5129d75a29c2406169b361`;
+- fixture-adapter blob `671ace9ed879a0a1d0c06786b11d2e46fb746de3`;
+- `research/2026-09-12-lab099-executable-prepared-fixture-plan.md` main commit `e7c6df4df6ef437f072e68099ff142902e55f06c`;
+- #184 comment `5648133496`.
 
 ## Known failures / blockers
 - LAB-086 remains priority #1; exact local execution of the complete real-ledger closure is unavailable in this run.
@@ -45,7 +54,7 @@ Durable evidence:
 - Connector can read/write pinned source but cannot byte-exactly materialize the whole LAB-086 closure into the executor in this run.
 - Complete LAB-086 real-schema tests, unsafe expected-failure seed, full compileall, security reconciliation and current-main conflict audit remain pending.
 - Keep PRs #165/#172/#173/#175/#177/#186 draft until their retained exact gates execute.
-- PR #186 remains RED-intent staging only. Durable cutover storage identity/reuse/authentication/idempotence/migration ownership are now frozen, but `lab099_precursor_fixture_vectors.py` and an executable `atomic_prepared_plan()` do not yet exist.
+- PR #186 remains RED-intent staging only. Its first atomic PREPARED fixture plan now exists, but the repository RED-intent suite has not been executed and production LAB-099 remains forbidden.
 - LAB-090..100 source/design evidence does not substitute for executable RED/GREEN proof.
 - Whole-store rollback/deletion is not solved by another local table; LAB-099 composes with LAB-095/LAB-097 logical-database/provenance authority and must not claim SQLite can prove total deletion of its own history.
 - Do not auto-upgrade existing unauthenticated LAB-090 rows; do not call provider prepare from an unauthenticated local recovery row; do not treat PR #177's LAB-092 V1 migration marker as proof of precursor governance.
@@ -53,7 +62,7 @@ Durable evidence:
 ## Exact next action
 LAB-086 first: probe once for a newly supported non-model materialization path for pinned connector bytes at exact executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize the exact manifest-listed implementation closure plus all `test_*.py` and the pinned LAB-085 fixture helper; verify every file with `git hash-object` against pinned blobs before import; execute all normal LAB-086 real-schema tests; run `unsafe_legacy_promotion_expected_failure.py` separately and require the intended failure; run full compileall; then perform final security/reconciliation and a fresh current-main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If no supported exact materialization path exists, continue only PR #186 test-owned LAB-099 work: add `lab099_precursor_fixture_vectors.py` from the already-frozen canonical PREPARED bytes plus the new cutover-storage oracle, then wire `lab099_precursor_fixture_adapter.atomic_prepared_plan()` so one SQLite `BEGIN IMMEDIATE` mechanically installs exact precursor DDL + exact cutover materialization DDL + exact materialization row + exact matching shared-anchor PREPARED row/meta CAS. Add/activate the two minimum RED scenarios: orphan precursor DDL without PREPARED fails closed; crash after atomic DDL+materialization+exact PREPARED resumes only that exact PREPARED. Do not add production LAB-099 behavior before an observable repository RED.
+If no supported exact materialization path exists, continue only PR #186 test-owned LAB-099 work: add one side-effect-free verifier for the exact `provider_activation_reservation_cutovers` materialization row + matching shared-anchor PREPARED cross-binding, then use it to make the crash-after-atomic-PREPARED fixture self-check prove that only the exact frozen PREPARED digest, confirmation nonce, intent identity/payload digest, provider generation, predecessor/position and request ID are resumable. Include negative checks for changed nonce, changed PREPARED digest and stale provider/tail bindings. Do not add production `activation_reservation_provenance` before an observable repository RED.
 
 If exact source execution becomes available for other pending work first: run LAB-088 supported/downstream gates and LAB-091 full supported-surface gates, then implement/execute frozen LAB-090..100 RED matrices before production refactors.
 
@@ -66,5 +75,5 @@ If exact source execution becomes available for other pending work first: run LA
 - #178 / LAB-093 — READY/design-frozen; exact RED/GREEN pending.
 - #179..182 / LAB-094..097 — READY/design-frozen; exact executable gates pending.
 - #183 / LAB-098 — READY; exact RED/GREEN pending.
-- #184 / LAB-099 — READY + isolated RED-intent draft PR #186; precursor physical relation, canonical vectors, schema oracles and durable cutover-evidence storage contract are frozen; next fallback is fixture vectors + executable atomic PREPARED plan/test-only REDs.
+- #184 / LAB-099 — READY + isolated RED-intent draft PR #186; precursor physical relation, canonical vectors, schema oracles, durable cutover storage and first atomic PREPARED fixture plan are frozen/published; next fallback is exact PREPARED cross-binding verifier/self-checks.
 - #185 / LAB-100 — READY/design-frozen; exact executable gates pending.
