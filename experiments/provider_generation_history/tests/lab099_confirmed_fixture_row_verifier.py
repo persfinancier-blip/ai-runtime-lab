@@ -2,8 +2,8 @@
 
 Reads the durable PREPARED materialization plus its shared-anchor row, requires the row
 to be CONFIRMED, externally reauthenticates the stored receipt binding through the
-existing shared-anchor RECONCILE semantics, and returns the exact confirmed-head digest
-that a LAB-099 CONFIRMED authority event must bind.
+existing shared-anchor RECONCILE semantics, and cross-binds the row to externally
+supplied confirmed position/head authority.
 
 Production code must not import this module.
 """
@@ -76,13 +76,19 @@ def _one(rows: list[tuple[Any, ...]], label: str) -> tuple[Any, ...]:
     return rows[0]
 
 
-def verify_installed_confirmed_cutover(path: Path | str, attested: Any, *, prepared_event_digest: bytes) -> bytes:
-    """Fail closed unless persisted CONFIRMED evidence reauthenticates exactly.
-
-    Returns the byte-exact shared-anchor confirmed-head digest for construction/checking
-    of the LAB-099 CONFIRMED authority event; it does not invent a provenance head.
-    """
+def verify_installed_confirmed_cutover(
+    path: Path | str,
+    attested: Any,
+    *,
+    prepared_event_digest: bytes,
+    expected_confirmed_position: int,
+    expected_confirmed_head_digest: bytes,
+) -> bool:
+    """Fail closed unless persisted CONFIRMED evidence binds external authority exactly."""
     prepared_digest = _digest32(prepared_event_digest, "prepared_event_digest")
+    expected_head = _digest32(expected_confirmed_head_digest, "expected_confirmed_head_digest")
+    if type(expected_confirmed_position) is not int or expected_confirmed_position < 1:
+        raise ConfirmedFixtureRowVerificationError("expected_confirmed_position must be a positive int")
     provider_id, generation = _expected_provider(attested)
     q = _connect(path)
     try:
@@ -102,11 +108,13 @@ def verify_installed_confirmed_cutover(path: Path | str, attested: Any, *, prepa
 
     if anchor["status"] != "CONFIRMED":
         raise ConfirmedFixtureRowVerificationError("shared-anchor entry is not CONFIRMED")
+    if anchor["position"] != expected_confirmed_position:
+        raise ConfirmedFixtureRowVerificationError("confirmed position differs from external authority")
     receipt = anchor["receipt_binding"]
     if type(receipt) is not str or len(receipt) != 64 or any(c not in "0123456789abcdef" for c in receipt):
         raise ConfirmedFixtureRowVerificationError("stored receipt binding is malformed")
 
-    # The PREPARED ancestry must remain exact even after status/receipt transition.
+    # Preserve the exact PREPARED ancestry across the one allowed status/receipt transition.
     prepared_shape = dict(anchor)
     prepared_shape["status"] = "PREPARED"
     prepared_shape["receipt_binding"] = None
@@ -116,7 +124,7 @@ def verify_installed_confirmed_cutover(path: Path | str, attested: Any, *, prepa
             prepared_shape,
             expected_provider_id=provider_id,
             expected_provider_generation=generation,
-            expected_predecessor_position=anchor["predecessor_position"],
+            expected_predecessor_position=expected_confirmed_position - 1,
         )
     except prepared_cross.PreparedCrossBindingError as exc:
         raise ConfirmedFixtureRowVerificationError("CONFIRMED row lost exact PREPARED ancestry") from exc
@@ -131,7 +139,9 @@ def verify_installed_confirmed_cutover(path: Path | str, attested: Any, *, prepa
     if _stable_receipt(verified) != receipt:
         raise ConfirmedFixtureRowVerificationError("stored receipt differs from reauthenticated provider result")
 
-    return storage.confirmed_head_digest(anchor)
+    if storage.confirmed_head_digest(anchor) != expected_head:
+        raise ConfirmedFixtureRowVerificationError("confirmed head/event binding differs from external authority")
+    return True
 
 
 def tamper_confirmed_fixture_for_test_only(path: Path | str, *, prepared_event_digest: bytes, field: str) -> None:
