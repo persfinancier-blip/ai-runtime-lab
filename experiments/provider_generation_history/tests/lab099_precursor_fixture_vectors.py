@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +26,6 @@ from experiments.provider_generation_history.tests import (
 
 class FixtureVectorError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class PreparedFixturePlan:
-    prepared_event_digest: bytes
 
 
 def _canon(obj: object) -> bytes:
@@ -119,6 +113,13 @@ def atomic_prepared_plan(path: Path | str, attested: Any, bootstrap: Any):
         raise FixtureVectorError("authority reference self-check failed")
     if relation.validate_precursor_relation_reference() is not True:
         raise FixtureVectorError("precursor relation reference self-check failed")
+    if storage.validate_reference() is not True:
+        raise FixtureVectorError("cutover storage reference self-check failed")
+    if (
+        authority.PREPARED_REFERENCE_VALUES[7]
+        != relation.FROZEN_RELATION_DEFINITION_DIGEST
+    ):
+        raise FixtureVectorError("PREPARED relation digest differs from frozen DDL")
 
     provider_id, generation, predecessor = _read_reservation_snapshot(
         path, attested, bootstrap
@@ -159,18 +160,24 @@ def atomic_prepared_plan(path: Path | str, attested: Any, bootstrap: Any):
             1,
         ),
         (
-            "INSERT INTO shared_anchor_intents "
-            "VALUES(?,?,?,?,?,?,?,?,?,'PREPARED',NULL)",
+            "INSERT INTO shared_anchor_intents(" 
+            "intent_id,component_id,intent_type,payload_digest,provider_id," 
+            "provider_generation,predecessor_position,position,request_id,status," 
+            "receipt_binding) "
+            "SELECT ?,?,?,?,g.provider_id,g.generation,?,?,?,'PREPARED',NULL "
+            "FROM provider_generation_head h "
+            "JOIN provider_generations g ON g.generation_id=h.generation_id "
+            "WHERE h.singleton=1 AND g.provider_id=? AND g.generation=?",
             (
                 intent_id,
                 storage.ANCHOR_COMPONENT_ID,
                 storage.ANCHOR_INTENT_TYPE,
                 payload_digest,
-                provider_id,
-                generation,
                 predecessor,
                 position,
                 request_id,
+                provider_id,
+                generation,
             ),
             1,
         ),
@@ -198,6 +205,11 @@ def validate_fixture_vectors() -> bool:
         raise AssertionError(
             "PREPARED target schema set no longer matches cutover component"
         )
+    if (
+        authority.PREPARED_REFERENCE_VALUES[7]
+        != relation.FROZEN_RELATION_DEFINITION_DIGEST
+    ):
+        raise AssertionError("PREPARED relation digest drift")
     return True
 
 
