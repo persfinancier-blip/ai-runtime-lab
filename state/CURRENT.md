@@ -7,72 +7,55 @@ LAB-086 remains priority #1: finish the exact executable/security gate for asymm
 
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165. Keep draft.
-- LAB-095 prerequisite: #180 / branch `lab-095-database-identity-red-intent` / draft PR #187, head `fd6d75ea35decdb719632802a538427cf51d71c7`; mergeable, still draft.
+- LAB-095: #180 / branch `lab-095-database-identity-red-intent` / draft PR #187, current head `37d93619ecca9af20c935cc6b1dcd60f37cece72`. Keep draft.
 - LAB-099: #184 / draft PR #186; PREPARED authority remains blocked on LAB-095.
 - Retained drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues, PR #187, and relevant LAB-080/LAB-081 supported sources. Re-probed LAB-086 first; direct clone again failed before repository execution with `Could not resolve host: github.com` / exit 128. No LAB-086 gate was weakened and no new LAB-086 PASS is claimed.
+Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues/PRs, and re-probed LAB-086 first. Direct clone again failed before repository execution with `Could not resolve host: github.com` / exit 128. No LAB-086 gate was weakened and no new LAB-086 PASS is claimed.
 
-### LAB-095 construction-bound physical DB path slice
-PR #187 now additionally contains:
-- `experiments/database_binding.py`, blob `c6bf05b3a5579e076142300aefbc9d785cc6354a`;
-- `experiments/shared_anchor_intent_ledger/supported.py`, blob `b16fda1fd1f47ab3f333af6ac94190d6135dcf64`;
-- `experiments/provider_generation_history/supported.py`, blob `7808753d7fb27c979e93f342eaf05d1e9f3f7c41`;
-- `experiments/provider_generation_history/tests/test_database_path_binding.py`, blob `a7671276b4c8f6b7b3b1de507fe1ed405ee3be97`.
+### LAB-095 constructor/MRO integration audit
+Source-audited retained LAB-090 PR #175 and LAB-092 PR #177 against PR #187's `CanonicalDatabaseBinding`.
 
-Implemented behavior:
-- first supported-object path assignment is canonicalized with `Path.resolve(strict=False)`;
-- public `path` remains readable but becomes construction-bound after that first assignment;
-- direct later rebinding of the private `_canonical_database_path` source of truth is also rejected;
-- `SupportedSharedAnchorLedger` now receives this binding at the supported LAB-080 boundary;
-- `CoordinatorOnlyProviderHistory` receives the same binding at the supported LAB-081 provider-history boundary;
-- inherited `_con()` methods therefore still consume `self.path`, but on supported objects it resolves to the immutable canonical source of truth rather than a mutable public slot.
+Findings:
+- LAB-090 rewrites `experiments/provider_generation_history/supported.py`, the same supported surface modified by LAB-095. Eventual conflict resolution MUST preserve `CanonicalDatabaseBinding` in both supported ledger/provider-history MROs or the mutable-path finding reopens.
+- LAB-092 deliberately uses `object.__new__` followed by the first manual `path` assignment in `_reservation_surface()` and `_bind_live_provider_history_provenance()`. This is compatible with the one-assignment binding contract only when that MRO is preserved.
+- Added `test_database_binding_object_new_surface.py`, blob `25cd1d53fece40ab71a78ff4838381950505ce0d`, to freeze this construction idiom.
+- Exact published binding blob `c6bf05b3a5579e076142300aefbc9d785cc6354a` + exact test blob were locally reconstructed and verified with `git hash-object`; focused unittest PASS 1/1.
+- Full LAB-090/LAB-092/downstream GREEN is NOT claimed.
 
-New DB-A -> DB-B regression contract:
-- construct supported historical ledger on A and rotate to generation 2;
-- copy A to B;
-- corrupt B's provider-transition MAC while retaining a superficially matching generation-2 head;
-- attempts to reassign both ledger and provider-history paths to B must fail;
-- private canonical-slot reassignment must fail;
-- verify/execute must continue against A;
-- B must receive no new intent and its reserved tail must remain unchanged.
+Durable report: `research/2026-09-13-lab095-lab090-lab092-binding-integration-audit.md`, main commit `d284388ed9349ba305d3ad16b5130391408e3f2c`; #180 comment `5654496396`; PR #187 comment `5654497076`.
 
-Executed evidence in this runtime:
-- exact published `CanonicalDatabaseBinding` source was executed independently against an inherited base whose constructor assigns and later consumes `self.path`;
-- canonical first binding PASS;
-- public path rebinding rejection PASS;
-- private canonical-slot rebinding rejection PASS;
-- continued DB-A selection PASS.
+### LAB-095 under-lock durable-history gap
+Audited `database_identity_migration.py` and found a TOCTOU trust gap: full `history.verify_durable()` runs before the writer lock, but inside `BEGIN IMMEDIATE` production rechecks only bootstrap generation id plus head generation/provider. Historical transition/verification material could change after the precheck while those shallow fields remain unchanged.
 
-The full exact repository DB-A/B regression has NOT yet executed because the exact dependency closure was not safely materialized in this runtime. Do not count the committed regression as GREEN yet.
+Added RED-intent `red_intent_lab095_under_lock_history_verification.py`, blob `42f7ea0c8d00ce01d68db27f2d93b7d50ddc31cd`. Required fix: before nonce generation or reservation, invoke the existing full integrated durable-history verifier on the SAME locked SQLite connection and cross-check its verified current descriptor against runtime/pre-lock authority. Any failure must roll back with zero shared-anchor/custody mutation.
 
-Durable evidence:
-- `research/2026-09-13-lab095-construction-bound-database-path.md`, main commit `c09083e26228900053acd2642a3a1a220cc53c21`;
-- issue #180 comment `5654177156`;
-- issue #163 comment `5654177832`;
-- PR #187 description updated to current state.
+The RED test is committed but not claimed behaviorally executed because the exact repository dependency closure was not safely materialized. Source audit confirms current production does not call `_verify_durable_locked`.
 
-Earlier LAB-095 production remains on the same draft: canonical logical identity/custody classifier plus explicit migration/recovery with internal CSPRNG nonce, `BEGIN IMMEDIATE`, atomic PREPARED reservation, same-request reconciliation, under-lock provider-history recheck, and authenticated local finalization.
+Durable report: `research/2026-09-13-lab095-under-lock-full-history-reverification-gap.md`, main commit `06ce5dc4fafdd27904b7f549aabe880b30713432`; #180 comment `5654506073`.
+
+Earlier LAB-095 production remains on PR #187: logical identity/custody classifier, explicit CSPRNG/BEGIN IMMEDIATE migration/recovery, same-request reconciliation, local confirmed finalization, and construction-bound physical path binding with DB-A -> DB-B regression committed.
 
 ## Known failures / blockers
-- LAB-086 exact complete real-ledger gate remains unexecuted because direct git transport cannot resolve `github.com`; do not manually reconstruct the 50+ file closure or weaken byte-exact evidence requirements.
-- PRs #165/#172/#173/#175/#177/#186/#187 remain draft until their retained exact gates execute.
-- LAB-095 physical binding implementation is published, but its exact repository DB-A/B regression and downstream compatibility gates remain unexecuted.
-- LAB-095 migration still needs exact crash-before-commit/partial-state/concurrent-installer/legacy-history regressions.
-- LAB-094 bootstrap authority and LAB-096 provider-history strategy authority remain distinct follow-ups; this path slice does not claim to close them.
+- LAB-086 exact complete real-ledger gate remains unexecuted because shell git transport cannot resolve `github.com`; do not manually reconstruct the 50+ file closure or weaken byte-exact evidence requirements.
+- PRs #165/#172/#173/#175/#177/#186/#187 remain draft until retained exact gates execute.
+- LAB-095 full DB-A/B regression and downstream LAB-080/LAB-081/LAB-090/LAB-092 gates remain unexecuted.
+- LAB-095 migration still needs production fix + GREEN for the under-lock full-history recheck, then crash-before-commit/partial-state/concurrent-installer/legacy-history regressions.
+- LAB-090/LAB-095 supported.py conflict resolution is security-sensitive: binding MRO must not be dropped.
+- LAB-094 bootstrap authority and LAB-096 provider-history strategy authority remain distinct follow-ups.
 - LAB-099 migration/resume must not derive authority from `tests/lab095_*` or LAB-099 fixtures.
 
 ## Exact next action
 LAB-086 first: re-probe for a supported byte-preserving materialization path. If available, reconstruct only executable pin `1f90830fca21e2f43fc241012cdd34fd187ba96d`, require local `git hash-object` match for every manifest/test/helper/transitive file, then run the full retained LAB-086 gate including unsafe expected-failure separately, compileall, security/reconciliation, and current-main conflict audit.
 
 If exact LAB-086 materialization is still unavailable, continue LAB-095 on PR #187:
-1. inspect LAB-090 and LAB-092 supported constructors/MRO for repeated `path` assignment or any bypass around `SupportedSharedAnchorLedger` / `CoordinatorOnlyProviderHistory` binding;
-2. execute `test_database_path_binding.py` on the exact repository closure if a safe materialization path becomes available; otherwise source-audit downstream consumers and add only narrowly justified regressions;
-3. add exact crash-before-commit, partial-state, concurrent-installer, and legacy-history migration regressions where the real stack exposes gaps;
-4. run LAB-080/LAB-081/LAB-090/LAB-092 focused/downstream gates before integration;
-5. perform final current-main conflict/security audit;
-6. only after LAB-095 is complete, return to LAB-099 authenticated PREPARED authority.
+1. fix `prepare_database_identity()` so the existing full integrated provider-history verifier runs inside the SAME `BEGIN IMMEDIATE` transaction before nonce generation/reservation; compare the locked verified current descriptor with runtime/pre-lock authority;
+2. execute the new under-lock RED plus existing migration focused regressions on the smallest exact closure that can be safely materialized; do not claim broader GREEN;
+3. add crash-before-commit, partial-state, concurrent-installer, and legacy-history migration regressions;
+4. execute `test_database_path_binding.py` and LAB-080/LAB-081/LAB-090/LAB-092 focused/downstream gates when exact closure is available;
+5. during eventual LAB-090/LAB-095 conflict resolution, preserve `CanonicalDatabaseBinding` on both supported ledger/history MROs;
+6. only after LAB-095 completion return to LAB-099 authenticated PREPARED authority.
 
 Never use deterministic test vectors, caller-supplied nonce/digest, filesystem path hashes, or a same-DB self-asserted UUID as production authority.
 
@@ -82,6 +65,6 @@ Never use deterministic test vectors, caller-supplied nonce/digest, filesystem p
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
-- #180 / LAB-095 — IN_PROGRESS on draft PR #187; custody/classifier + explicit migration/recovery + supported physical path binding published; exact DB-binding/downstream gates next.
+- #180 / LAB-095 — IN_PROGRESS on draft PR #187; current next fix is under-lock full durable-history reverification.
 - #178..185 / LAB-093..100 — remaining architecture/security follow-ups with executable gates pending.
 - #184 / LAB-099 — classifier/startup slice published; PREPARED authority waits on LAB-095 completion.
