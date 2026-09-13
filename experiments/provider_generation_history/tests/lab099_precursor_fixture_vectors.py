@@ -1,8 +1,12 @@
-"""Test-only executable LAB-099 PREPARED fixture vectors.
+"""Test-only executable LAB-099 PREPARED/CONFIRMED fixture vectors.
 
 This module turns the already-frozen LAB-099 PREPARED canonical bytes and cutover
-storage identity into one mechanical SQLite mutation plan. It deliberately does not
-import production LAB-099 code and does not perform any external provider call.
+storage identity into one mechanical SQLite mutation plan. CONFIRMED mutation is
+strictly limited to the independently frozen exact ledger/provenance bridge; it does
+not synthesize receipt/head/epoch authority for arbitrary PREPARED digests.
+
+It deliberately does not import production LAB-099 code and does not perform any
+external provider call.
 """
 
 from __future__ import annotations
@@ -13,6 +17,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from experiments.provider_generation_history.tests import (
+    lab099_confirmed_ledger_reference as confirmed_bridge,
+)
 from experiments.provider_generation_history.tests import (
     lab099_cutover_storage_reference as storage,
 )
@@ -160,9 +167,9 @@ def atomic_prepared_plan(path: Path | str, attested: Any, bootstrap: Any):
             1,
         ),
         (
-            "INSERT INTO shared_anchor_intents(" 
-            "intent_id,component_id,intent_type,payload_digest,provider_id," 
-            "provider_generation,predecessor_position,position,request_id,status," 
+            "INSERT INTO shared_anchor_intents("
+            "intent_id,component_id,intent_type,payload_digest,provider_id,"
+            "provider_generation,predecessor_position,position,request_id,status,"
             "receipt_binding) "
             "SELECT ?,?,?,?,g.provider_id,g.generation,?,?,?,'PREPARED',NULL "
             "FROM provider_generation_head h "
@@ -191,6 +198,56 @@ def atomic_prepared_plan(path: Path | str, attested: Any, bootstrap: Any):
     return plan, prepared_digest
 
 
+def confirmed_event_plan(path: Path | str, prepared_event_digest: bytes):
+    """Return the sole frozen PREPARED->CONFIRMED SQLite mutation.
+
+    The reference bridge is deliberately exact, not a receipt/head generator. The
+    supplied digest must be the frozen PREPARED digest and the existing durable row
+    must match every authority-relevant field of the independently frozen CONFIRMED
+    reference except status/receipt. A stale or substituted row therefore yields
+    rowcount 0 and the fixture adapter rolls the transaction back.
+    """
+
+    del path  # the plan is pure; SQLite enforces the exact pre-state atomically.
+    if type(prepared_event_digest) is not bytes or len(prepared_event_digest) != 32:
+        raise FixtureVectorError("prepared_event_digest must be exact 32-byte bytes")
+    if prepared_event_digest != authority.PREPARED_DIGEST:
+        raise FixtureVectorError(
+            "no frozen CONFIRMED bridge exists for the supplied PREPARED digest"
+        )
+    if confirmed_bridge.validate_reference_bridge() is not True:
+        raise FixtureVectorError("CONFIRMED ledger/provenance bridge self-check failed")
+
+    entry = confirmed_bridge.reference_confirmed_entry()
+    intent_id = storage.anchor_intent_id(prepared_event_digest)
+    if entry["intent_id"] != intent_id:
+        raise FixtureVectorError("CONFIRMED bridge intent identity drift")
+
+    sql = (
+        "UPDATE shared_anchor_intents SET status='CONFIRMED',receipt_binding=? "
+        "WHERE intent_id=? AND component_id=? AND intent_type=? AND payload_digest=? "
+        "AND provider_id=? AND provider_generation=? AND predecessor_position=? "
+        "AND position=? AND request_id=? AND status='PREPARED' "
+        "AND receipt_binding IS NULL "
+        "AND EXISTS (SELECT 1 FROM provider_activation_reservation_cutovers c "
+        "WHERE c.prepared_digest=? AND c.anchor_intent_id=shared_anchor_intents.intent_id)"
+    )
+    params = (
+        entry["receipt_binding"],
+        entry["intent_id"],
+        entry["component_id"],
+        entry["intent_type"],
+        entry["payload_digest"],
+        entry["provider_id"],
+        entry["provider_generation"],
+        entry["predecessor_position"],
+        entry["position"],
+        entry["request_id"],
+        prepared_event_digest,
+    )
+    return ((sql, params, 1),)
+
+
 def validate_fixture_vectors() -> bool:
     if (
         hashlib.sha256(authority.PREPARED_CANONICAL_BYTES).digest()
@@ -210,6 +267,8 @@ def validate_fixture_vectors() -> bool:
         != relation.FROZEN_RELATION_DEFINITION_DIGEST
     ):
         raise AssertionError("PREPARED relation digest drift")
+    if confirmed_bridge.validate_reference_bridge() is not True:
+        raise AssertionError("CONFIRMED bridge drift")
     return True
 
 
