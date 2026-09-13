@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from experiments.anchor_attestation.protocol import AttestedCatchup
+from experiments.database_binding import CanonicalDatabaseBinding
 from experiments.provider_generation_history.integration import (
     HistoricalSharedAnchorLedger,
     IntegratedProviderHistory,
@@ -15,7 +16,7 @@ from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution,
 from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
 
 
-class CoordinatorOnlyProviderHistory(IntegratedProviderHistory):
+class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProviderHistory):
     """Provider history whose authority-changing API is only the shared-ledger coordinator."""
 
     def rotate(self, *args, **kwargs):
