@@ -19,6 +19,20 @@ IDENTITY_SCHEMA = "provider-history-logical-database"
 IDENTITY_VERSION = 1
 
 _CUSTODY_TABLE = "provider_history_database_identity"
+_CUSTODY_DDL = """CREATE TABLE IF NOT EXISTS provider_history_database_identity(
+  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+  status TEXT NOT NULL CHECK(status IN ('PREPARED','CONFIRMED')),
+  nonce_hex TEXT NOT NULL,
+  bootstrap_generation_id TEXT NOT NULL,
+  payload_digest TEXT NOT NULL,
+  intent_request_id TEXT NOT NULL,
+  provider_id TEXT,
+  provider_generation INTEGER,
+  position INTEGER,
+  receipt_binding TEXT,
+  logical_database_identity_digest TEXT
+)"""
+_CUSTODY_STORED_DDL = _CUSTODY_DDL.replace(" IF NOT EXISTS", "")
 
 
 class DatabaseIdentityError(RuntimeError):
@@ -189,23 +203,12 @@ def install_custody_schema(q: sqlite3.Connection) -> None:
     This does not assert installation or external authority. Callers performing
     migration must do so under their own BEGIN IMMEDIATE transaction.
     """
-    q.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {_CUSTODY_TABLE}(
-          singleton INTEGER PRIMARY KEY CHECK(singleton=1),
-          status TEXT NOT NULL CHECK(status IN ('PREPARED','CONFIRMED')),
-          nonce_hex TEXT NOT NULL,
-          bootstrap_generation_id TEXT NOT NULL,
-          payload_digest TEXT NOT NULL,
-          intent_request_id TEXT NOT NULL,
-          provider_id TEXT,
-          provider_generation INTEGER,
-          position INTEGER,
-          receipt_binding TEXT,
-          logical_database_identity_digest TEXT
-        )
-        """
-    )
+    q.execute(_CUSTODY_DDL)
+    row = q.execute(
+        "SELECT type,sql FROM sqlite_master WHERE name=?", (_CUSTODY_TABLE,)
+    ).fetchone()
+    if row != ("table", _CUSTODY_STORED_DDL):
+        raise DatabaseIdentityError("identity custody schema mismatch")
 
 
 def _connect(path: str | Path) -> sqlite3.Connection:
@@ -230,6 +233,11 @@ def _load_custody(q: sqlite3.Connection) -> IdentityCustody | None:
 
 def classify_identity_custody(path: str | Path) -> IdentityCustodyState:
     """Read-only fail-closed classifier for already-created custody schema."""
+    path = Path(path)
+    if not path.exists():
+        return IdentityCustodyState.ABSENT
+    if not path.is_file():
+        return IdentityCustodyState.CORRUPT
     q = _connect(path)
     try:
         relation = q.execute(
@@ -238,7 +246,12 @@ def classify_identity_custody(path: str | Path) -> IdentityCustodyState:
         ).fetchone()
         if relation is None:
             return IdentityCustodyState.ABSENT
-        if relation[0] != "table":
+        if relation != ("table", _CUSTODY_STORED_DDL):
+            return IdentityCustodyState.CORRUPT
+        anchor_relation = q.execute(
+            "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
+        ).fetchone()
+        if anchor_relation != ("table",):
             return IdentityCustodyState.CORRUPT
 
         rows = q.execute(f"SELECT COUNT(*) FROM {_CUSTODY_TABLE}").fetchone()[0]
