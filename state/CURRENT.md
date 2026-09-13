@@ -15,19 +15,23 @@ LAB-086 — finish the exact executable/security gate for asymmetric break-glass
 Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open work; kept LAB-086 first and re-probed exact materialization.
 
 Current-run capability/evidence:
-- GitHub connector can read exact pinned blobs/trees;
-- supported byte-preserving archive/raw transfer into the local execution filesystem was probed but unavailable in this runtime;
+- GitHub connector can read exact pinned trees/files;
+- direct local `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` again failed before repository execution with `Could not resolve host: github.com` (exit 128);
+- connector reads still do not have a supported non-model byte bridge into the local execution filesystem in this runtime;
 - therefore no new LAB-086 behavioral/security/compile/conflict PASS and no LAB-099 branch import/SQLite end-to-end PASS is claimed.
 
 Completed LAB-099 fallback slice:
-- source-audited the minimal exact import closure for `lab099_confirmed_orchestration_witness.py` at PR #186 head;
-- froze `LAB099_EXACT_ORCHESTRATION_IMPORT_CLOSURE_V1_FROZEN` containing 18 exact Python paths/blob SHAs covering the orchestration helpers plus anchor-attestation/provider-history/shared-anchor substrate;
-- recorded audited import edges and the exact executable procedure required on the first runtime that can materialize those bytes;
+- re-audited the frozen PR #186 orchestration path after the failed LAB-086 materialization probe;
+- checked the exact orchestration, legitimate prefix builder, execution witness, fixture adapter/vectors, persisted CONFIRMED verifier, anchor attestation, and supported historical ledger;
+- confirmed the prior historical-receipt persistence fix remains present and final `verify_durable()` remains in the orchestration;
+- found no new authority-substitution or semantic defect in this source-level pass;
+- kept `LAB099_EXACT_ORCHESTRATION_IMPORT_CLOSURE_V1_FROZEN` unchanged;
 - no production LAB-099 code was added.
 
 Durable evidence:
-- `research/2026-09-13-lab099-exact-orchestration-import-closure.md`, main commit `5d1b1cbdc9175b1c01ff2720a7917c202356e92c`;
-- #184 comment `5651348933`;
+- `research/2026-09-13-lab099-orchestration-source-audit-after-materialization-probe.md`, main commit `aec473482399097c053ea680b66ed66bd3e81ca1`;
+- #163 comment `5651642762`;
+- #184 comment `5651643317`;
 - PR #186 remains draft/test-only at head `766434563a5ad82a88156687c84de9c9e17b14c6`.
 
 ## Known failures / blockers
@@ -38,12 +42,12 @@ Durable evidence:
 - historical synthetic CONFIRMED head `c0..df` remains non-authoritative.
 - exact CONFIRMED bridge and dynamic PREPARED fixture remain intentionally distinct authority layers.
 - deterministic witness keys/prefix payloads are execution mechanics only and must never become LAB-099 semantic authority.
-- exact LAB-099 orchestration closure is now frozen, but materialization/import/execution remains unobserved.
+- exact LAB-099 orchestration closure is frozen, but materialization/import/execution remains unobserved.
 
 ## Exact next action
 LAB-086 first: probe once for a supported exact non-model materialization path for pinned executable snapshot `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. If available, materialize and hash-verify the manifest-listed closure plus all `test_*.py` and pinned LAB-085 helper; execute normal LAB-086 real-schema tests, unsafe expected-failure seed separately, full compileall, then final security/reconciliation and current-main conflict audit. Fix every observed blocker before changing draft/merge status.
 
-If no exact LAB-086 materialization path exists, use `research/2026-09-13-lab099-exact-orchestration-import-closure.md` as the authoritative LAB-099 execution manifest. Materialize every listed blob exactly, verify all Git blob SHAs, run compileall, import `lab099_confirmed_orchestration_witness`, then execute a fresh file-backed SQLite `execute_frozen_confirmed_orchestration()` and require exact frozen request `shared-anchor:42:9fda50427f6b8a55b305cd4a8833413a1f20b349bc21332bfaf0eb4de7d01bdf`, receipt `ead923c6b9bcd68bc6e4276284fd72211544fcede9f06297b8bc074d898130b4`, position 42, confirmed head `45c53da7909f826f6c8107fef542ba17bed551df8637f8a3185fe66a04410dda`, and final durable verification. Do not add production LAB-099 code before observed executable RED.
+If no exact LAB-086 materialization path exists, use `research/2026-09-13-lab099-exact-orchestration-import-closure.md` as the authoritative LAB-099 execution manifest. Attempt a supported byte-preserving transfer of all 18 frozen blobs into local storage; only if every `git hash-object` matches the manifest may the runtime run compileall, import `lab099_confirmed_orchestration_witness`, and execute a fresh file-backed SQLite `execute_frozen_confirmed_orchestration()`. Require exact frozen request `shared-anchor:42:9fda50427f6b8a55b305cd4a8833413a1f20b349bc21332bfaf0eb4de7d01bdf`, receipt `ead923c6b9bcd68bc6e4276284fd72211544fcede9f06297b8bc074d898130b4`, position 42, confirmed head `45c53da7909f826f6c8107fef542ba17bed551df8637f8a3185fe66a04410dda`, and final durable verification. Do not add production LAB-099 code before observed executable RED.
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact complete real-ledger gate pending.
@@ -52,4 +56,4 @@ If no exact LAB-086 materialization path exists, use `research/2026-09-13-lab099
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
 - #178..185 / LAB-093..100 — design/source follow-ups with executable gates pending.
-- #184 / LAB-099 — READY + isolated draft PR #186; exact orchestration import closure is frozen; byte-exact closure execution is the next safe prerequisite before any production implementation.
+- #184 / LAB-099 — READY + isolated draft PR #186; exact orchestration import closure is frozen; byte-exact closure execution remains the next safe prerequisite before any production implementation.
