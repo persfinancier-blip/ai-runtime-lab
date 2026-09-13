@@ -3,56 +3,54 @@
 Last updated: 2026-09-13
 
 ## Active objective
-LAB-086 — finish the exact executable/security gate for asymmetric break-glass history migration, then reconcile/merge only if every real-schema regression and current-main conflict audit passes.
+LAB-086 remains priority #1: finish the exact executable/security gate for asymmetric break-glass history migration, then reconcile/merge only if every real-schema regression and current-main conflict audit passes. LAB-099 is the permitted fallback when the byte-exact LAB-086 execution closure cannot be materialized safely in the current runtime.
 
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165. Keep draft.
 - LAB-092: #176 / draft PR #177, pinned head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`.
-- LAB-099 fallback: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, head `766434563a5ad82a88156687c84de9c9e17b14c6`, based on PR #177.
+- LAB-099 fallback: #184 / branch `lab-099-precursor-cutover-red-intent` / draft PR #186, now contains first production slice commit `d40aea8c48efe587b273650a3756ca782ba81472`, based on PR #177.
 - Other retained drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175.
 
 ## Last completed step
 Re-read `AGENTS.md`, this handoff, `prompts/SELF_RESUME.md`, open issues and PR state; resumed LAB-086 first.
 
-Recovered the exact LAB-086 gate manifest from commit `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` and corrected a durable pin ambiguity: `1fa85a0...` is a later notes/evidence commit, while the manifest explicitly pins executable source at `1f90830fca21e2f43fc241012cdd34fd187ba96d`. Do not execute a mixed snapshot.
+### LAB-086 current-run evidence
+- Exact executable pin remains `1f90830fca21e2f43fc241012cdd34fd187ba96d`; `1fa85a0...` is notes/evidence containing the manifest, not the executable snapshot.
+- Reconstructed the pinned LAB-086 test inventory from Contents API: 29 ordinary `test_*.py` files plus `unsafe_legacy_promotion_expected_failure.py`.
+- Fresh direct clone again failed before repository execution with `Could not resolve host: github.com` (exit 128).
+- Connector reads exact pinned UTF-8 blobs and SHAs, including `strict_fence.py=d4a6a40fb94455d357328bdcd10cf077a2dfc2cd` and NULL-receipt regression `a66d9ddef2d4a41db937222b875f697c7ff74b75`.
+- Concrete current-runtime blocker: no supported programmatic byte-stream bridge exists from connector responses into the local execution filesystem. Manual transcription of the 50+ implementation/test/transitive closure would violate the byte-exact gate, so it was rejected. No new LAB-086 full unittest/security/compile/conflict PASS is claimed.
+- Durable evidence: `research/2026-09-13-lab086-materialization-blocker-and-lab099-first-production-slice.md`, main commit `9e40de69f5e10b39bc095b09260f05cd28dbd3ed`; #163 comment `5652416167`.
 
-Current-run LAB-086 evidence:
-- fresh direct clone again failed before repository execution with `Could not resolve host: github.com` (exit 128); this is transport evidence only;
-- GitHub Git-data/Contents reads at executable pin `1f90830...` succeeded;
-- pinned target blobs confirmed: `protocol.py=cccb531fa13b8f8d4e3a7c3163dd7c7cbeb3ec41`, `migration_guard.py=1a9209b16fdb2c3dcae8e4690658a030040f6ca2`, `strict_fence.py=d4a6a40fb94455d357328bdcd10cf077a2dfc2cd`, `suffix.py=44847bde53b9f7b0e2fbcbab37d36dc992f497b2`, `final_supported.py=ceb7f48a55a931ba9923cac77d4ebf6c4cd2cfec`;
-- pinned LAB-086 tests tree is `ccd38ad88bd1be94fc78b2929e7938d6fa315b6f`; NULL-receipt regression is `a66d9ddef2d4a41db937222b875f697c7ff74b75`;
-- connector `fetch_file` supports bounded line ranges, so large UTF-8 blobs can be reconstructed deterministically and admitted only after local `git hash-object` equals the pinned blob SHA;
-- focused SQLite reprobe of the exact pinned provider-receipt predicate denied post-cutoff NULL request ID, allowed a genuinely new non-NULL ID, and denied `INSERT OR REPLACE` collision;
-- this is focused semantic evidence only. No new LAB-086 full unittest/security/compile/conflict PASS is claimed because the entire byte-exact closure has not yet been reconstructed and executed.
+### LAB-099 fallback completed slice
+Prior retained evidence remains: 18-file frozen orchestration closure was byte-exact, compileall + fresh file-backed SQLite orchestration were GREEN, then exact six-case RED ran 6/6 failures solely because production `activation_reservation_provenance` was absent.
 
-Durable LAB-086 evidence:
-- `research/2026-09-13-lab086-executable-pin-and-focused-receipt-reprobe.md`, main commit `8d4a5d4061db2e3b6f789983f028ff5dc65817b5`;
-- #163 comment `5652187603` records the corrected executable pin, exact tree/blob observations, transport failure, and focused semantic reprobe.
-
-Retained LAB-099 evidence from the prior completed fallback slice:
-- all 18 frozen orchestration files were previously materialized byte-exact; compileall and fresh file-backed SQLite orchestration were GREEN with the frozen request/receipt/position/head identities and final durable verification;
-- exact LAB-099 RED then ran 6 tests / 6 failures solely because production module `experiments.provider_generation_history.activation_reservation_provenance` does not exist;
-- production LAB-099 is now allowed by its RED gate, but remains lower priority than LAB-086 and may not derive production authority from test-only vectors/witnesses.
+This run published the first production slice:
+- branch commit `d40aea8c48efe587b273650a3756ca782ba81472`;
+- new production file `experiments/provider_generation_history/activation_reservation_provenance.py`;
+- GitHub blob `1e642016c7f3fec258f0e2b7671b763d758f2ff4`, exactly equal to local `git hash-object`; local `py_compile` PASS;
+- production imports no `tests/lab099_*` authority;
+- implements exact precursor relation identity/DDL digest checking, cutover evidence/cardinality and digest->intent cross-binding, shared-anchor marker checks, read-only classifier, and fail-closed startup gate;
+- migration/resume API exists but intentionally remains fail-closed until authenticated PREPARED/CONFIRMED authority is derived from inherited LAB-092 state and existing production shared-anchor/provider-history primitives;
+- narrow exact-source SQLite classifier execution with inert import stubs produced `ABSENT`, `ORPHAN_UNAUTHENTICATED_SCHEMA`, and `CORRUPT_RELATION` for the expected three cases. This is not the full six-case repository GREEN.
+- #184 comment `5652416957`; PR #186 body updated to reflect production status.
 
 ## Known failures / blockers
-- LAB-086 exact complete real-ledger gate remains unexecuted.
-- Direct clone/network transport remains unavailable in the observed runtime; use the supported GitHub connector as source of exact pinned blobs and verify every reconstructed file locally by Git hash.
-- PR #165 remains draft and must not be integrated without the exact gate and fresh conflict audit.
+- LAB-086 exact complete real-ledger gate remains unexecuted because byte-exact connector->filesystem materialization is not available in this run; PR #165 remains draft.
+- Do not manually reconstruct/reformat LAB-086 source as a substitute for exact Git blob identity.
 - PRs #172/#173/#175/#177/#186 remain draft until their retained exact gates execute.
-- LAB-099 historical synthetic CONFIRMED head `c0..df` remains non-authoritative; exact CONFIRMED bridge and dynamic PREPARED fixture remain intentionally distinct authority layers.
+- LAB-099 migration/resume production authority is intentionally incomplete; test-only vectors, deterministic witness keys, prefix payloads, and historical synthetic `c0..df` head are not production authority.
 
 ## Exact next action
-LAB-086 first. Use executable pin `1f90830fca21e2f43fc241012cdd34fd187ba96d` as the only source snapshot. Reconstruct the manifest-listed implementation closure, every `test_*.py` under `experiments/asymmetric_break_glass_history/tests`, `unsafe_legacy_promotion_expected_failure.py`, the pinned LAB-085 helper used by LAB-086 integration fixtures, and all transitive experiment dependencies reached by those tests. Use connector `fetch_file` line ranges for large files where needed. Write into an isolated local tree and accept **no file** unless local `git hash-object` equals its pinned Git blob SHA.
+LAB-086 first on the next run: probe whether a supported byte-preserving connector/file materialization path exists. If it does, reconstruct only executable pin `1f90830fca21e2f43fc241012cdd34fd187ba96d`, require local `git hash-object` match for every manifest/test/helper/transitive file, then run all normal LAB-086 tests, unsafe expected-failure separately, downstream/helper tests, compileall, `*_for_test_only` source audit, security/reconciliation audit, and current-main conflict audit.
 
-Only after 100% closure hash match: run all normal LAB-086 tests from the pinned snapshot; run `unsafe_legacy_promotion_expected_failure.py` separately and require its intended failure; run downstream/helper tests and `python -m compileall`; source-audit `*_for_test_only`; then perform final security/reconciliation and current-main conflict audit. Fix every observed blocker before changing PR #165 draft/merge status.
-
-If a specific connector/API inconsistency prevents byte-exact reconstruction after reasonable line-ranged fallbacks, persist the exact missing path/blob and return to LAB-099 rather than weakening the LAB-086 gate. For LAB-099, derive the smallest production `activation_reservation_provenance` authority model independently of `tests/lab099_*` and let the observed six-case RED drive the next minimal implementation.
+If that exact materialization path is still unavailable, do not repeat manual source-transfer attempts. Resume LAB-099 production: source-audit LAB-092 durable completion/provenance and existing shared-anchor/provider-history primitives, then implement the smallest independent authenticated PREPARED migration authority in `activation_reservation_provenance.py`. Do not import or derive production authority from `tests/lab099_*`. After publication, rerun the exact six-case RED as soon as byte-exact executable closure is available; fix only observed failures, including any fixture-side gaps that were previously masked by the missing module.
 
 ## Backlog
-- #163 / LAB-086 — IN_PROGRESS; exact executable pin clarified as `1f90830...`, byte-exact complete gate pending.
+- #163 / LAB-086 — IN_PROGRESS; exact executable gate pending.
 - #167 / LAB-088 — IN_PROGRESS; supported/downstream execution pending.
 - #169 / LAB-090 — IN_PROGRESS; exact RED/GREEN pending.
 - #170 / LAB-091 — IN_PROGRESS; real-stack behavioral gates pending.
 - #176 / LAB-092 — IN_PROGRESS; exact RED/full gate pending.
 - #178..185 / LAB-093..100 — design/source follow-ups with executable gates pending.
-- #184 / LAB-099 — orchestration GREEN and first production RED observed; production implementation permitted by RED but behind LAB-086 priority.
+- #184 / LAB-099 — first production classifier/startup slice published; authenticated migration/resume next after LAB-086 probe.
