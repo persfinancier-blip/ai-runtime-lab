@@ -83,6 +83,15 @@ def _classify_locked(q: sqlite3.Connection) -> IdentityCustodyState:
     custody = _load_custody(q)
     if custody is None:
         return IdentityCustodyState.CORRUPT
+    try:
+        expected_payload_digest = identity_payload_digest(
+            nonce_hex=custody.nonce_hex,
+            bootstrap_generation_id=custody.bootstrap_generation_id,
+        )
+    except DatabaseIdentityError:
+        return IdentityCustodyState.CORRUPT
+    if custody.payload_digest != expected_payload_digest:
+        return IdentityCustodyState.CORRUPT
     intent = q.execute(
         """SELECT component_id,intent_type,payload_digest,provider_id,
                   provider_generation,position,request_id,status,receipt_binding
@@ -122,14 +131,17 @@ def _classify_locked(q: sqlite3.Connection) -> IdentityCustodyState:
         return IdentityCustodyState.CONFIRMED_NEEDS_FINALIZE
     if custody.status != "CONFIRMED":
         return IdentityCustodyState.CORRUPT
-    expected = confirmed_identity_digest(
-        payload_digest=custody.payload_digest,
-        provider_id=provider_id,
-        provider_generation=generation,
-        position=position,
-        request_id=request_id,
-        receipt_binding=receipt,
-    )
+    try:
+        expected = confirmed_identity_digest(
+            payload_digest=custody.payload_digest,
+            provider_id=provider_id,
+            provider_generation=generation,
+            position=position,
+            request_id=request_id,
+            receipt_binding=receipt,
+        )
+    except DatabaseIdentityError:
+        return IdentityCustodyState.CORRUPT
     if (
         custody.provider_id != provider_id
         or custody.provider_generation != generation
