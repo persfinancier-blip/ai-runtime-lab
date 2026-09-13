@@ -147,6 +147,9 @@ def execute_frozen_confirmed_orchestration(path: Path | str) -> dict[str, object
         raise ConfirmedOrchestrationError("provider receipt binding implementation drift")
     if stable_receipt != confirmed.REFERENCE_RECEIPT_BINDING:
         raise ConfirmedOrchestrationError("provider result does not reproduce frozen receipt")
+    stored_binding = witness.ledger.provider_history.store_receipt(receipt)
+    if stored_binding != confirmed.REFERENCE_RECEIPT_BINDING:
+        raise ConfirmedOrchestrationError("durable provider-history receipt binding drift")
 
     adapter.install_confirmed_event(
         path,
@@ -164,6 +167,8 @@ def execute_frozen_confirmed_orchestration(path: Path | str) -> dict[str, object
     head = storage.confirmed_head_digest(frozen_entry)
     if head != confirmed.REFERENCE_CONFIRMED_HEAD_DIGEST:
         raise ConfirmedOrchestrationError("frozen confirmed head drift")
+    if witness.ledger.verify_durable() is not True:
+        raise ConfirmedOrchestrationError("final historical ledger verification failed")
 
     return {
         "intent_id": intent_id,
