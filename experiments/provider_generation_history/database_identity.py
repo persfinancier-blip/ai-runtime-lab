@@ -231,6 +231,16 @@ def _load_custody(q: sqlite3.Connection) -> IdentityCustody | None:
     return IdentityCustody(*row)
 
 
+def _identity_intent_present(q: sqlite3.Connection) -> bool:
+    return (
+        q.execute(
+            "SELECT 1 FROM shared_anchor_intents WHERE intent_id=? LIMIT 1",
+            (IDENTITY_INTENT_ID,),
+        ).fetchone()
+        is not None
+    )
+
+
 def classify_identity_custody(path: str | Path) -> IdentityCustodyState:
     """Read-only fail-closed classifier for already-created custody schema."""
     path = Path(path)
@@ -244,18 +254,22 @@ def classify_identity_custody(path: str | Path) -> IdentityCustodyState:
             "SELECT type,sql FROM sqlite_master WHERE name=?",
             (_CUSTODY_TABLE,),
         ).fetchone()
-        if relation is None:
-            return IdentityCustodyState.ABSENT
-        if relation != ("table", _CUSTODY_STORED_DDL):
-            return IdentityCustodyState.CORRUPT
         anchor_relation = q.execute(
             "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
         ).fetchone()
+        if relation is None:
+            if anchor_relation == ("table",) and _identity_intent_present(q):
+                return IdentityCustodyState.CORRUPT
+            return IdentityCustodyState.ABSENT
+        if relation != ("table", _CUSTODY_STORED_DDL):
+            return IdentityCustodyState.CORRUPT
         if anchor_relation != ("table",):
             return IdentityCustodyState.CORRUPT
 
         rows = q.execute(f"SELECT COUNT(*) FROM {_CUSTODY_TABLE}").fetchone()[0]
         if rows == 0:
+            if _identity_intent_present(q):
+                return IdentityCustodyState.CORRUPT
             return IdentityCustodyState.ABSENT
         if rows != 1:
             return IdentityCustodyState.CORRUPT
