@@ -51,6 +51,14 @@ class _History:
             q.close()
         return current
 
+    def _verify_durable_locked(self, q):
+        row = q.execute(
+            "SELECT generation FROM provider_generation_head WHERE singleton=1"
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("missing provider generation head")
+        return _Current(generation=row[0])
+
 
 class _Ledger:
     def __init__(self, path: Path, *, fail_after_confirm_once: bool = False):
@@ -217,7 +225,7 @@ class DatabaseIdentityMigrationTests(unittest.TestCase):
             _init_database(path)
             with self.assertRaisesRegex(
                 DatabaseIdentityMigrationError,
-                "provider history generation changed",
+                "provider history changed under migration lock",
             ):
                 prepare_database_identity(
                     _Ledger(path),
