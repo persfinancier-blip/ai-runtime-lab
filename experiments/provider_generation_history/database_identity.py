@@ -258,6 +258,8 @@ def classify_identity_custody(path: str | Path) -> IdentityCustodyState:
             "SELECT type FROM sqlite_master WHERE name='shared_anchor_intents'"
         ).fetchone()
         if relation is None:
+            if anchor_relation is not None and anchor_relation != ("table",):
+                return IdentityCustodyState.CORRUPT
             if anchor_relation == ("table",) and _identity_intent_present(q):
                 return IdentityCustodyState.CORRUPT
             return IdentityCustodyState.ABSENT
