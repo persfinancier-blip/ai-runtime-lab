@@ -15,6 +15,7 @@ from experiments.provider_generation_history.database_identity_migration import 
     migrate_database_identity,
     prepare_database_identity,
 )
+from experiments.shared_anchor_intent_ledger.protocol import LedgerEntry
 
 
 _BOOTSTRAP = "b" * 64
@@ -88,10 +89,18 @@ class _Ledger:
                 (_RECEIPT, intent.intent_id),
             )
         q.commit()
+        entry_row = q.execute(
+            """SELECT intent_id,component_id,intent_type,payload_digest,provider_id,
+                      provider_generation,predecessor_position,position,request_id,
+                      status,receipt_binding
+               FROM shared_anchor_intents WHERE intent_id=?""",
+            (intent.intent_id,),
+        ).fetchone()
         q.close()
         if self.fail_after_confirm_once and not self.failed:
             self.failed = True
             raise RuntimeError("simulated timeout after confirmation")
+        return LedgerEntry(*entry_row)
 
 
 def _init_database(path: Path):
