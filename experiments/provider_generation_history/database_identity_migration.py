@@ -262,29 +262,87 @@ def prepare_database_identity(ledger, history) -> IdentityCustodyState:
         q.close()
 
 
-def _finalize_confirmed(path: str) -> str:
+def _authenticated_entry_tuple(entry):
+    try:
+        return (
+            entry.intent_id,
+            entry.component_id,
+            entry.intent_type,
+            entry.payload_digest,
+            entry.provider_id,
+            entry.provider_generation,
+            entry.predecessor_position,
+            entry.position,
+            entry.request_id,
+            entry.status,
+            entry.receipt_binding,
+        )
+    except AttributeError as exc:
+        raise DatabaseIdentityMigrationError(
+            "ledger execute did not return an authenticated confirmed entry"
+        ) from exc
+
+
+def _finalize_confirmed(path: str, authenticated_entry) -> str:
+    authenticated = _authenticated_entry_tuple(authenticated_entry)
+    if authenticated[9] != "CONFIRMED":
+        raise DatabaseIdentityMigrationError(
+            "ledger execute did not return an authenticated confirmed entry"
+        )
+
     q = _connect(path)
     try:
         q.execute("BEGIN IMMEDIATE")
         install_custody_schema(q)
         state = _classify_locked(q)
-        if state is IdentityCustodyState.COMPLETE:
-            custody = _load_custody(q)
-            q.commit()
-            return custody.logical_database_identity_digest
-        if state is not IdentityCustodyState.CONFIRMED_NEEDS_FINALIZE:
+        if state not in {
+            IdentityCustodyState.CONFIRMED_NEEDS_FINALIZE,
+            IdentityCustodyState.COMPLETE,
+        }:
             raise DatabaseIdentityMigrationError(
                 f"cannot finalize identity from state {state.value}"
             )
         custody = _load_custody(q)
         row = q.execute(
-            """SELECT provider_id,provider_generation,position,request_id,receipt_binding
-               FROM shared_anchor_intents WHERE intent_id=? AND status='CONFIRMED'""",
+            """SELECT intent_id,component_id,intent_type,payload_digest,provider_id,
+                      provider_generation,predecessor_position,position,request_id,
+                      status,receipt_binding
+               FROM shared_anchor_intents WHERE intent_id=?""",
             (IDENTITY_INTENT_ID,),
         ).fetchone()
         if row is None:
             raise DatabaseIdentityMigrationError("confirmed identity intent missing")
-        provider_id, generation, position, request_id, receipt = row
+        if row != authenticated:
+            raise DatabaseIdentityMigrationError(
+                "confirmed identity intent changed after authentication"
+            )
+        (
+            intent_id,
+            component_id,
+            intent_type,
+            payload_digest,
+            provider_id,
+            generation,
+            predecessor_position,
+            position,
+            request_id,
+            status,
+            receipt,
+        ) = row
+        if (
+            intent_id != IDENTITY_INTENT_ID
+            or component_id != IDENTITY_COMPONENT
+            or intent_type != "migration"
+            or payload_digest != custody.payload_digest
+            or request_id != custody.intent_request_id
+            or status != "CONFIRMED"
+        ):
+            raise DatabaseIdentityMigrationError(
+                "confirmed identity intent changed after authentication"
+            )
+        if state is IdentityCustodyState.COMPLETE:
+            q.commit()
+            return custody.logical_database_identity_digest
         digest = confirmed_identity_digest(
             payload_digest=custody.payload_digest,
             provider_id=provider_id,
@@ -321,6 +379,9 @@ def migrate_database_identity(ledger, history, *, timeout_after_commit: bool = F
     A retry after UNKNOWN or process crash reconstructs the Intent from persisted
     custody. SharedAnchorLedger.execute() therefore reconciles the same durable
     request and reauthenticates already-CONFIRMED evidence before finalization.
+    The exact CONFIRMED entry returned by that authenticated operation is then
+    required to remain byte-for-byte authoritative through the final local
+    writer transaction.
     """
     path = _require_same_database(ledger, history)
     state = prepare_database_identity(ledger, history)
@@ -341,5 +402,7 @@ def migrate_database_identity(ledger, history, *, timeout_after_commit: bool = F
     finally:
         q.close()
 
-    ledger.execute(intent, timeout_after_commit=timeout_after_commit)
-    return _finalize_confirmed(path)
+    authenticated_entry = ledger.execute(
+        intent, timeout_after_commit=timeout_after_commit
+    )
+    return _finalize_confirmed(path, authenticated_entry)
