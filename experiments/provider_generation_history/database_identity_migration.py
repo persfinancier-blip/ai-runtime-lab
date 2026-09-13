@@ -133,41 +133,38 @@ def _classify_locked(q: sqlite3.Connection) -> IdentityCustodyState:
     return IdentityCustodyState.COMPLETE
 
 
+def _authority_tuple(value):
+    return (value.provider_id, value.generation)
+
+
 def prepare_database_identity(ledger, history) -> IdentityCustodyState:
     """Atomically create custody and the one PREPARED identity reservation.
 
-    Nonce generation occurs only while holding BEGIN IMMEDIATE after re-reading
-    the persisted state. Existing PREPARED/confirmed work is never replaced.
+    The full provider-history verifier runs on the same SQLite connection while
+    BEGIN IMMEDIATE is held, before custody schema creation, nonce generation, or
+    shared-anchor mutation. Existing PREPARED/confirmed work is never replaced.
     """
     path = _require_same_database(ledger, history)
     history.verify_durable()
     current = history.current()
-    provider_id, generation = ledger._provider()
-    if (current.provider_id, current.generation) != (provider_id, generation):
+    runtime_authority = ledger._provider()
+    if _authority_tuple(current) != runtime_authority:
         raise DatabaseIdentityMigrationError("ledger/history provider generation mismatch")
 
     q = _connect(path)
     try:
         q.execute("BEGIN IMMEDIATE")
+
+        # Security boundary: re-run the complete durable-history verifier while
+        # holding the same writer lock used for migration. Do this before any
+        # custody DDL/DML so corrupt history leaves zero migration mutation.
+        locked_current = history._verify_durable_locked(q)
+        if _authority_tuple(locked_current) != _authority_tuple(current):
+            raise DatabaseIdentityMigrationError("provider history changed under migration lock")
+        if _authority_tuple(locked_current) != runtime_authority:
+            raise DatabaseIdentityMigrationError("runtime provider changed under migration lock")
+
         install_custody_schema(q)
-        head = q.execute(
-            "SELECT generation_id,generation FROM provider_generation_head WHERE singleton=1"
-        ).fetchone()
-        bootstrap = q.execute(
-            "SELECT generation_id FROM provider_generations ORDER BY generation LIMIT 1"
-        ).fetchone()
-        if head is None or bootstrap is None:
-            raise DatabaseIdentityMigrationError("provider history metadata missing")
-        if bootstrap[0] != history.bootstrap.generation_id:
-            raise DatabaseIdentityMigrationError("provider history bootstrap changed")
-        if head[1] != generation:
-            raise DatabaseIdentityMigrationError("provider history generation changed")
-        head_provider = q.execute(
-            "SELECT provider_id FROM provider_generations WHERE generation_id=?",
-            (head[0],),
-        ).fetchone()
-        if head_provider != (provider_id,):
-            raise DatabaseIdentityMigrationError("provider history head changed")
         state = _classify_locked(q)
         if state is not IdentityCustodyState.ABSENT:
             if state is IdentityCustodyState.CORRUPT:
@@ -211,8 +208,8 @@ def prepare_database_identity(ledger, history) -> IdentityCustodyState:
                 IDENTITY_COMPONENT,
                 "migration",
                 payload_digest,
-                provider_id,
-                generation,
+                locked_current.provider_id,
+                locked_current.generation,
                 predecessor,
                 position,
                 request_id,
