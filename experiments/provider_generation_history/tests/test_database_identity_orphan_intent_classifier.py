@@ -82,6 +82,18 @@ class LAB095PublicClassifierOrphanIntentTests(unittest.TestCase):
                 dbid.IdentityCustodyState.CORRUPT,
             )
 
+    def test_orphan_identity_intent_without_custody_relation_is_corrupt(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "no-custody-relation.sqlite"
+            q = sqlite3.connect(path, isolation_level=None)
+            self._create_anchor_table(q)
+            self._insert_orphan(q, status="PREPARED")
+            q.close()
+            self.assertEqual(
+                dbid.classify_identity_custody(path),
+                dbid.IdentityCustodyState.CORRUPT,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
