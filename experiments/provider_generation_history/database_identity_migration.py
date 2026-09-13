@@ -69,7 +69,15 @@ def _classify_locked(q: sqlite3.Connection) -> IdentityCustodyState:
         return IdentityCustodyState.CORRUPT
     rows = q.execute(f"SELECT COUNT(*) FROM {_CUSTODY_TABLE}").fetchone()[0]
     if rows == 0:
-        return IdentityCustodyState.ABSENT
+        orphan_intent = q.execute(
+            "SELECT 1 FROM shared_anchor_intents WHERE intent_id=?",
+            (IDENTITY_INTENT_ID,),
+        ).fetchone()
+        return (
+            IdentityCustodyState.CORRUPT
+            if orphan_intent is not None
+            else IdentityCustodyState.ABSENT
+        )
     if rows != 1:
         return IdentityCustodyState.CORRUPT
     custody = _load_custody(q)
