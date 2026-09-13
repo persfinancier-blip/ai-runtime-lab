@@ -94,6 +94,19 @@ class LAB095PublicClassifierOrphanIntentTests(unittest.TestCase):
                 dbid.IdentityCustodyState.CORRUPT,
             )
 
+    def test_malformed_anchor_relation_without_custody_is_corrupt(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "anchor-view.sqlite"
+            q = sqlite3.connect(path, isolation_level=None)
+            q.execute(
+                "CREATE VIEW shared_anchor_intents AS SELECT 'fake' AS intent_id"
+            )
+            q.close()
+            self.assertEqual(
+                dbid.classify_identity_custody(path),
+                dbid.IdentityCustodyState.CORRUPT,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
