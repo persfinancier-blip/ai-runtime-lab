@@ -14,6 +14,7 @@ from experiments.anchor_attestation.protocol import (
 )
 from experiments.provider_generation_history.protocol import GenerationDescriptor
 from experiments.provider_generation_history.supported import (
+    CoordinatorOnlyProviderHistory,
     SupportedHistoricalSharedAnchorLedger,
 )
 from experiments.shared_anchor_intent_ledger.protocol import Intent
@@ -101,6 +102,49 @@ class DatabasePathBindingTests(unittest.TestCase):
                 self.assertIsNone(
                     q.execute(
                         "SELECT 1 FROM shared_anchor_intents WHERE intent_id='a-2'"
+                    ).fetchone()
+                )
+            finally:
+                q.close()
+
+    def test_legitimate_db_b_history_object_cannot_replace_construction_bound_strategy(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            db_a = root / "a.sqlite"
+            db_b = root / "b.sqlite"
+
+            provider = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
+            ledger = SupportedHistoricalSharedAnchorLedger(
+                db_a, attested(provider, 1, self.k1), self.g1
+            )
+            original = ledger.provider_history
+            replacement = CoordinatorOnlyProviderHistory(db_b, self.g1)
+
+            with self.assertRaisesRegex(AttributeError, "construction-bound"):
+                ledger.provider_history = replacement
+            with self.assertRaisesRegex(AttributeError, "construction-bound"):
+                ledger._provider_history = replacement
+
+            self.assertIs(ledger.provider_history, original)
+            self.assertEqual(Path(ledger.provider_history.path), db_a.resolve())
+            self.assertEqual(Path(replacement.path), db_b.resolve())
+
+            confirmed = ledger.execute(
+                Intent("a-1", "component-A", "migration", {"v": 1})
+            )
+            self.assertEqual((confirmed.status, confirmed.position), ("CONFIRMED", 1))
+
+            q = sqlite3.connect(db_b)
+            try:
+                self.assertEqual(
+                    q.execute(
+                        "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
+                    ).fetchone()[0],
+                    0,
+                )
+                self.assertIsNone(
+                    q.execute(
+                        "SELECT 1 FROM shared_anchor_intents WHERE intent_id='a-1'"
                     ).fetchone()
                 )
             finally:
