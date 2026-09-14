@@ -137,14 +137,61 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             raise IntentSubstitution("historical receipt does not bind exact ledger entry")
         return receipt
 
-    def _store_receipt(self, receipt: HistoricalReceipt):
-        """Persist receipt through the construction-bound coordinator strategy.
+    def _guard_receipt_persistence_locked(self, q):
+        """Fail-closed extension point immediately before receipt mutation.
 
-        This ledger-owned hook is intentionally private. Security layers that need a
-        last-moment fail-closed guard before receipt mutation can override the hook
-        without replacing or exposing the provider-history strategy itself.
+        The hook runs inside the same ``BEGIN IMMEDIATE`` transaction as the receipt
+        verification and insert. Security layers such as LAB-092 may inspect durable
+        provenance through ``q`` without replacing or exposing the private history
+        strategy and without opening a check/use race between guard and persistence.
         """
-        return self._history().store_receipt(receipt)
+        return None
+
+    def _store_receipt(self, receipt: HistoricalReceipt):
+        """Persist a receipt under ledger-owned, same-transaction authority."""
+        q = self._con()
+        try:
+            q.execute("BEGIN IMMEDIATE")
+            self._guard_receipt_persistence_locked(q)
+            self._history()._verify_receipt_locked(q, receipt)
+            existing = q.execute(
+                "SELECT provider_id,generation,position,kind,challenge,signature,stable_binding "
+                "FROM historical_provider_receipts WHERE request_id=?",
+                (receipt.request_id,),
+            ).fetchone()
+            expected = (
+                receipt.provider_id,
+                receipt.generation,
+                receipt.position,
+                receipt.kind,
+                receipt.challenge,
+                receipt.signature,
+                receipt.stable_binding,
+            )
+            if existing is not None and existing != expected:
+                raise HistoricalVerificationError("request receipt substitution")
+            if existing is None:
+                q.execute(
+                    "INSERT INTO historical_provider_receipts VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        receipt.request_id,
+                        receipt.provider_id,
+                        receipt.generation,
+                        receipt.position,
+                        receipt.kind,
+                        receipt.challenge,
+                        receipt.signature,
+                        receipt.stable_binding,
+                    ),
+                )
+            q.commit()
+            return receipt.stable_binding
+        except:
+            if q.in_transaction:
+                q.rollback()
+            raise
+        finally:
+            q.close()
 
     def _reauthenticate(self, entry: LedgerEntry):
         stored = self._stored_receipt(entry)
