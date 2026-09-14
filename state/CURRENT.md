@@ -7,43 +7,43 @@ LAB-086 remains priority #1: finish the exact executable/security gate for asymm
 
 ## Active issue / branch / PR
 - Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165. Keep draft.
-- LAB-095: #180 / branch `lab-095-database-identity-red-intent` / draft PR #187, head `d022656ceac70700009d302de9d26ad47190b0f6`, mergeable=true. Keep draft.
+- LAB-095: #180 / branch `lab-095-database-identity-red-intent` / draft PR #187, head `473185a0278a3ff3777dfe578be018c33018e415`, mergeable=true. Keep draft.
 - LAB-099: #184 / draft PR #186; PREPARED authority remains blocked on LAB-095.
 - Retained drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173; LAB-090/#169 PR #175; LAB-092/#176 PR #177.
 
 ## Last completed step
-Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected LAB-086 #163/PR #165 and LAB-095 #180/PR #187.
+Re-read `AGENTS.md`, this handoff and `prompts/SELF_RESUME.md`; inspected open issues plus PR #187 and its committed LAB-095 recovery/authentication regressions.
 
-LAB-086 was probed first. The GitHub connector can now read the recursive tree for exact executable commit `1f90830fca21e2f43fc241012cdd34fd187ba96d`, but the shell execution environment still cannot resolve `github.com`; direct clone again failed before repository execution with `Could not resolve host: github.com`, exit 128. The connector does not provide a supported byte-stream/materialize operation into the executable filesystem for the full 50+ file closure, so the full exact gate remains unexecuted. No byte-exact requirement was weakened and no new LAB-086 PASS is claimed.
+LAB-086 was probed first. Shell/Python network access to GitHub/raw GitHub still fails DNS resolution. The GitHub connector can read exact files/tree metadata but no supported connector-byte -> executable-filesystem bridge was observed. The raw-download helper requires a web-opened URL while web access to the exact raw GitHub URL is disabled. No byte-exact requirement was weakened and no new LAB-086 PASS is claimed.
 
-### LAB-095 confirmed-finalize authentication binding — production fixed
-The previously committed RED showed that `SharedAnchorLedger.execute()` externally reauthenticates and returns a CONFIRMED `LedgerEntry`, but LAB-095 discarded it and later finalized from a fresh SQLite read. A same-host writer could replace authority-bearing fields after reauthentication but before local custody finalization.
+### LAB-095 COMPLETE-state external reauthentication bypass — production fixed
+A fresh audit found that the prior authenticated-finalize fix was bypassed when local custody was already `COMPLETE`: `migrate_database_identity()` returned `logical_database_identity_digest` immediately after `prepare_database_identity()` and never called `SharedAnchorLedger.execute()`. Therefore repeated migration/startup verification could trust same-DB local state without reauthenticating the external CONFIRMED receipt.
 
-PR #187 now retains the exact CONFIRMED entry and passes it into `_finalize_confirmed()`. Under the final `BEGIN IMMEDIATE`, the implementation rereads and compares all 11 durable intent fields (intent/component/type/payload/provider/generation/predecessor/position/request/status/receipt) against that authenticated snapshot before any custody mutation. Any drift raises `DatabaseIdentityMigrationError("confirmed identity intent changed after authentication")`. COMPLETE state also requires the same snapshot equality and cannot bypass this binding.
+Regression-first commit `86766045eceddc754bc495a345d371a0edbee227` adds `red_intent_lab095_complete_reauthentication.py`: first migration succeeds; every later `ledger.execute()` fails; a second migration must surface that failure rather than returning the local digest.
 
-Production commit: `f958719e9108b9d2011fcebfd5500edead854494`; test-helper API alignment commit/head: `d022656ceac70700009d302de9d26ad47190b0f6`; production blob after re-fetch: `3292c0aacaf564416cb336a95ccf9229963dd738`.
+Production commit `473185a0278a3ff3777dfe578be018c33018e415` removes the COMPLETE early return. All installed non-corrupt states now reload custody, reconstruct the exact identity intent, call `ledger.execute()`, and pass the returned authenticated CONFIRMED entry into `_finalize_confirmed()`. Under its final `BEGIN IMMEDIATE`, exact durable-row equality with that authenticated snapshot remains mandatory before returning/finalizing identity. Published production blob: `c4d1db46b8b64fec116dcfef8bb05e1e7a7b875e`.
 
 Executed evidence this run:
-- focused file-backed SQLite guard accepted an unchanged authenticated tuple;
-- after changing provider id/generation/position/receipt, the same guard rejected finalization with the required error — PASS;
-- GitHub compare from prior head `e3d4821f...` to `d022656c...` shows only production migration code plus its migration-test helper changed.
+- focused semantic control-flow probe proved the pre-fix COMPLETE path made zero execute calls and the corrected flow makes one — PASS;
+- re-fetched PR #187 production lines after commit and verified the COMPLETE early return is absent and `ledger.execute()` is unconditional after custody reconstruction — PASS;
+- PR #187 re-fetched at head `473185a...`, draft, mergeable=true.
 
-Durable report: `research/2026-09-14-lab095-authenticated-finalize-binding-fix.md`, main commit `66b53a907f8aa66e4b923706153d145c87bb2dca`; #180 comment `5656944532`; PR #187 comment `5656946512`.
+Durable report: `research/2026-09-14-lab095-complete-state-reauthentication-fix.md`, main commit `a114771a80a398949c36b0822e2e19f24c821273`; #180 comment `5657335683`; PR #187 comment `5657336223`.
 
-Earlier LAB-095 production remains on PR #187: logical identity/custody classifier; explicit CSPRNG/BEGIN IMMEDIATE migration/recovery; same-request reconciliation; under-lock full provider-history verification; construction-bound physical path binding; DB-A -> DB-B regression; crash/concurrent/legacy recovery regressions; public/locked orphan and custody-payload tamper hardening.
+Earlier LAB-095 production remains on PR #187: logical identity/custody classifier; explicit CSPRNG/BEGIN IMMEDIATE migration/recovery; same-request reconciliation; under-lock full provider-history verification; construction-bound physical path binding; DB-A -> DB-B regression; crash/concurrent/legacy recovery regressions; public/locked orphan and custody-payload tamper hardening; confirmed-finalize authenticated-snapshot binding.
 
 ## Known failures / blockers
-- LAB-086 exact complete real-ledger gate remains unexecuted. Connector can read the exact tree, but no observed supported path transfers the complete pinned byte set into the executable filesystem; shell/raw GitHub DNS remains unavailable.
+- LAB-086 exact complete real-ledger gate remains unexecuted. Connector can read exact repository data, but no observed supported path transfers the complete pinned byte set into the executable filesystem; shell/raw GitHub DNS remains unavailable.
 - PRs #165/#172/#173/#175/#177/#186/#187 remain draft until retained exact gates execute.
-- LAB-095 full exact recovery/tamper suite, DB-A/B regression and downstream LAB-080/LAB-081/LAB-090/LAB-092 gates remain unexecuted.
+- The new COMPLETE-state regression plus LAB-095 confirmed-finalize/recovery/tamper suite, DB-A/B regression and downstream LAB-080/LAB-081/LAB-090/LAB-092 gates remain unexecuted against a complete byte-exact closure.
 - LAB-090/LAB-095 `supported.py` conflict resolution is security-sensitive: preserve `CanonicalDatabaseBinding` on both supported ledger/history MROs.
 - LAB-094 bootstrap authority and LAB-096 provider-history strategy authority remain distinct follow-ups.
 
 ## Exact next action
-LAB-086 first: probe for a supported byte-preserving path that can materialize connector-read exact blobs into the executable filesystem. If such a path appears, reconstruct only executable pin `1f90830fca21e2f43fc241012cdd34fd187ba96d`, verify every file with `git hash-object`, and run the retained full LAB-086 exact gate.
+LAB-086 first: probe again for a supported byte-preserving path that can materialize connector-read exact blobs into the executable filesystem. If such a path appears, reconstruct only executable pin `1f90830fca21e2f43fc241012cdd34fd187ba96d`, verify every file with `git hash-object`, and run the retained full LAB-086 exact gate.
 
 If that remains unavailable, continue LAB-095 on PR #187:
-1. execute the committed confirmed-finalize regression plus crash-before-commit, partial-state, concurrent-installer, legacy-prefix and locked-custody tamper regressions on the smallest safe byte-exact closure available;
+1. execute the committed COMPLETE-reauthentication + confirmed-finalize + crash-before-commit + orphan/partial + concurrent-installer + legacy-prefix + locked-custody-tamper regressions on the smallest safe byte-exact closure available;
 2. execute the committed DB-A -> DB-B lifetime-binding regression;
 3. run LAB-080/LAB-081/LAB-090/LAB-092 focused/downstream gates and a fresh conflict/security audit;
 4. keep PR #187 draft until those gates are actual GREEN evidence.
@@ -52,7 +52,7 @@ Never replace external authenticated authority with deterministic test vectors, 
 
 ## Backlog
 - #163 / LAB-086 — IN_PROGRESS; exact executable gate pending.
-- #180 / LAB-095 — IN_PROGRESS; confirmed-finalize TOCTOU production fix committed; full exact/downstream gates next.
+- #180 / LAB-095 — IN_PROGRESS; COMPLETE-state and confirmed-finalize external-authentication bypasses fixed; exact/downstream gates next.
 - #167 / LAB-088, #169 / LAB-090, #170 / LAB-091, #176 / LAB-092 — retained draft gates pending.
 - #178..185 / LAB-093..100 — remaining architecture/security follow-ups.
 - #184 / LAB-099 — PREPARED authority waits on LAB-095 completion.
