@@ -137,6 +137,15 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             raise IntentSubstitution("historical receipt does not bind exact ledger entry")
         return receipt
 
+    def _store_receipt(self, receipt: HistoricalReceipt):
+        """Persist receipt through the construction-bound coordinator strategy.
+
+        This ledger-owned hook is intentionally private. Security layers that need a
+        last-moment fail-closed guard before receipt mutation can override the hook
+        without replacing or exposing the provider-history strategy itself.
+        """
+        return self._history().store_receipt(receipt)
+
     def _reauthenticate(self, entry: LedgerEntry):
         stored = self._stored_receipt(entry)
         if stored is not None:
@@ -170,7 +179,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             verified.challenge,
             verified.mac,
         )
-        binding = self._history().store_receipt(receipt)
+        binding = self._store_receipt(receipt)
         if binding != self._stable_receipt(verified):
             raise IntentSubstitution("historical receipt identity mismatch")
         return binding
