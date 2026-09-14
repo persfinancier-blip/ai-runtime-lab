@@ -16,6 +16,42 @@ from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution,
 from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
 
 
+class ProviderHistoryInspectionView:
+    """Read-only public inspection surface for a bound provider-history strategy.
+
+    The live coordinator strategy remains private to the supported ledger. This view
+    intentionally omits connection access, receipt storage, rotation, and all locked
+    helpers so delegating a ledger does not also delegate coordinator mutation power.
+    """
+
+    __slots__ = ("__history",)
+
+    def __init__(self, history: "CoordinatorOnlyProviderHistory"):
+        object.__setattr__(self, "_ProviderHistoryInspectionView__history", history)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("provider history inspection view is immutable")
+
+    def current(self):
+        return self.__history.current()
+
+    def verify_durable(self):
+        return self.__history.verify_durable()
+
+    def load_receipt(self, request_id):
+        return self.__history.load_receipt(request_id)
+
+    def verify_receipt(self, receipt: HistoricalReceipt):
+        return self.__history.verify_receipt(receipt)
+
+    def require_current(self, provider_id, generation):
+        return self.__history.require_current(provider_id, generation)
+
+    @staticmethod
+    def make_transition(old: GenerationDescriptor, new: GenerationDescriptor):
+        return IntegratedProviderHistory.make_transition(old, new)
+
+
 class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProviderHistory):
     """Provider history whose authority-changing API is only the shared-ledger coordinator."""
 
@@ -35,9 +71,10 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
     Provider-generation mutation is coordinator-only so a caller cannot bypass the
     shared LAB-080 PREPARED check by invoking the standalone history API directly.
 
-    The provider-history strategy is construction-bound. Existing callers may inspect
-    ``provider_history`` for compatibility, but neither that public alias nor the
-    private source-of-truth slot can be rebound after construction.
+    The provider-history strategy is construction-bound private state. Existing callers
+    may inspect ``provider_history`` for compatibility, but receive only a read-only
+    least-capability view with no connection, locked-helper, receipt-mutation, or
+    rotation authority.
     """
 
     _PROVIDER_HISTORY_SLOT = "_provider_history"
@@ -50,11 +87,12 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         super().__setattr__(name, value)
 
     @property
-    def provider_history(self) -> CoordinatorOnlyProviderHistory:
+    def provider_history(self) -> ProviderHistoryInspectionView:
         try:
-            return object.__getattribute__(self, self._PROVIDER_HISTORY_SLOT)
+            history = object.__getattribute__(self, self._PROVIDER_HISTORY_SLOT)
         except AttributeError as exc:
             raise AttributeError("provider history strategy is not initialized") from exc
+        return ProviderHistoryInspectionView(history)
 
     @provider_history.setter
     def provider_history(self, value: CoordinatorOnlyProviderHistory) -> None:
@@ -82,7 +120,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             if row is None:
                 q.commit()
                 return None
-            receipt = self.provider_history._load_receipt_locked(q, entry.request_id)
+            receipt = self._history()._load_receipt_locked(q, entry.request_id)
             q.commit()
         except:
             if q.in_transaction:
@@ -104,7 +142,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         if stored is not None:
             return stored.stable_binding
 
-        durable = self.provider_history.current()
+        durable = self._history().current()
         if (entry.provider_id, entry.provider_generation) != (
             durable.provider_id,
             durable.generation,
@@ -132,7 +170,7 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
             verified.challenge,
             verified.mac,
         )
-        binding = self.provider_history.store_receipt(receipt)
+        binding = self._history().store_receipt(receipt)
         if binding != self._stable_receipt(verified):
             raise IntentSubstitution("historical receipt identity mismatch")
         return binding
