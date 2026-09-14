@@ -10,10 +10,7 @@ from experiments.anchor_attestation.protocol import (
     ProviderIdentity,
     SignedAnchorProvider,
 )
-from experiments.provider_generation_history.protocol import (
-    GenerationDescriptor,
-    PendingRotationBlocked,
-)
+from experiments.provider_generation_history.protocol import GenerationDescriptor
 from experiments.provider_generation_history.supported import (
     SupportedHistoricalSharedAnchorLedger,
 )
@@ -32,8 +29,8 @@ def attested(provider, generation: int, key: bytes) -> AttestedCatchup:
 
 
 class ProviderHistoryCapabilitySurfaceTests(unittest.TestCase):
-    def test_public_history_alias_cannot_drive_locked_rotation(self):
-        """Delegating the supported ledger must not leak coordinator mutation helpers."""
+    def test_public_history_view_cannot_recover_coordinator_mutation_surface(self):
+        """Delegating the supported ledger must not delegate history mutation helpers."""
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "ledger.sqlite"
             k1 = b"provider-key-1"
@@ -48,19 +45,34 @@ class ProviderHistoryCapabilitySurfaceTests(unittest.TestCase):
                 g1,
             )
 
-            # The supported public history surface intentionally blocks rotate().
-            with self.assertRaises(PendingRotationBlocked):
-                ledger.provider_history.rotate(g2, ledger.provider_history.make_transition(g1, g2))
-
-            # It must also be impossible to recover the live coordinator-only strategy
-            # from the public alias and invoke its transaction-internal rotation helper.
-            # Pre-fix, provider_history exposes the exact live strategy and this call
-            # durably advances the history head without rotate_provider().
             history = ledger.provider_history
+            self.assertEqual(history.current().generation, 1)
+            self.assertEqual(history.make_transition(g1, g2).new_generation_id, g2.generation_id)
+
+            # The public object is an inspection view, not the live strategy.
+            for forbidden in (
+                "rotate",
+                "_rotate_locked",
+                "_current_locked",
+                "_verify_durable_locked",
+                "_load_receipt_locked",
+                "store_receipt",
+                "_con",
+                "path",
+                "bootstrap",
+            ):
+                with self.assertRaises(AttributeError, msg=forbidden):
+                    getattr(history, forbidden)
+
+            with self.assertRaises(AttributeError):
+                history.extra_capability = object()
+
+            # A caller may still possess the ledger connection, but the delegated
+            # public history surface supplies no locked mutation primitive to pair it with.
             q = ledger._con()
             try:
                 q.execute("BEGIN IMMEDIATE")
-                with self.assertRaises((AttributeError, PendingRotationBlocked)):
+                with self.assertRaises(AttributeError):
                     history._rotate_locked(q, g2, history.make_transition(g1, g2))
                 q.rollback()
             finally:
