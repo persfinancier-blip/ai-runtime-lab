@@ -379,19 +379,13 @@ def migrate_database_identity(ledger, history, *, timeout_after_commit: bool = F
     A retry after UNKNOWN or process crash reconstructs the Intent from persisted
     custody. SharedAnchorLedger.execute() therefore reconciles the same durable
     request and reauthenticates already-CONFIRMED evidence before finalization.
-    The exact CONFIRMED entry returned by that authenticated operation is then
-    required to remain byte-for-byte authoritative through the final local
-    writer transaction.
+    COMPLETE local custody is also reauthenticated; it is not external authority
+    by itself. The exact CONFIRMED entry returned by that authenticated operation
+    must remain byte-for-byte authoritative through the final local writer
+    transaction.
     """
     path = _require_same_database(ledger, history)
-    state = prepare_database_identity(ledger, history)
-    if state is IdentityCustodyState.COMPLETE:
-        q = _connect(path)
-        try:
-            custody = _load_custody(q)
-            return custody.logical_database_identity_digest
-        finally:
-            q.close()
+    prepare_database_identity(ledger, history)
 
     q = _connect(path)
     try:
