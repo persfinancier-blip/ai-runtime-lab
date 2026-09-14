@@ -34,7 +34,35 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
 
     Provider-generation mutation is coordinator-only so a caller cannot bypass the
     shared LAB-080 PREPARED check by invoking the standalone history API directly.
+
+    The provider-history strategy is construction-bound. Existing callers may inspect
+    ``provider_history`` for compatibility, but neither that public alias nor the
+    private source-of-truth slot can be rebound after construction.
     """
+
+    _PROVIDER_HISTORY_SLOT = "_provider_history"
+
+    def __setattr__(self, name, value):
+        if name in {"provider_history", self._PROVIDER_HISTORY_SLOT} and hasattr(
+            self, self._PROVIDER_HISTORY_SLOT
+        ):
+            raise AttributeError("provider history strategy is construction-bound")
+        super().__setattr__(name, value)
+
+    @property
+    def provider_history(self) -> CoordinatorOnlyProviderHistory:
+        try:
+            return object.__getattribute__(self, self._PROVIDER_HISTORY_SLOT)
+        except AttributeError as exc:
+            raise AttributeError("provider history strategy is not initialized") from exc
+
+    @provider_history.setter
+    def provider_history(self, value: CoordinatorOnlyProviderHistory) -> None:
+        if hasattr(self, self._PROVIDER_HISTORY_SLOT):
+            raise AttributeError("provider history strategy is construction-bound")
+        if type(value) is not CoordinatorOnlyProviderHistory:
+            raise TypeError("exact CoordinatorOnlyProviderHistory required")
+        object.__setattr__(self, self._PROVIDER_HISTORY_SLOT, value)
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
         if type(attested) is not AttestedCatchup:
