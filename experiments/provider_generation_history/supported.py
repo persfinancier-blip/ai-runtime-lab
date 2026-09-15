@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.database_binding import CanonicalDatabaseBinding
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_coordinator import ActivationCoordinatorMixin
+from experiments.provider_generation_history.activation_transition import ActivationTransitionMixin
 from experiments.provider_generation_history.integration import (
     HistoricalSharedAnchorLedger,
     IntegratedProviderHistory,
@@ -10,6 +13,7 @@ from experiments.provider_generation_history.protocol import (
     GenerationDescriptor,
     HistoricalReceipt,
     HistoricalVerificationError,
+    InvalidTransition,
     PendingRotationBlocked,
 )
 from experiments.shared_anchor_intent_ledger.protocol import IntentSubstitution, LedgerEntry, UnexplainedAdvance
@@ -17,12 +21,7 @@ from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnc
 
 
 class ProviderHistoryInspectionView:
-    """Read-only public inspection surface for a bound provider-history strategy.
-
-    The live coordinator strategy remains private to the supported ledger. This view
-    intentionally omits connection access, receipt storage, rotation, and all locked
-    helpers so delegating a ledger does not also delegate coordinator mutation power.
-    """
+    """Read-only public inspection surface for a bound provider-history strategy."""
 
     __slots__ = ("__history",)
 
@@ -61,21 +60,12 @@ class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProvide
         )
 
 
-class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
-    """Audited LAB-081 surface.
-
-    The first exact signed provider observation for a confirmed request is immutable
-    historical evidence. Later verification never replaces it with a new challenge;
-    current anchor freshness is established separately by LAB-080 authenticated reads.
-
-    Provider-generation mutation is coordinator-only so a caller cannot bypass the
-    shared LAB-080 PREPARED check by invoking the standalone history API directly.
-
-    The provider-history strategy is construction-bound private state. Existing callers
-    may inspect ``provider_history`` for compatibility, but receive only a read-only
-    least-capability view with no connection, locked-helper, receipt-mutation, or
-    rotation authority.
-    """
+class SupportedHistoricalSharedAnchorLedger(
+    ActivationTransitionMixin,
+    ActivationCoordinatorMixin,
+    HistoricalSharedAnchorLedger,
+):
+    """Audited LAB-081 surface with construction-bound history and LAB-090 fencing."""
 
     _PROVIDER_HISTORY_SLOT = "_provider_history"
 
@@ -109,6 +99,39 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         SupportedSharedAnchorLedger.__init__(self, path, attested)
         self._require_runtime_matches_durable_head()
 
+    def rotate_provider(self, new: GenerationDescriptor, proof, new_attested: AttestedCatchup):
+        """Rotate only through provider-owned exact-ticket fencing and durable acknowledgement."""
+        if type(new_attested) is not AttestedCatchup:
+            raise TypeError("exact LAB-036 AttestedCatchup required")
+        runtime_new = self._descriptor_from_attested(new_attested)
+        if runtime_new.generation_id != new.generation_id:
+            raise InvalidTransition("new runtime verifier does not match generation descriptor")
+        provider = new_attested.provider
+        if not isinstance(provider, FencedActivationProvider):
+            raise TypeError("LAB-090 rotation requires FencedActivationProvider")
+
+        existing = self._activation_row(generation_id=new.generation_id)
+        if existing is not None:
+            durable = self._history().current()
+            if new.generation_id != durable.generation_id:
+                raise InvalidTransition("activation retry is not durable current generation")
+            ticket = self._ticket_from_activation_row(existing)
+            if existing[6] == "SQL_COMMITTED":
+                self._commit_or_reconcile_activation(provider, ticket)
+            elif existing[6] == "COMMITTED":
+                self._release_committed_activation(provider, ticket)
+            else:
+                raise HistoricalVerificationError("invalid durable activation status")
+            self.attested = new_attested
+            self._require_runtime_matches_durable_head()
+            return new
+
+        ticket = self._preack_activation_transition(provider, new, proof)
+        self._commit_or_reconcile_activation(provider, ticket)
+        self.attested = new_attested
+        self._require_runtime_matches_durable_head()
+        return new
+
     def _stored_receipt(self, entry: LedgerEntry):
         q = self._con()
         try:
@@ -138,17 +161,9 @@ class SupportedHistoricalSharedAnchorLedger(HistoricalSharedAnchorLedger):
         return receipt
 
     def _guard_receipt_persistence_locked(self, q):
-        """Fail-closed extension point immediately before receipt mutation.
-
-        The hook runs inside the same ``BEGIN IMMEDIATE`` transaction as the receipt
-        verification and insert. Security layers such as LAB-092 may inspect durable
-        provenance through ``q`` without replacing or exposing the private history
-        strategy and without opening a check/use race between guard and persistence.
-        """
         return None
 
     def _store_receipt(self, receipt: HistoricalReceipt):
-        """Persist a receipt under ledger-owned, same-transaction authority."""
         q = self._con()
         try:
             q.execute("BEGIN IMMEDIATE")
