@@ -9,7 +9,10 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
+)
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_schema_migration import (
+    migrate_activation_schema_v1,
 )
 from experiments.provider_generation_history.database_identity_migration import (
     migrate_database_identity,
@@ -17,9 +20,6 @@ from experiments.provider_generation_history.database_identity_migration import 
 from experiments.provider_generation_history.protocol import (
     GenerationDescriptor,
     HistoricalVerificationError,
-)
-from experiments.provider_generation_history.supported import (
-    SupportedHistoricalSharedAnchorLedger,
 )
 
 
@@ -44,10 +44,9 @@ class DatabaseIdentityRotationReauthenticationTests(unittest.TestCase):
             g1 = _descriptor(1, k1)
             g2 = _descriptor(2, k2)
 
-            p1 = SignedAnchorProvider("anchor-A", 1, k1, value=0)
-            ledger = SupportedHistoricalSharedAnchorLedger(
-                path, _attested(p1, 1, k1), g1
-            )
+            p1 = FencedActivationProvider("anchor-A", 1, k1, value=0)
+            ledger = migrate_activation_schema_v1(path, _attested(p1, 1, k1), g1)
+            self.assertEqual(p1.value, 1)
             digest = migrate_database_identity(ledger, ledger.provider_history)
 
             q = sqlite3.connect(path)
@@ -63,9 +62,9 @@ class DatabaseIdentityRotationReauthenticationTests(unittest.TestCase):
                 (request_id,),
             ).fetchone()
             q.close()
-            self.assertEqual(receipt, ("anchor-A", 1, 1, request_id))
+            self.assertEqual(receipt, ("anchor-A", 1, 2, request_id))
 
-            p2 = SignedAnchorProvider("anchor-A", 2, k2, value=1)
+            p2 = FencedActivationProvider("anchor-A", 2, k2, value=2)
             ledger.rotate_provider(
                 g2,
                 ledger.provider_history.make_transition(g1, g2),
