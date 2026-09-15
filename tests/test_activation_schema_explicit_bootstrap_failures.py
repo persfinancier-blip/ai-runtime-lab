@@ -24,7 +24,7 @@ from experiments.provider_generation_history.protocol import (
     HistoricalVerificationError,
 )
 from experiments.provider_generation_history.supported import SupportedHistoricalSharedAnchorLedger
-from experiments.shared_anchor_intent_ledger.protocol import PendingIntent
+from experiments.shared_anchor_intent_ledger.protocol import Intent, PendingIntent
 
 
 def _runtime(generation=1, key=b"provider-key-1"):
@@ -60,7 +60,8 @@ def test_unrelated_prepared_intent_blocks_migration_without_consuming_tail(tmp_p
     path = tmp_path / "shared.db"
     _, attested, bootstrap = _runtime()
     legacy = _explicit_bootstrap_surface(path, attested, bootstrap)
-    unrelated = legacy.reserve("other", "component", "OTHER", "00" * 32)
+    unrelated = Intent("other", "component", "migration", {"purpose": "unrelated"})
+    reserved = legacy.reserve(unrelated)
 
     with pytest.raises(PendingIntent, match="another anchor intent"):
         install_and_reserve_activation_schema_v1(path, attested, bootstrap)
@@ -68,7 +69,7 @@ def test_unrelated_prepared_intent_blocks_migration_without_consuming_tail(tmp_p
     with sqlite3.connect(path) as q:
         assert q.execute(
             "SELECT status FROM shared_anchor_intents WHERE intent_id=?",
-            (unrelated.intent_id,),
+            (reserved.intent_id,),
         ).fetchone() == ("PREPARED",)
         assert q.execute(
             "SELECT COUNT(*) FROM shared_anchor_intents WHERE intent_id=?",
@@ -80,9 +81,17 @@ def test_stale_runtime_fails_before_activation_reservation(tmp_path):
     path = tmp_path / "shared.db"
     _, attested, bootstrap = _runtime()
     legacy = _explicit_bootstrap_surface(path, attested, bootstrap)
-    # Advance durable provider history while retaining the generation-1 runtime.
     key2 = b"provider-key-2"
-    legacy._history().rotate(GenerationDescriptor("anchor-A", 2, key2.hex()))
+    successor = GenerationDescriptor("anchor-A", 2, key2.hex())
+    history = legacy._history()
+    proof = history.make_transition(bootstrap, successor)
+    q = history._con()
+    try:
+        q.execute("BEGIN IMMEDIATE")
+        history._rotate_locked(q, successor, proof)
+        q.commit()
+    finally:
+        q.close()
 
     with pytest.raises(CurrentGenerationRequired):
         install_and_reserve_activation_schema_v1(path, attested, bootstrap)
