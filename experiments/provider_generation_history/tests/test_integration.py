@@ -53,24 +53,17 @@ class IntegrationTests(unittest.TestCase):
             p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
             a1 = attested(p1, 1, self.k1)
             ledger = self.migrate(path, a1)
-
-            # Explicit LAB-092 migration consumes position 1 before ordinary work.
             self.assertEqual(p1.value, 1)
             i1 = Intent("old", "component-A", "migration", {"v": 1})
             e1 = ledger.execute(i1)
             self.assertEqual((e1.status, e1.provider_generation, p1.value), ("CONFIRMED", 1, 2))
-
             p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=2)
             a2 = attested(p2, 2, self.k2)
-            ledger.rotate_provider(
-                self.g2, ledger.provider_history.make_transition(self.g1, self.g2), a2
-            )
+            ledger.rotate_provider(self.g2, ledger.provider_history.make_transition(self.g1, self.g2), a2)
             p1.available = False
-
             i2 = Intent("new", "component-A", "root_rotation", {"v": 2})
             e2 = ledger.execute(i2)
             self.assertEqual((e2.status, e2.provider_generation, p2.value), ("CONFIRMED", 2, 3))
-
             restarted = self.restart(path, a2)
             self.assertTrue(restarted.verify_durable())
             self.assertEqual(restarted.provider_history.load_receipt(e1.request_id).generation, 1)
@@ -84,11 +77,7 @@ class IntegrationTests(unittest.TestCase):
             p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
             ledger = self.migrate(path, attested(p1, 1, self.k1))
             p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=p1.value)
-            ledger.rotate_provider(
-                self.g2,
-                ledger.provider_history.make_transition(self.g1, self.g2),
-                attested(p2, 2, self.k2),
-            )
+            ledger.rotate_provider(self.g2, ledger.provider_history.make_transition(self.g1, self.g2), attested(p2, 2, self.k2))
             with self.assertRaises(CurrentGenerationRequired):
                 ledger.provider_history.require_current("anchor-A", 1)
 
@@ -99,9 +88,7 @@ class IntegrationTests(unittest.TestCase):
             ledger = self.migrate(path, attested(p1, 1, self.k1))
             ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
             with self.assertRaises(PendingRotationBlocked):
-                ledger.provider_history.rotate(
-                    self.g2, ledger.provider_history.make_transition(self.g1, self.g2)
-                )
+                ledger.provider_history.rotate(self.g2, ledger.provider_history.make_transition(self.g1, self.g2))
             self.assertEqual(ledger.provider_history.current().generation, 1)
 
     def test_prepared_intent_and_rotation_serialize_in_same_database(self):
@@ -111,15 +98,12 @@ class IntegrationTests(unittest.TestCase):
             ledger = self.migrate(path, attested(p1, 1, self.k1))
             entry = ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
             self.assertEqual(entry.status, "PREPARED")
-
-            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=entry.predecessor)
+            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=entry.predecessor_position)
             with self.assertRaises(PendingRotationBlocked):
-                ledger.rotate_provider(
-                    self.g2,
-                    ledger.provider_history.make_transition(self.g1, self.g2),
-                    attested(p2, 2, self.k2),
-                )
+                ledger.rotate_provider(self.g2, ledger.provider_history.make_transition(self.g1, self.g2), attested(p2, 2, self.k2))
             self.assertEqual(ledger.provider_history.current().generation, 1)
+            self.assertIsNone(p2.activation_state.pending)
+            self.assertEqual(p2.activation_state.committed, {})
 
     def test_reserve_vs_rotation_has_only_safe_serialized_outcomes(self):
         for _ in range(20):
@@ -146,11 +130,7 @@ class IntegrationTests(unittest.TestCase):
                 def rotate():
                     gate.wait()
                     try:
-                        ledger.rotate_provider(
-                            self.g2,
-                            ledger.provider_history.make_transition(self.g1, self.g2),
-                            a2,
-                        )
+                        ledger.rotate_provider(self.g2, ledger.provider_history.make_transition(self.g1, self.g2), a2)
                         result = ("rotate", "ok", 2)
                     except Exception as exc:
                         result = ("rotate", type(exc).__name__, None)
@@ -161,16 +141,21 @@ class IntegrationTests(unittest.TestCase):
                 t2 = threading.Thread(target=rotate)
                 t1.start(); t2.start(); gate.wait(); t1.join(5); t2.join(5)
                 self.assertFalse(t1.is_alive() or t2.is_alive())
-
                 current = ledger.provider_history.current().generation
-                entry = ledger.entry("r")
+                reserve_result = next(r for r in results if r[0] == "reserve")
                 if current == 2:
-                    self.assertEqual(entry.provider_generation, 2)
                     self.assertIn(("rotate", "ok", 2), results)
+                    self.assertEqual(reserve_result[1], "CurrentGenerationRequired")
+                    with self.assertRaises(Exception):
+                        ledger.entry("r")
+                    self.assertIsNone(p2.activation_state.pending)
                 else:
-                    self.assertEqual(current, 1)
+                    entry = ledger.entry("r")
                     self.assertEqual(entry.provider_generation, 1)
+                    self.assertEqual(reserve_result[1], "ok")
                     self.assertTrue(any(r[0] == "rotate" and r[1] == "PendingRotationBlocked" for r in results))
+                    self.assertIsNone(p2.activation_state.pending)
+                    self.assertEqual(p2.activation_state.committed, {})
 
     def test_historical_receipt_corruption_fails_restart(self):
         with tempfile.TemporaryDirectory() as td:
