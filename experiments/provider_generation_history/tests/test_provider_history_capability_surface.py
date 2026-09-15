@@ -8,12 +8,12 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
+)
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_schema_migration import (
+    migrate_activation_schema_v1,
 )
 from experiments.provider_generation_history.protocol import GenerationDescriptor
-from experiments.provider_generation_history.supported import (
-    SupportedHistoricalSharedAnchorLedger,
-)
 
 
 def descriptor(generation: int, key: bytes) -> GenerationDescriptor:
@@ -38,12 +38,13 @@ class ProviderHistoryCapabilitySurfaceTests(unittest.TestCase):
             g1 = descriptor(1, k1)
             g2 = descriptor(2, k2)
 
-            provider = SignedAnchorProvider("anchor-A", 1, k1, value=0)
-            ledger = SupportedHistoricalSharedAnchorLedger(
+            provider = FencedActivationProvider("anchor-A", 1, k1, value=0)
+            ledger = migrate_activation_schema_v1(
                 path,
                 attested(provider, 1, k1),
                 g1,
             )
+            self.assertEqual(provider.value, 1)
 
             history = ledger.provider_history
             self.assertEqual(history.current().generation, 1)
