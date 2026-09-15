@@ -135,3 +135,46 @@ def test_failed_confirmation_leaves_prepared_and_retry_completes(tmp_path, monke
             "SELECT status FROM shared_anchor_intents WHERE intent_id=?",
             (MIGRATION_INTENT_ID,),
         ).fetchone() == ("CONFIRMED",)
+
+
+def test_unknown_outcome_confirmation_retry_reconciles_without_double_increment(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "shared.db"
+    provider, attested, bootstrap = _runtime()
+    original_execute = SupportedHistoricalSharedAnchorLedger.execute
+    injected = False
+
+    def timeout_after_provider_commit(self, intent):
+        nonlocal injected
+        if intent.intent_id == MIGRATION_INTENT_ID and not injected:
+            injected = True
+            return original_execute(self, intent, timeout_after_commit=True)
+        return original_execute(self, intent)
+
+    monkeypatch.setattr(
+        SupportedHistoricalSharedAnchorLedger,
+        "execute",
+        timeout_after_provider_commit,
+    )
+    with pytest.raises(PendingIntent):
+        migrate_activation_schema_v1(path, attested, bootstrap)
+
+    # The external effect committed, but durable migration provenance is still PREPARED.
+    assert provider.value == 1
+    with sqlite3.connect(path) as q:
+        assert classify_activation_schema_provenance_locked(q) == "DDL_INSTALLED_PREPARED"
+        assert q.execute(
+            "SELECT status FROM shared_anchor_intents WHERE intent_id=?",
+            (MIGRATION_INTENT_ID,),
+        ).fetchone() == ("PREPARED",)
+
+    recovered = migrate_activation_schema_v1(path, attested, bootstrap)
+    assert recovered.verify_durable() is True
+    assert provider.value == 1
+    with sqlite3.connect(path) as q:
+        assert classify_activation_schema_provenance_locked(q) == "COMPLETE"
+        assert q.execute(
+            "SELECT status FROM shared_anchor_intents WHERE intent_id=?",
+            (MIGRATION_INTENT_ID,),
+        ).fetchone() == ("CONFIRMED",)
