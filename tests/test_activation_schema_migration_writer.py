@@ -22,28 +22,16 @@ class _History:
 
 class _Ledger:
     def __init__(self, path, runtime="g1", durable="g1"):
-        self.path = str(path)
-        self.runtime = SimpleNamespace(generation_id=runtime)
-        self.history = _History(durable)
+        self.path = str(path); self.runtime = SimpleNamespace(generation_id=runtime); self.history = _History(durable)
 
-    def _con(self):
-        return sqlite3.connect(self.path, timeout=5, isolation_level=None)
-
-    def _history(self):
-        return self.history
-
-    def _descriptor_from_attested(self, attested):
-        return self.runtime
-
-    def _request_id(self, position, intent_id, component_id, intent_type, payload_digest):
-        return f"request:{position}:{intent_id}"
-
+    def _con(self): return sqlite3.connect(self.path, timeout=5, isolation_level=None)
+    def _history(self): return self.history
+    def _descriptor_from_attested(self, attested): return self.runtime
+    def _request_id(self, position, intent_id, component_id, intent_type, payload_digest): return f"request:{position}:{intent_id}"
     def entry(self, intent_id):
         q = self._con()
-        try:
-            return q.execute("SELECT intent_id,status FROM shared_anchor_intents WHERE intent_id=?", (intent_id,)).fetchone()
-        finally:
-            q.close()
+        try: return q.execute("SELECT intent_id,status FROM shared_anchor_intents WHERE intent_id=?", (intent_id,)).fetchone()
+        finally: q.close()
 
 
 def _legacy_db(path):
@@ -67,13 +55,11 @@ def _surface(monkeypatch, path, runtime="g1", durable="g1"):
 
 
 def _insert_marker(path, status="PREPARED", intent_id=MIGRATION_INTENT_ID):
-    intent = completion_intent()
-    q = sqlite3.connect(path)
+    intent = completion_intent(); q = sqlite3.connect(path)
     q.execute("INSERT INTO shared_anchor_intents VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
         intent_id, intent.component_id, intent.intent_type, intent.payload_digest,
         "provider", 1, 0, 1, "request:1:marker", status, None))
-    q.execute("UPDATE shared_anchor_meta SET reserved_position=1")
-    q.commit(); q.close()
+    q.execute("UPDATE shared_anchor_meta SET reserved_position=1"); q.commit(); q.close()
 
 
 def test_partial_ddl_fails_closed_without_repair(tmp_path, monkeypatch):
@@ -86,8 +72,17 @@ def test_partial_ddl_fails_closed_without_repair(tmp_path, monkeypatch):
     q.close()
 
 
+def test_unrelated_prepared_blocks_fresh_install(tmp_path, monkeypatch):
+    path = tmp_path / "pending-fresh.sqlite"; _legacy_db(path); _insert_marker(path, intent_id="other:prepared"); _surface(monkeypatch, path)
+    with pytest.raises(PendingIntent):
+        install_and_reserve_activation_schema_v1(path, object(), object())
+    q = sqlite3.connect(path)
+    assert q.execute("SELECT 1 FROM sqlite_master WHERE name='provider_generation_activations'").fetchone() is None
+    q.close()
+
+
 def test_unrelated_prepared_blocks_prepared_resume(tmp_path, monkeypatch):
-    path = tmp_path / "pending.sqlite"; _legacy_db(path); _insert_marker(path, intent_id="other:prepared")
+    path = tmp_path / "pending-resume.sqlite"; _legacy_db(path); _insert_marker(path, intent_id="other:prepared")
     q = sqlite3.connect(path); q.execute(ACTIVATION_TABLE_SQL); q.execute(ACTIVATION_TRIGGER_SQL); q.commit(); q.close()
     _insert_marker(path); _surface(monkeypatch, path)
     with pytest.raises(PendingIntent):
