@@ -16,13 +16,16 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Resumed LAB-095 production reconstruction/authority audit at exact PR #187 head. Connector-visible branch blobs are now pinned for five production files: `experiments/database_binding.py` `c6bf05b3a5579e076142300aefbc9d785cc6354a`; `database_identity.py` `bac58a48c576001370144cc10cfab8e0cfd129e3`; `database_identity_migration.py` `c4d1db46b8b64fec116dcfef8bb05e1e7a7b875e`; `integration.py` `83399d3d184ae61bcfb50a749c11a348e835f428`; `supported.py` `a1615cb7b793d6602db4406f0bdccb31ef5fba45`. Audited supported path/strategy authority: construction-bound canonical path remains enforced at supported ledger/history boundaries; `_provider_history` and public `provider_history` rebinding are rejected; inspection view exposes no rotation/path mutation; coordinator-only history rejects direct rotate. Legacy `HistoricalSharedAnchorLedger` remains intentionally broader but its constructor is bypassed by the supported concrete class. No new production path/strategy authority defect was found in this slice. Evidence: `research/2026-09-15-lab095-production-authority-blob-audit.md`, main commit `57d365f13902f268faa5da47432606f629f27b10`.
+Continued LAB-095 reference/regression closure at exact PR #187 head. Pinned connector-visible reference/regression blobs: `lab095_database_identity_reference.py` `9f02ddf64cff5b245cfa7a58e188ff9792b3eb18`; `lab095_identity_installation_reference.py` `eca968573bd5374239507aec58b015fcd1f18869`; `red_intent_lab095_complete_reauthentication.py` `347eb94d7d2c601095789c9903dbcbbc24099cd8`; `red_intent_lab095_confirmed_finalize_reauthentication.py` `7dcd20dfd24a9439583595bf433f9f696bd870e7`; `red_intent_lab095_database_identity.py` `b1499243e8452daadf97fdb9ff97e29a9ce82e28`; `test_database_path_binding.py` `9aa68be771e251863b228bcc4fadc5486796254e`.
+
+Composition audit found `test_database_path_binding.py` stale relative to the LAB-090/LAB-092 composition on the same PR: it directly constructs the supported ledger on a fresh DB despite the COMPLETE-only startup gate and uses plain `SignedAnchorProvider` for supported rotation despite LAB-090 fenced-provider requirements. This is a test-composition defect; do not weaken production startup or switch the acceptance regression to legacy history. Evidence: `research/2026-09-15-lab095-reference-regression-blob-audit.md`, main commit `38599dd8d2104880a9670a1e81da78dac7b54f0a`; #180 updated.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
 - Exact PR #187 repository pytest/compileall remains unavailable for the same materialization reason; committed/source-reviewed regressions are not a GREEN claim.
 - PRs #165/#172/#173/#175/#177/#186/#187 remain draft until retained exact gates execute.
-- LAB-095 complete eight-file no-stub tree still needs remaining reference/regression blob pins, same-run reconstruction/hash verification, and execution.
+- LAB-095 exact no-stub reconstruction/hash verification and execution remain pending.
+- LAB-095 `test_database_path_binding.py` must be adapted to official LAB-101/LAB-092 migration bootstrap + LAB-090 fenced-provider semantics before it can serve as the composed DB-A -> DB-B executable gate.
 - LAB-096 source fixes still need exact repository behavioral gates.
 - LAB-090 restart recovery source and focused regressions are composed; execution remains pending.
 - LAB-101 explicit bootstrap, legacy integration adaptation, failure/concurrency and UNKNOWN retry regressions are source-composed but not exact-executed.
@@ -30,11 +33,11 @@ Resumed LAB-095 production reconstruction/authority audit at exact PR #187 head.
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
 
-If LAB-086 remains transport-blocked, continue LAB-095 eight-file closure at PR #187 head: identify and pin the remaining reference/regression file blob identities, audit their imports and assumptions against the five pinned production blobs, and check specifically for any test/reference path that silently instantiates legacy `HistoricalSharedAnchorLedger` where supported LAB-095/LAB-096 guarantees are expected. If exact materialization becomes available, reconstruct all retained files, verify byte/hash identity first, then execute focused/downstream gates. Do not claim executable GREEN from source inspection.
+If LAB-086 remains transport-blocked, update PR #187 `experiments/provider_generation_history/tests/test_database_path_binding.py`: bootstrap DB A through official `migrate_activation_schema_v1()` so the normal supported ledger sees exact COMPLETE provenance; use `FencedActivationProvider` for rotation; adjust candidate provider/current-position assertions for the authenticated migration increment; preserve DB-B corrupted-history, public/private path rebinding rejection, strategy-rebinding rejection, and proof that subsequent supported mutation touches DB A only. Do not manually stamp provenance and do not substitute legacy `HistoricalSharedAnchorLedger`. Then source-audit every expected position in that regression. If exact materialization becomes available, verify retained blob/hash identity first and execute focused/downstream gates. Do not claim executable GREEN from source inspection.
 
 ## Backlog
 - #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
-- #180 LAB-095 — IN_PROGRESS; five production blobs pinned and supported path/strategy authority source-audited; remaining reference/regression pins + exact/downstream gates pending.
+- #180 LAB-095 — IN_PROGRESS; production/reference/regression blobs source-pinned; DB-binding regression requires composed startup/fencing adaptation + exact/downstream gates.
 - #181 LAB-096 — IN_PROGRESS/COMPOSED ON PR #187; exact/downstream validation pending.
 - #169 LAB-090 — composed; execution pending.
 - #176 LAB-092 — composed; exact execution pending.
