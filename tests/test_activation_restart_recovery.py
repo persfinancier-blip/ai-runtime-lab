@@ -8,7 +8,10 @@ import pytest
 from experiments.provider_generation_history.activation import ActivationTicket, FencedActivationProvider
 from experiments.provider_generation_history.activation_coordinator import ActivationCoordinatorMixin
 from experiments.provider_generation_history.activation_schema import ACTIVATION_TABLE_SQL, ACTIVATION_TRIGGER_SQL
-from experiments.provider_generation_history.activation_schema_provenance import completion_intent
+from experiments.provider_generation_history.activation_schema_provenance import (
+    classify_activation_schema_provenance_locked,
+    completion_intent,
+)
 from experiments.provider_generation_history.protocol import HistoricalVerificationError
 
 
@@ -48,6 +51,7 @@ def _seed_complete_schema(path):
         (marker.intent_id, marker.component_id, marker.intent_type, marker.payload_digest, "CONFIRMED"),
     )
     q.commit()
+    assert classify_activation_schema_provenance_locked(q) == "COMPLETE"
     q.close()
 
 
