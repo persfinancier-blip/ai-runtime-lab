@@ -1,0 +1,38 @@
+diff --git a/experiments/provider_generation_history/supported.py b/experiments/provider_generation_history/supported.py
+--- a/experiments/provider_generation_history/supported.py
++++ b/experiments/provider_generation_history/supported.py
+@@
+     def _init_activation_schema(self):
+         q = self._con()
+         try:
+-            q.executescript(
+-                _ACTIVATION_TABLE_SQL.replace(
+-                    "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1
+-                )
+-                + ";"
++            q.execute("BEGIN IMMEDIATE")
++            q.execute(
++                _ACTIVATION_TABLE_SQL.replace(
++                    "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1
++                )
+             )
+             table_row = q.execute(
+                 "SELECT type,sql FROM sqlite_master WHERE name=?",
+                 (_ACTIVATION_TABLE_NAME,),
+@@
+                 raise HistoricalVerificationError(
+                     "activation relation schema definition mismatch"
+                 )
+-            q.executescript(
+-                _ACTIVATION_TRIGGER_SQL.replace(
+-                    "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1
+-                )
+-                + ";"
++            q.execute(
++                _ACTIVATION_TRIGGER_SQL.replace(
++                    "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1
++                )
+             )
+             trigger_row = q.execute(
+                 "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
+                 (_ACTIVATION_TRIGGER_NAME,),
