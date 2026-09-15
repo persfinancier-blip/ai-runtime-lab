@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 ## Active objective
 LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, continue LAB-095/#180 + LAB-096/#181 composition/audit on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Found and fixed another concrete stale composition on PR #187: `test_database_identity_rotation_reauthentication.py` directly constructed the supported ledger on a fresh DB and used plain providers for rotation. It now bootstraps through LAB-101 `migrate_activation_schema_v1()`, uses `FencedActivationProvider`, expects activation migration at position 1 and database-identity receipt at position 2, and starts generation 2 at durable tail 2. The original historical-receipt reauthentication/fail-closed assertion is preserved. Branch commit `4eec30809ea0e6203146b9b0274014ec0aae3a3e`. Evidence: `research/2026-09-15-lab095-identity-rotation-composition-audit.md`, main commit `d6df591aed16bae18bef7a8e38ad1a691dc69dd6`.
+Audited the next database-identity migration/recovery/classifier slice on PR #187. No additional stale composition defect was found. `test_database_identity_migration.py` and `test_database_identity_migration_recovery.py` intentionally use narrow `_Ledger`/`_History` fixtures to test migration primitive states below the supported runtime-constructor boundary; forcing them through LAB-101 would hide the atomic PREPARED/retry/recovery states under test. `test_database_identity.py` and `test_database_identity_audit.py` are direct classifier/schema tests and likewise do not claim supported startup. The already-adapted rotation-reauthentication regression remains the relevant supported end-to-end case. Evidence: `research/2026-09-16-lab095-identity-migration-recovery-composition-audit.md`, main commit `6ca198df5d2a172b4b75ce3f863e9d3890f6188e`.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
@@ -31,11 +31,11 @@ Found and fixed another concrete stale composition on PR #187: `test_database_id
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
 
-If LAB-086 remains transport-blocked, continue scanning PR #187 tests for supported-constructor/restart cases that instantiate `SupportedHistoricalSharedAnchorLedger` on a fresh or pre-LAB-092 database without the explicit LAB-101 migration entrypoint, or rotate with a non-fenced provider. Prioritize database-identity migration/recovery/audit tests because they predate LAB-101 composition. Fix only concrete stale composition. If none remain, continue the LAB-095/LAB-096 authority audit. If exact materialization becomes available, verify retained blob/hash identity first and execute focused/downstream gates. Do not claim executable GREEN from source inspection.
+If LAB-086 remains transport-blocked, continue scanning PR #187 for actual supported-runtime construction/restart and `rotate_provider()` call sites. Do not rewrite lower-level migration/classifier fixtures merely because they hand-build SQLite state. Fix only cases that instantiate `SupportedHistoricalSharedAnchorLedger` on fresh/pre-LAB-092 state without LAB-101 or rotate with a non-fenced provider. Prioritize `test_provider_history_capability_surface.py`, `test_store_receipt_guard_hook.py`, `test_audit_regressions.py`, and remaining supported integration call sites. If none remain, continue LAB-095/LAB-096 authority audit. If exact materialization becomes available, verify retained blob/hash identity first and execute focused/downstream gates. Do not claim executable GREEN from source inspection.
 
 ## Backlog
 - #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
-- #180 LAB-095 — IN_PROGRESS; DB-binding + identity-rotation regressions source-composed; exact/downstream gates pending.
+- #180 LAB-095 — IN_PROGRESS; DB-binding + identity-rotation regressions source-composed; migration/recovery/classifier slice audited with no stale supported-composition defect; exact/downstream gates pending.
 - #181 LAB-096 — IN_PROGRESS/COMPOSED ON PR #187; migration-only strategy audit PASS by source inspection; exact/downstream validation pending.
 - #169 LAB-090 — composed; execution pending.
 - #176 LAB-092 — composed; exact execution pending.
