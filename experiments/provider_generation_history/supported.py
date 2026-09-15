@@ -4,6 +4,7 @@ from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.database_binding import CanonicalDatabaseBinding
 from experiments.provider_generation_history.activation import FencedActivationProvider
 from experiments.provider_generation_history.activation_coordinator import ActivationCoordinatorMixin
+from experiments.provider_generation_history.activation_schema_startup import ActivationSchemaProvenanceStartupMixin
 from experiments.provider_generation_history.activation_transition import ActivationTransitionMixin
 from experiments.provider_generation_history.integration import HistoricalSharedAnchorLedger, IntegratedProviderHistory
 from experiments.provider_generation_history.protocol import GenerationDescriptor, HistoricalReceipt, HistoricalVerificationError, InvalidTransition, PendingRotationBlocked
@@ -29,7 +30,7 @@ class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProvide
         raise PendingRotationBlocked("integrated provider rotation must use SupportedHistoricalSharedAnchorLedger.rotate_provider()")
 
 
-class SupportedHistoricalSharedAnchorLedger(ActivationTransitionMixin, ActivationCoordinatorMixin, HistoricalSharedAnchorLedger):
+class SupportedHistoricalSharedAnchorLedger(ActivationSchemaProvenanceStartupMixin, ActivationTransitionMixin, ActivationCoordinatorMixin, HistoricalSharedAnchorLedger):
     _PROVIDER_HISTORY_SLOT = "_provider_history"
 
     def __setattr__(self, name, value):
