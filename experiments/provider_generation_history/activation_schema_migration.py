@@ -2,10 +2,11 @@ from __future__ import annotations
 
 """Explicit LAB-092 activation-schema migration writer.
 
-This module is intentionally opt-in. It installs only the immutable LAB-090 DDL
-and reserves the deterministic LAB-092 PREPARED marker in one BEGIN IMMEDIATE.
-It does not perform activation recovery/fencing and never replaces the ledger's
-construction-bound private provider-history strategy.
+This module is intentionally opt-in. Ordinary supported-ledger startup remains
+read-only and requires exact COMPLETE provenance. The explicit entrypoint below
+may initialize legitimate fresh/pre-LAB-090 durable state, install the immutable
+LAB-090 DDL plus deterministic PREPARED marker, authenticate/confirm that exact
+intent, and only then return the normal supported ledger.
 """
 
 from experiments.anchor_attestation.protocol import AttestedCatchup
@@ -29,6 +30,7 @@ from experiments.provider_generation_history.supported import (
     SupportedHistoricalSharedAnchorLedger,
 )
 from experiments.shared_anchor_intent_ledger.protocol import IntentConflict, PendingIntent
+from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
 
 
 def _migration_reservation_surface(path, attested, bootstrap: GenerationDescriptor):
@@ -45,6 +47,24 @@ def _migration_reservation_surface(path, attested, bootstrap: GenerationDescript
     ledger.path = path
     ledger.attested = attested
     ledger.provider_history = history
+    return ledger
+
+
+def _explicit_bootstrap_surface(path, attested, bootstrap: GenerationDescriptor):
+    """Initialize/verify legacy authority without invoking COMPLETE-only startup.
+
+    This surface exists only for the explicit migration path. Provider history is
+    constructed exactly once and bound privately before the shared-anchor ledger
+    initializer runs. No post-construction strategy replacement is permitted.
+    """
+    if type(attested) is not AttestedCatchup:
+        raise TypeError("exact LAB-036 AttestedCatchup required")
+    bootstrap.validate()
+
+    ledger = object.__new__(SupportedHistoricalSharedAnchorLedger)
+    ledger.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
+    SupportedSharedAnchorLedger.__init__(ledger, path, attested)
+    ledger._require_runtime_matches_durable_head()
     return ledger
 
 
@@ -190,3 +210,32 @@ def install_and_reserve_activation_schema_v1(
         raise
     finally:
         q.close()
+
+
+def migrate_activation_schema_v1(
+    path, attested: AttestedCatchup, bootstrap: GenerationDescriptor
+) -> SupportedHistoricalSharedAnchorLedger:
+    """Explicit fresh/legacy bootstrap through authenticated LAB-092 completion.
+
+    The migration-only surface establishes or verifies the pre-LAB-090 ledger and
+    provider history, reserves exact DDL+PREPARED provenance, re-verifies durable
+    history/runtime authority, and confirms the deterministic migration intent via
+    the ordinary authenticated shared-anchor execution path. Only COMPLETE state is
+    then handed to the normal supported constructor.
+    """
+    migration = _explicit_bootstrap_surface(path, attested, bootstrap)
+    install_and_reserve_activation_schema_v1(path, attested, bootstrap)
+
+    # Reauthenticate authority after PREPARED was durably installed. This check is
+    # deliberately after reservation so stale/substituted history cannot authorize
+    # the externally authenticated completion effect.
+    migration._require_runtime_matches_durable_head()
+    migration.verify_durable()
+
+    marker = migration.execute(completion_intent())
+    if marker.status != "CONFIRMED":
+        raise HistoricalVerificationError(
+            "activation schema completion marker was not confirmed"
+        )
+
+    return SupportedHistoricalSharedAnchorLedger(path, attested, bootstrap)
