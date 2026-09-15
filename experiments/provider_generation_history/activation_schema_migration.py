@@ -29,8 +29,11 @@ from experiments.provider_generation_history.supported import (
     CoordinatorOnlyProviderHistory,
     SupportedHistoricalSharedAnchorLedger,
 )
-from experiments.shared_anchor_intent_ledger.protocol import IntentConflict, PendingIntent
-from experiments.shared_anchor_intent_ledger.supported import SupportedSharedAnchorLedger
+from experiments.shared_anchor_intent_ledger.protocol import (
+    IntentConflict,
+    PendingIntent,
+    SharedAnchorLedger,
+)
 
 
 def _migration_reservation_surface(path, attested, bootstrap: GenerationDescriptor):
@@ -54,8 +57,9 @@ def _explicit_bootstrap_surface(path, attested, bootstrap: GenerationDescriptor)
     """Initialize/verify legacy authority without invoking COMPLETE-only startup.
 
     This surface exists only for the explicit migration path. Provider history is
-    constructed exactly once and bound privately before the shared-anchor ledger
-    initializer runs. No post-construction strategy replacement is permitted.
+    constructed exactly once and bound privately before the shared-anchor base
+    initializer runs. Historical verification is then performed through the final
+    ledger abstraction; LAB-080's non-historical verifier is intentionally skipped.
     """
     if type(attested) is not AttestedCatchup:
         raise TypeError("exact LAB-036 AttestedCatchup required")
@@ -63,8 +67,9 @@ def _explicit_bootstrap_surface(path, attested, bootstrap: GenerationDescriptor)
 
     ledger = object.__new__(SupportedHistoricalSharedAnchorLedger)
     ledger.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
-    SupportedSharedAnchorLedger.__init__(ledger, path, attested)
+    SharedAnchorLedger.__init__(ledger, path, attested)
     ledger._require_runtime_matches_durable_head()
+    ledger.verify_durable()
     return ledger
 
 
