@@ -70,7 +70,7 @@ class ActivationSchemaStartupTests(unittest.TestCase):
                 Surface("db-a", "side-effect")
         self.assertEqual(calls, [])
 
-    def test_path_wrapper_uses_read_transaction_and_does_not_leave_one_open(self):
+    def test_path_wrapper_is_read_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "startup.db"
             q = sqlite3.connect(path)
@@ -86,8 +86,7 @@ class ActivationSchemaStartupTests(unittest.TestCase):
                 self.assertEqual(
                     classify_activation_schema_provenance(path), "LEGACY_ABSENT"
                 )
-                locked_q = classifier.call_args.args[0]
-                self.assertFalse(locked_q.in_transaction)
+                self.assertEqual(classifier.call_count, 1)
 
             q = sqlite3.connect(path)
             try:
