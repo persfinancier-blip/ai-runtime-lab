@@ -122,7 +122,7 @@ class DatabasePathBindingTests(unittest.TestCase):
             ledger = migrate_activation_schema_v1(
                 db_a, attested(provider, 1, self.k1), self.g1
             )
-            original = ledger.provider_history
+            original_current = ledger.provider_history.current()
 
             # Make DB B independently legitimate before constructing its history
             # helper; this keeps the split-authority regression about strategy
@@ -138,7 +138,7 @@ class DatabasePathBindingTests(unittest.TestCase):
             with self.assertRaisesRegex(AttributeError, "construction-bound"):
                 ledger._provider_history = replacement
 
-            self.assertIs(ledger.provider_history.current(), original.current())
+            self.assertEqual(ledger.provider_history.current(), original_current)
             self.assertEqual(Path(ledger.provider_history.path), db_a.resolve())
             self.assertEqual(Path(replacement.path), db_b.resolve())
 
