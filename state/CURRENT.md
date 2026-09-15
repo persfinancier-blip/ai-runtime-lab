@@ -3,72 +3,62 @@
 Last updated: 2026-09-15
 
 ## Active objective
-LAB-086 remains priority #1: finish the exact executable/security gate for asymmetric break-glass history migration. When byte-exact LAB-086 execution cannot be materialized safely, LAB-095/#180 plus composed LAB-096/#181 is the permitted fallback. LAB-099 PREPARED authority waits on LAB-095 completion.
+LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, continue the LAB-095/#180 + LAB-096/#181 composition fallback on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
 
 ## Active issue / branch / PR
-- Priority #1: #163 / LAB-086 — IN_PROGRESS; draft PR #165. Keep draft.
-- LAB-095/#180 + LAB-096/#181: branch `lab-095-database-identity-red-intent`, draft PR #187, head `6fd9300a9efab730cb86342cf63a43227ea45406`. Keep draft.
-- LAB-090/#169: draft PR #175, head `d9a381dd4607a928cd1315adef6431e239995bc1`; composition map recorded.
-- LAB-092/#176: draft PR #177, head `81673f8f6e4e0864dfa124735938c40aa28b4f2c`; locked classifier/receipt-guard slice now composed safely on PR #187.
-- LAB-099: #184 / draft PR #186; PREPARED authority remains blocked on LAB-095.
+- #163 / LAB-086: draft PR #165; keep draft.
+- #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187, current head `0e6a56ec7e68b962344f8f8f797960456b99bd21`; keep draft.
+- #169 LAB-090: draft PR #175; activation behavior still must be ported semantically.
+- #176 LAB-092: draft PR #177 retained as donor; shared schema, locked provenance/receipt guard, and read-only startup gate are now adapted onto PR #187.
+- #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 - Retained drafts: LAB-088/#167 PR #172; LAB-091/#170 PR #173.
 
 ## Last completed step
-LAB-086 was probed first in the executable runtime. Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` again failed before repository execution with `Could not resolve host: github.com`, exit 128. No LAB-086 PASS is claimed and the gate was not weakened.
+LAB-086 was probed first in the current executable runtime. Direct `git clone --no-checkout https://github.com/persfinancier-blip/ai-runtime-lab.git` failed before repository execution with `Could not resolve host: github.com`, exit 128. No LAB-086 PASS is claimed.
 
-Fallback then implemented the next smallest LAB-092 composition slice on PR #187. New `experiments/provider_generation_history/activation_schema_provenance.py` imports the shared immutable LAB-090 activation-schema contract and provides only deterministic migration-intent identity, exact locked schema/marker classification, `require_complete_activation_schema_provenance_locked(q)`, and `ActivationSchemaProvenanceReceiptGuardMixin`.
+Fallback work then inspected PR #177 startup/migration semantics and added the next small LAB-092 slice to PR #187:
+- `activation_schema_startup.py` provides a path-level read-only wrapper over `classify_activation_schema_provenance_locked(q)`;
+- ordinary startup accepts only `COMPLETE`;
+- `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, and `DDL_INSTALLED_PREPARED` raise `ActivationSchemaMigrationRequired` and therefore require the explicit migration path;
+- unknown/non-contract states fail closed;
+- `ActivationSchemaProvenanceStartupMixin` performs the gate before inherited constructor side effects;
+- it contains no DDL installation, migration-marker write, provider-history reference, mutation-authority recovery, or post-construction history replacement.
 
-The classifier accepts the caller-owned SQLite connection and never opens, commits, rolls back, or closes another connection. COMPLETE requires exact activation table DDL + exact trigger DDL + exact CONFIRMED migration marker identity/payload digest. PREPARED/CONFIRMED provenance with missing/mismatched DDL and marker substitution fail closed. The mixin checks COMPLETE before delegating to the next receipt guard and contains no provider-history reference or replacement mechanism.
+Branch commits: production `a97f37a5af49cc3e475660b0f98d46982a9d37c4`; initial regression `53a56e90ab382cf0e18772e01c389fed478b80f4`; corrected regression/current head `0e6a56ec7e68b962344f8f8f797960456b99bd21`. The initial regression incorrectly inspected `Connection.in_transaction` after the wrapper closed the connection; it was corrected to assert classifier invocation and unchanged schema. No production change was required.
 
-Branch commits:
-- production locked classifier/guard: `1620b4e76b474f38e28f022002be486282dd10de`;
-- focused regressions/current PR head: `6fd9300a9efab730cb86342cf63a43227ea45406`.
-
-Published production blob was re-fetched from GitHub as `355bb4a32c54a9471a5b296deffa27af6f6ffd30`.
-
-Focused tests added in `test_activation_schema_provenance_guard.py` cover COMPLETE while preserving the caller transaction, confirmed marker + missing DDL, confirmed marker + mismatched DDL, marker substitution, unmarked-schema receipt refusal before downstream guard, and COMPLETE delegation with the exact same connection object.
-
-Exact branch pytest is still unavailable because the repository closure cannot be materialized into the executable filesystem. An isolated SQLite semantic probe executed in this run observed COMPLETE with the transaction still active; missing DDL, mismatched DDL, and marker substitution all failed closed with the transaction still active; unmarked exact DDL classified `DDL_INSTALLED_UNMARKED`; no DDL/marker classified `LEGACY_ABSENT`. A separate MRO probe confirmed fail-before-downstream and same-object delegation after COMPLETE. These are focused semantic probes only, not an exact-repository GREEN.
-
-Durable evidence: `research/2026-09-15-lab092-locked-provenance-receipt-guard.md`, main commit `bc478a7a75aea3124adfc09ddd80d2ab71eed0bf`. Issue #176 and PR #187 were updated.
+Durable evidence: `research/2026-09-15-lab092-read-only-startup-gate.md`, main commit `3262d76c37d035a3d064299eb3a5e1c598050b96`. #176 and PR #187 were updated.
 
 ## Known failures / blockers
-- LAB-086 complete real-ledger gate remains unexecuted. Current executable runtime cannot resolve `github.com`; no supported byte-preserving connector -> filesystem bridge is exposed.
-- SQLite tests in this runtime must use a journal-capable filesystem; `/dev/shm` was previously observed working.
+- LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
+- Exact PR #187 repository pytest/compileall remains unavailable for the same materialization reason; do not claim whole-branch GREEN.
 - PRs #165/#172/#173/#175/#177/#186/#187 remain draft until retained exact gates execute.
-- LAB-095 focused manifest has authoritative exact content known for all 8/8 files, but the complete eight-file no-stub tree still needs same-run reconstruction/hash verification plus execution.
-- LAB-096 whole-object replacement and public live-strategy alias leaks are source-patched on PR #187; exact repository behavioral GREEN remains pending.
-- LAB-090 PR #175 remains source-incompatible with LAB-096 if its authority-heavy files are selected wholesale; carry activation behavior semantically onto PR #187.
-- LAB-092 PR #177 remains source-incompatible with LAB-096 where it replaces provider-history post-construction or uses public history for locked authority.
-- The shared immutable activation-schema prerequisite is present on PR #187, and the locked provenance classifier/receipt guard is now also present. Do not wire the guard into the default supported ledger until explicit LAB-092 migration/startup semantics and LAB-090 activation installation/fencing semantics are composed; otherwise legitimate pre-composition construction would be broken.
-- LAB-092 receipt provenance must continue to classify COMPLETE through the supplied locked `q`; overriding `_store_receipt()` with an out-of-transaction precheck is forbidden because it reopens TOCTOU.
-- Python reflection/private implementation access remains outside the supported/public API capability claim; process-grade isolation is not claimed.
-- Final LAB-090/LAB-092/LAB-095/LAB-096 composition remains security-sensitive: preserve activation fencing, provenance fail-closed behavior, `CanonicalDatabaseBinding`, construction-bound provider-history strategy, least-capability public inspection, and same-transaction provenance guard before receipt persistence.
+- LAB-095 complete eight-file no-stub tree still needs same-run reconstruction/hash verification plus execution.
+- LAB-096 construction-bound history strategy, least-capability public view, and same-transaction receipt guard are source-patched on PR #187 but still need exact repository behavioral gates.
+- LAB-090 PR #175 and LAB-092 PR #177 remain source-incompatible with LAB-096 if authority-heavy files are selected wholesale. Port semantics only.
+- The new startup mixin intentionally remains opt-in. Do not wire it into the default supported ledger until the explicit LAB-092 migration writer and LAB-090 activation installation/fencing semantics are composed.
+- LAB-092 receipt provenance must remain checked through the supplied locked `q` inside the receipt transaction; no out-of-transaction precheck.
+- Final composition must preserve activation fencing, provenance fail-closed behavior, `CanonicalDatabaseBinding`, construction-bound provider-history strategy, least-capability public inspection, and same-transaction provenance guard.
 
 ## Exact next action
-LAB-086 first: execute the complete gate only from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` if a supported byte-preserving materialization path can place exact repository bytes into an executable filesystem. Do not weaken or manually reserialize the large security-critical closure.
+Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem; do not manually reserialize the large security-critical closure.
 
-If LAB-086 remains transport-blocked, continue PR #187 with the next smallest LAB-092 startup/migration slice:
-1. inspect the remainder of PR #177 `activation_schema_provenance.py` and its startup/recovery tests;
-2. adapt explicit-migration-only handling for `LEGACY_ABSENT`, `DDL_INSTALLED_UNMARKED`, and `DDL_INSTALLED_PREPARED` onto PR #187 while preserving the new locked classifier;
-3. construct any migration reservation surface with one-time canonical path binding and one-time exact `CoordinatorOnlyProviderHistory` installation only;
-4. route every locked provider-history verification through private `_history()`; never recover mutation authority from public `provider_history`;
-5. omit `_bind_live_provider_history_provenance()` and every post-construction `_provider_history` replacement;
-6. add focused startup/migration fail-closed regressions before porting LAB-090 activation mutation/fencing behavior;
-7. keep changes small/file-scoped enough for Contents API conflict checking and exact syntax/hash verification.
+If LAB-086 remains transport-blocked, continue PR #187 with the smallest explicit LAB-092 migration-writer slice adapted from PR #177 `_install_and_reserve_prepared`:
+1. construct the migration reservation surface with one-time canonical path binding and one-time exact `CoordinatorOnlyProviderHistory` installation only;
+2. route durable locked history verification through private `_history()` only;
+3. under one `BEGIN IMMEDIATE`, require an existing shared-anchor ledger, accept only exact legacy-absent or exact already-installed activation DDL with ABSENT/PREPARED marker, reject partial/mismatched/CONFIRMED-corrupt states, reject another PREPARED anchor intent, install exact DDL only when absent, reserve the deterministic migration marker, and advance `shared_anchor_meta` atomically;
+4. never use `_bind_live_provider_history_provenance()` and never replace `_provider_history` after construction;
+5. add focused fail-closed regressions for partial DDL, existing unrelated PREPARED intent, stale runtime generation, PREPARED resume, and CONFIRMED-corrupt DDL;
+6. keep this writer opt-in until LAB-090 activation fencing semantics are ported;
+7. keep changes small/file-scoped for Contents API conflict checking.
 
-Composition order remains: PR #187 structural authority base -> shared `activation_schema.py` -> locked LAB-092 classifier/receipt guard -> explicit LAB-092 startup/migration semantics adapted to `_history()` and construction-bound strategy -> LAB-090 activation fencing semantics -> exact/downstream gates.
-
-If a safe byte-preserving execution bridge becomes available, materialize exact PR #187 head `6fd9300a9efab730cb86342cf63a43227ea45406`, verify blobs, run `compileall`, activation-schema/provenance focused tests, LAB-096 capability/replacement/transaction-guard tests, LAB-095 DB-binding/no-stub gates under `TMPDIR=/dev/shm`, then compose LAB-092/LAB-090 and run retained LAB-081/LAB-090/LAB-092 downstream gates.
-
-Never replace external authenticated authority with deterministic test vectors, caller-supplied nonce/digest, path hashes, or same-DB self-asserted identifiers.
+Composition order: PR #187 structural authority base -> shared `activation_schema.py` -> locked LAB-092 classifier/receipt guard -> read-only LAB-092 startup gate -> explicit LAB-092 migration writer -> LAB-090 activation fencing semantics -> exact/downstream gates.
 
 ## Backlog
-- #163 / LAB-086 — IN_PROGRESS; authoritative complete-gate pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`; exact executable gate pending.
-- #180 / LAB-095 — IN_PROGRESS; path binding implemented; exact/downstream gates pending.
-- #181 / LAB-096 — IN_PROGRESS/COMPOSED ON PR #187; strategy replacement + public live-strategy alias patched; receipt guard is same-transaction; exact/downstream validation pending.
-- #169 / LAB-090 — retained draft; shared schema-definition extraction exists on PR #187; activation behavior still must compose semantically.
-- #176 / LAB-092 — retained draft; shared schema + locked classifier/receipt guard now composed on PR #187; next work is explicit startup/migration semantics without history replacement.
-- #167 / LAB-088, #170 / LAB-091 — retained draft gates pending.
-- #178..185 / LAB-093..100 — remaining architecture/security follow-ups.
-- #184 / LAB-099 — PREPARED authority waits on LAB-095 completion.
+- #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
+- #180 LAB-095 — IN_PROGRESS; DB binding implemented; exact/downstream gates pending.
+- #181 LAB-096 — IN_PROGRESS/COMPOSED ON PR #187; source fixes present; exact/downstream validation pending.
+- #169 LAB-090 — retained draft; activation behavior semantic port pending.
+- #176 LAB-092 — retained draft; shared schema + locked classifier/receipt guard + read-only startup gate composed on PR #187; explicit migration writer is next.
+- #167 LAB-088, #170 LAB-091 — retained draft gates pending.
+- #178..185 LAB-093..100 — architecture/security follow-ups.
+- #184 LAB-099 — PREPARED authority waits on LAB-095 completion.
