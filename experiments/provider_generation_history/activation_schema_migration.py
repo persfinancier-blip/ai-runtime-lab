@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Explicit LAB-092 activation-schema migration writer.
 
-This module is intentionally opt-in.  It installs only the immutable LAB-090 DDL
+This module is intentionally opt-in. It installs only the immutable LAB-090 DDL
 and reserves the deterministic LAB-092 PREPARED marker in one BEGIN IMMEDIATE.
 It does not perform activation recovery/fencing and never replaces the ledger's
 construction-bound private provider-history strategy.
@@ -14,6 +14,7 @@ from experiments.provider_generation_history.activation_schema import (
     ACTIVATION_TRIGGER_SQL,
 )
 from experiments.provider_generation_history.activation_schema_provenance import (
+    MIGRATION_INTENT_ID,
     _marker_state_locked,
     _schema_object_state_locked,
     completion_intent,
@@ -31,12 +32,7 @@ from experiments.shared_anchor_intent_ledger.protocol import IntentConflict, Pen
 
 
 def _migration_reservation_surface(path, attested, bootstrap: GenerationDescriptor):
-    """Construct only the authority needed for the locked migration reservation.
-
-    Deliberately bypass normal initializers: explicit migration requires an already
-    existing ledger/history and must verify it before making any schema/history write.
-    Canonical path and the exact coordinator-only history strategy are each bound once.
-    """
+    """Construct only the authority needed for the locked migration reservation."""
     if type(attested) is not AttestedCatchup:
         raise TypeError("exact LAB-036 AttestedCatchup required")
     bootstrap.validate()
@@ -52,13 +48,23 @@ def _migration_reservation_surface(path, attested, bootstrap: GenerationDescript
     return ledger
 
 
+def _reject_unrelated_prepared_locked(q):
+    unrelated = q.execute(
+        "SELECT COUNT(*) FROM shared_anchor_intents "
+        "WHERE status='PREPARED' AND intent_id<>?",
+        (MIGRATION_INTENT_ID,),
+    ).fetchone()[0]
+    if unrelated:
+        raise PendingIntent("another anchor intent is unresolved")
+
+
 def install_and_reserve_activation_schema_v1(
     path, attested: AttestedCatchup, bootstrap: GenerationDescriptor
 ):
     """Atomically install exact activation DDL and reserve its PREPARED marker.
 
     Recoverable inputs are exact legacy absence, exact DDL with no marker, and exact
-    DDL with the deterministic PREPARED marker.  Partial/mismatched DDL, a corrupt
+    DDL with the deterministic PREPARED marker. Partial/mismatched DDL, a corrupt
     marker, another PREPARED intent, or a stale runtime generation fail closed.
     """
     intent = completion_intent()
@@ -93,6 +99,8 @@ def install_and_reserve_activation_schema_v1(
                 "runtime provider is stale relative to durable history"
             )
 
+        _reject_unrelated_prepared_locked(q)
+
         if marker == "CONFIRMED":
             if not (table_exact and trigger_exact):
                 raise HistoricalVerificationError(
@@ -116,12 +124,6 @@ def install_and_reserve_activation_schema_v1(
             raise HistoricalVerificationError(
                 "activation schema is partially installed or definition-mismatched"
             )
-
-        pending = q.execute(
-            "SELECT COUNT(*) FROM shared_anchor_intents WHERE status='PREPARED'"
-        ).fetchone()[0]
-        if pending:
-            raise PendingIntent("another anchor intent is unresolved")
 
         if table_absent and trigger_absent:
             q.execute(ACTIVATION_TABLE_SQL)
