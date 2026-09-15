@@ -8,7 +8,10 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
+)
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_schema_migration import (
+    migrate_activation_schema_v1,
 )
 from experiments.provider_generation_history.protocol import (
     CurrentGenerationRequired,
@@ -38,21 +41,26 @@ class IntegrationTests(unittest.TestCase):
         self.g1 = descriptor(1, self.k1)
         self.g2 = descriptor(2, self.k2)
 
-    def ledger(self, path, attested_value):
+    def migrate(self, path, attested_value):
+        return migrate_activation_schema_v1(path, attested_value, self.g1)
+
+    def restart(self, path, attested_value):
         return SupportedHistoricalSharedAnchorLedger(path, attested_value, self.g1)
 
     def test_mixed_old_new_confirmed_history_survives_rotation_and_restart(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
             a1 = attested(p1, 1, self.k1)
-            ledger = self.ledger(path, a1)
+            ledger = self.migrate(path, a1)
 
+            # Explicit LAB-092 migration consumes position 1 before ordinary work.
+            self.assertEqual(p1.value, 1)
             i1 = Intent("old", "component-A", "migration", {"v": 1})
             e1 = ledger.execute(i1)
-            self.assertEqual((e1.status, e1.provider_generation, p1.value), ("CONFIRMED", 1, 1))
+            self.assertEqual((e1.status, e1.provider_generation, p1.value), ("CONFIRMED", 1, 2))
 
-            p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=1)
+            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=2)
             a2 = attested(p2, 2, self.k2)
             ledger.rotate_provider(
                 self.g2, ledger.provider_history.make_transition(self.g1, self.g2), a2
@@ -61,21 +69,21 @@ class IntegrationTests(unittest.TestCase):
 
             i2 = Intent("new", "component-A", "root_rotation", {"v": 2})
             e2 = ledger.execute(i2)
-            self.assertEqual((e2.status, e2.provider_generation, p2.value), ("CONFIRMED", 2, 2))
+            self.assertEqual((e2.status, e2.provider_generation, p2.value), ("CONFIRMED", 2, 3))
 
-            restarted = self.ledger(path, a2)
+            restarted = self.restart(path, a2)
             self.assertTrue(restarted.verify_durable())
             self.assertEqual(restarted.provider_history.load_receipt(e1.request_id).generation, 1)
             self.assertEqual(restarted.provider_history.load_receipt(e2.request_id).generation, 2)
-            self.assertEqual(restarted.verify_component("component-A"), 2)
-            self.assertEqual(restarted.verify_component("component-A"), 2)
+            self.assertEqual(restarted.verify_component("component-A"), 3)
+            self.assertEqual(restarted.verify_component("component-A"), 3)
 
     def test_old_generation_is_verification_only_after_rotation(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = self.ledger(path, attested(p1, 1, self.k1))
-            p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=0)
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.migrate(path, attested(p1, 1, self.k1))
+            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=p1.value)
             ledger.rotate_provider(
                 self.g2,
                 ledger.provider_history.make_transition(self.g1, self.g2),
@@ -87,8 +95,8 @@ class IntegrationTests(unittest.TestCase):
     def test_direct_provider_history_rotation_is_blocked(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = self.ledger(path, attested(p1, 1, self.k1))
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.migrate(path, attested(p1, 1, self.k1))
             ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
             with self.assertRaises(PendingRotationBlocked):
                 ledger.provider_history.rotate(
@@ -99,12 +107,12 @@ class IntegrationTests(unittest.TestCase):
     def test_prepared_intent_and_rotation_serialize_in_same_database(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = self.ledger(path, attested(p1, 1, self.k1))
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = self.migrate(path, attested(p1, 1, self.k1))
             entry = ledger.reserve(Intent("pending", "component-A", "migration", {"x": 1}))
             self.assertEqual(entry.status, "PREPARED")
 
-            p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=1)
+            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=entry.predecessor)
             with self.assertRaises(PendingRotationBlocked):
                 ledger.rotate_provider(
                     self.g2,
@@ -117,9 +125,9 @@ class IntegrationTests(unittest.TestCase):
         for _ in range(20):
             with tempfile.TemporaryDirectory() as td:
                 path = Path(td) / "shared.db"
-                p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-                ledger = self.ledger(path, attested(p1, 1, self.k1))
-                p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=0)
+                p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+                ledger = self.migrate(path, attested(p1, 1, self.k1))
+                p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=p1.value)
                 a2 = attested(p2, 2, self.k2)
                 gate = threading.Barrier(3)
                 results = []
@@ -167,15 +175,15 @@ class IntegrationTests(unittest.TestCase):
     def test_historical_receipt_corruption_fails_restart(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
             a1 = attested(p1, 1, self.k1)
-            ledger = self.ledger(path, a1)
+            ledger = self.migrate(path, a1)
             ledger.execute(Intent("old", "component-A", "migration", {"v": 1}))
             q = sqlite3.connect(path)
             q.execute("UPDATE historical_provider_receipts SET signature=?", ("0" * 64,))
             q.commit(); q.close()
             with self.assertRaises(HistoricalVerificationError):
-                self.ledger(path, a1)
+                self.restart(path, a1)
 
 
 if __name__ == "__main__":
