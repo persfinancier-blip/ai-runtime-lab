@@ -10,12 +10,14 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
+)
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_schema_migration import (
+    migrate_activation_schema_v1,
 )
 from experiments.provider_generation_history.protocol import GenerationDescriptor
 from experiments.provider_generation_history.supported import (
     CoordinatorOnlyProviderHistory,
-    SupportedHistoricalSharedAnchorLedger,
 )
 from experiments.shared_anchor_intent_ledger.protocol import Intent
 
@@ -44,13 +46,16 @@ class DatabasePathBindingTests(unittest.TestCase):
             db_a = root / "a.sqlite"
             db_b = root / "b.sqlite"
 
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = SupportedHistoricalSharedAnchorLedger(
+            # LAB-101 is the only supported fresh/pre-LAB-090 entrypoint. Its
+            # authenticated completion consumes position 1, so user work begins at 2.
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = migrate_activation_schema_v1(
                 db_a, attested(p1, 1, self.k1), self.g1
             )
             ledger.execute(Intent("a-1", "component-A", "migration", {"v": 1}))
 
-            p2 = SignedAnchorProvider("anchor-A", 2, self.k2, value=1)
+            # LAB-090 rotation requires a fenced candidate exactly at the durable tail.
+            p2 = FencedActivationProvider("anchor-A", 2, self.k2, value=2)
             ledger.rotate_provider(
                 self.g2,
                 ledger.provider_history.make_transition(self.g1, self.g2),
@@ -89,7 +94,7 @@ class DatabasePathBindingTests(unittest.TestCase):
             confirmed = ledger.execute(
                 Intent("a-2", "component-A", "root_rotation", {"v": 2})
             )
-            self.assertEqual((confirmed.status, confirmed.position), ("CONFIRMED", 2))
+            self.assertEqual((confirmed.status, confirmed.position), ("CONFIRMED", 3))
 
             q = sqlite3.connect(db_b)
             try:
@@ -113,11 +118,19 @@ class DatabasePathBindingTests(unittest.TestCase):
             db_a = root / "a.sqlite"
             db_b = root / "b.sqlite"
 
-            provider = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = SupportedHistoricalSharedAnchorLedger(
+            provider = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = migrate_activation_schema_v1(
                 db_a, attested(provider, 1, self.k1), self.g1
             )
             original = ledger.provider_history
+
+            # Make DB B independently legitimate before constructing its history
+            # helper; this keeps the split-authority regression about strategy
+            # replacement rather than malformed/fresh database state.
+            provider_b = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            migrate_activation_schema_v1(
+                db_b, attested(provider_b, 1, self.k1), self.g1
+            )
             replacement = CoordinatorOnlyProviderHistory(db_b, self.g1)
 
             with self.assertRaisesRegex(AttributeError, "construction-bound"):
@@ -125,14 +138,14 @@ class DatabasePathBindingTests(unittest.TestCase):
             with self.assertRaisesRegex(AttributeError, "construction-bound"):
                 ledger._provider_history = replacement
 
-            self.assertIs(ledger.provider_history, original)
+            self.assertIs(ledger.provider_history.current(), original.current())
             self.assertEqual(Path(ledger.provider_history.path), db_a.resolve())
             self.assertEqual(Path(replacement.path), db_b.resolve())
 
             confirmed = ledger.execute(
                 Intent("a-1", "component-A", "migration", {"v": 1})
             )
-            self.assertEqual((confirmed.status, confirmed.position), ("CONFIRMED", 1))
+            self.assertEqual((confirmed.status, confirmed.position), ("CONFIRMED", 2))
 
             q = sqlite3.connect(db_b)
             try:
@@ -140,7 +153,7 @@ class DatabasePathBindingTests(unittest.TestCase):
                     q.execute(
                         "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
                     ).fetchone()[0],
-                    0,
+                    1,
                 )
                 self.assertIsNone(
                     q.execute(
@@ -154,8 +167,8 @@ class DatabasePathBindingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             db_a = Path(td) / "a.sqlite"
             db_b = Path(td) / "b.sqlite"
-            p1 = SignedAnchorProvider("anchor-A", 1, self.k1, value=0)
-            ledger = SupportedHistoricalSharedAnchorLedger(
+            p1 = FencedActivationProvider("anchor-A", 1, self.k1, value=0)
+            ledger = migrate_activation_schema_v1(
                 db_a, attested(p1, 1, self.k1), self.g1
             )
 
