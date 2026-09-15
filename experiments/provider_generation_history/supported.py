@@ -4,7 +4,7 @@ from experiments.anchor_attestation.protocol import AttestedCatchup
 from experiments.database_binding import CanonicalDatabaseBinding
 from experiments.provider_generation_history.activation import FencedActivationProvider
 from experiments.provider_generation_history.activation_coordinator import ActivationCoordinatorMixin
-from experiments.provider_generation_history.activation_schema_startup import ActivationSchemaProvenanceStartupMixin
+from experiments.provider_generation_history.activation_schema_startup import require_complete_activation_schema_provenance_for_startup
 from experiments.provider_generation_history.activation_transition import ActivationTransitionMixin
 from experiments.provider_generation_history.integration import HistoricalSharedAnchorLedger, IntegratedProviderHistory
 from experiments.provider_generation_history.protocol import GenerationDescriptor, HistoricalReceipt, HistoricalVerificationError, InvalidTransition, PendingRotationBlocked
@@ -30,7 +30,7 @@ class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProvide
         raise PendingRotationBlocked("integrated provider rotation must use SupportedHistoricalSharedAnchorLedger.rotate_provider()")
 
 
-class SupportedHistoricalSharedAnchorLedger(ActivationSchemaProvenanceStartupMixin, ActivationTransitionMixin, ActivationCoordinatorMixin, HistoricalSharedAnchorLedger):
+class SupportedHistoricalSharedAnchorLedger(ActivationTransitionMixin, ActivationCoordinatorMixin, HistoricalSharedAnchorLedger):
     _PROVIDER_HISTORY_SLOT = "_provider_history"
 
     def __setattr__(self, name, value):
@@ -52,6 +52,9 @@ class SupportedHistoricalSharedAnchorLedger(ActivationSchemaProvenanceStartupMix
 
     def __init__(self, path, attested: AttestedCatchup, bootstrap: GenerationDescriptor):
         if type(attested) is not AttestedCatchup: raise TypeError("exact LAB-036 AttestedCatchup required")
+        # LAB-092 must classify the exact activation schema COMPLETE before any
+        # provider-history constructor or LAB-090 recovery can read/mutate it.
+        require_complete_activation_schema_provenance_for_startup(path)
         self.provider_history = CoordinatorOnlyProviderHistory(path, bootstrap)
         SupportedSharedAnchorLedger.__init__(self, path, attested)
         self._require_runtime_matches_durable_head()
