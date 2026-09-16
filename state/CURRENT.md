@@ -7,16 +7,16 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 
 ## Active issue / branch / PR
 - #163 / LAB-086: draft PR #165; keep draft.
-- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. GitHub currently reports `mergeable=false`; current main is `70467347c924e9ca21a21bcee4cf07ad6b907a2a`, branch is 84 ahead / 137 behind. A retained GitHub synthetic merge commit proves this unchanged head merged cleanly into prior main `6e29f6d3eca2ab8be37938cf388ea5b191a0ac7f`; subsequent main-side paths are only `research/*` and `state/CURRENT.md`, disjoint from PR #187's `experiments/*` and `tests/*` delta. No source conflict is inferred from the boolean alone.
+- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. At the latest observation the PR base SHA is `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974`. GitHub's `refs/pull/187/merge` still points to `d01d446fc5fae68dbf030b8d5bf4a379be83db75`, but that synthetic commit's first parent is older main `6e29f6d3eca2ab8be37938cf388ea5b191a0ac7f`, not the current PR base, so the merge ref is stale and is not current mergeability evidence.
 - #169 LAB-090: draft PR #175 retained as donor; composed on PR #187.
 - #176 LAB-092: draft PR #177 retained as donor; composed/adapted on PR #187.
 - #188 LAB-101: explicit bootstrap + authenticated confirmation bridge and composition regressions are on PR #187; exact execution remains.
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first in the current run. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
+LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Triangulated PR #187 mergeability rather than treating `mergeable=false` as a source-conflict diagnosis. Head remains `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; current main is `70467347c924e9ca21a21bcee4cf07ad6b907a2a`; compare reports 84 ahead / 137 behind. GitHub still exposes synthetic merge commit `d01d446fc5fae68dbf030b8d5bf4a379be83db75`, whose parents are prior main `6e29f6d3eca2ab8be37938cf388ea5b191a0ac7f` and the unchanged PR head. This proves the head was mechanically mergeable at that prior main. Main changes since the common merge base remain confined to `research/*` and `state/CURRENT.md`; PR #187 changes only `experiments/*` and `tests/*`. Thus available evidence does not identify a same-path textual conflict. No speculative rebase/merge/source edit was performed. Evidence: `research/2026-09-16-pr187-mergeability-causal-triangulation-1119.md`, main commit `085386c6824e15999cc142d906c73d0ffb7a9fec`. Exact execution is not claimed.
+Strengthened the PR #187 merge-state diagnosis. The supported merge-ref read returns `d01d446f...`; inspecting its commit object proves its parents are prior main `6e29f6d...` and unchanged PR head `5bfdbdbd...`, while the PR now reports base `2c72b76b...`. Therefore the synthetic merge ref is stale relative to current main and cannot establish current mergeability or conflict. No speculative rebase/merge/source edit was performed. Evidence: `research/2026-09-16-pr187-stale-merge-ref-diagnosis-1214.md`, main commit `454c2e827440e4c99173987516ec902f980064e6`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
@@ -25,12 +25,12 @@ Triangulated PR #187 mergeability rather than treating `mergeable=false` as a so
 - LAB-095 exact no-stub reconstruction/hash verification and execution remain pending.
 - LAB-094/095/096 construction-bound authority graph is source-closed for bootstrap root, canonical path, and provider-history strategy; exact behavioral/downstream gates remain pending.
 - LAB-090/LAB-092/LAB-101 composed gates remain source-audited but not exact-executed.
-- PR #187 currently reports `mergeable=false`; retained synthetic-merge and disjoint-path evidence do not support a source-conflict diagnosis, so obtain a stronger supported conflict-state signal before integration.
+- PR #187's synthetic merge ref is stale relative to its current base. Do not use it as a current conflict/mergeability signal.
 
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
 
-If LAB-086 remains transport-blocked, re-check PR #187 head/mergeability and seek an explicit supported conflict/merge-state signal if `mergeable=false` persists; do not rebase/merge from the boolean alone. Do not broaden LAB-094/095/096 speculatively. If exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Otherwise react only to newly reported concrete defects, source drift, or a confirmed conflict. Do not claim executable GREEN from source inspection.
+If LAB-086 remains transport-blocked, re-read PR #187. Treat `refs/pull/187/merge` as current evidence only when its first parent equals the PR's then-current base SHA and its second parent equals the PR head. If it remains stale, inspect current compare/file overlap or newly reported review defects; do not rebase/merge merely to refresh GitHub's synthetic ref and do not broaden LAB-094/095/096 speculatively. If exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Do not claim executable GREEN from source inspection.
 
 ## Backlog
 - #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
