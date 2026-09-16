@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
+LAB-086 was probed first. `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-New stronger merge-state evidence was obtained for PR #187. GitHub synthetic merge commit `88470af85668535527e49a6bd35b57ed08093518` is a verified two-parent merge of then-current main `917a8411c8643e82f0a990c2ae84e6b8841df0e4` and unchanged PR head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. This proves GitHub successfully constructed that exact PR head against the newer main without a source merge conflict. Actual main was then re-read as `51b6055079267f506e3062fe6cdacbe9cd0f70bf`; subsequent commits are research/state handoff changes. `get_pr_info` still reports `mergeable=false`, so that boolean is not treated as source-conflict proof. PR discussion showed no new concrete requested change/review defect. Evidence: `research/2026-09-16-pr187-regenerated-merge-ref-evidence-1914.md`, evidence commit `f35b8497f73b40f7467544055adf553254f43323`. Exact execution is not claimed.
+PR #187 control-plane state was rechecked. Actual `main` was `7e3c0c773b986755ee097738618fc406546f48ed`; PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; discussion showed no new concrete requested change/review defect. Direct GET of `git/ref/pulls/187/merge` returned 404, proving the convenience synthetic merge ref is ephemeral. The previously generated verified merge commit object `88470af85668535527e49a6bd35b57ed08093518` remains retrievable with parents then-main `917a8411c8643e82f0a990c2ae84e6b8841df0e4` and unchanged PR head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; this remains historical evidence that GitHub successfully constructed that merge, but is not proof against later main tips. Evidence: `research/2026-09-16-pr187-merge-ref-ephemerality-2018.md`, evidence commit `9eb8f2216f8da263627a96ffa76e1821fa4e5bf4`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
@@ -25,12 +25,12 @@ New stronger merge-state evidence was obtained for PR #187. GitHub synthetic mer
 - LAB-095 exact no-stub reconstruction/hash verification and execution remain pending.
 - LAB-094/095/096 construction-bound authority graph is source-closed; exact behavioral/downstream gates remain pending.
 - LAB-090/LAB-092/LAB-101 composed gates remain source-audited but not exact-executed.
-- PR #187 `mergeable=false` conflicts with a successfully regenerated synthetic merge against main `917a8411...`; do not use the boolean alone as source-conflict evidence.
+- PR #187 mergeability metadata has been inconsistent across observations. Synthetic `refs/pull/*/merge` is ephemeral; never use its absence alone as conflict evidence, and validate parent identities whenever it exists.
 
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
 
-If LAB-086 remains transport-blocked, re-read actual `main` tip, PR #187 head, synthetic merge-ref parents, and reviews. React only to concrete source/test overlap, head drift, or a new review defect; do not rebase/merge or broaden LAB-094/095/096 merely to refresh GitHub metadata. If byte-exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Do not claim executable GREEN from source inspection.
+If LAB-086 remains transport-blocked, re-read actual `main` tip, PR #187 head/reviews, and source/test overlap. Treat a synthetic merge ref as optional/ephemeral; if present, validate both parents before using it. React only to concrete source/test overlap, head drift, or a new review defect; do not rebase/merge or broaden LAB-094/095/096 merely to refresh GitHub metadata. If byte-exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Do not claim executable GREEN from source inspection.
 
 ## Backlog
 - #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
