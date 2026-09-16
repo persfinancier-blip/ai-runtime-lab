@@ -63,9 +63,32 @@ At minimum, materialize the exact PR #187 closure and run:
 - `pytest -q tests/test_supported_activation_wiring.py`
 - `pytest -q experiments/provider_generation_history/tests/test_integration.py`
 
-### Downstream baseline / syntax gate
+### Downstream LAB-080/LAB-081 baselines
 
-Run the retained LAB-080/LAB-081 focused suites identified by repository test discovery, then the complete repository test suite and `python -m compileall` over the changed Python surfaces. Exact command expansion should be recorded from the materialized tree rather than guessed from connector-only file listing.
+Repository history and current main-tree discovery now pin the downstream suites instead of leaving them implicit.
+
+LAB-080 merged evidence (#152) identifies the primary, restart, and supported suites; current main exposes the same three test files. Run:
+
+- `pytest -q experiments/shared_anchor_intent_ledger/tests/test_protocol.py`
+- `pytest -q experiments/shared_anchor_intent_ledger/tests/test_restart_rollback.py`
+- `pytest -q experiments/shared_anchor_intent_ledger/tests/test_supported.py`
+
+Also preserve the LAB-080 unsafe control as an expected failure, not as a normal GREEN gate:
+
+- `python -m unittest experiments.shared_anchor_intent_ledger.tests.unsafe_monotonic_expected_failure -v` — expected to fail by design.
+
+LAB-081 merged evidence (#154) states that its provider-generation continuity/integration suite was validated together with LAB-080. Current main exposes these LAB-081 test files; run all four explicitly:
+
+- `pytest -q experiments/provider_generation_history/tests/test_protocol.py`
+- `pytest -q experiments/provider_generation_history/tests/test_standalone_audit.py`
+- `pytest -q experiments/provider_generation_history/tests/test_audit_regressions.py`
+- `pytest -q experiments/provider_generation_history/tests/test_integration.py`
+
+The latter two overlap the focused/composed list above; they need not be executed twice in one exact-tree run, but the closure record must count their observed result toward both the LAB-095/096 and LAB-081 downstream gates.
+
+### Complete repository / syntax gate
+
+After the focused, composed, LAB-080, and LAB-081 gates pass on the exact PR #187 tree, run the complete repository test suite and `python -m compileall` over the repository Python surfaces. Record the exact commands and observed counts from the materialized tree. Do not infer those results from connector source inspection.
 
 ## Decision
 
