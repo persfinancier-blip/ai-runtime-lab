@@ -7,7 +7,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 
 ## Active issue / branch / PR
 - #163 / LAB-086: draft PR #165; keep draft.
-- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. `get_pr_info` still reports stale base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974`, while direct `/branches/main` read in the latest run reports actual main tip `0d1e410a6824e2a5d8f2654216eb78385627c9fa`. Synthetic merge/base metadata are not sufficient current mergeability evidence.
+- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. `get_pr_info` still reports stale base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974`, while direct `/branches/main` read in the latest run reported actual main tip `0f7ae99138281ab5200095038a5e04dde2e6fc1a` before this run's evidence commits. Synthetic merge/base metadata are not sufficient current mergeability evidence.
 - #169 LAB-090: draft PR #175 retained as donor; composed on PR #187.
 - #176 LAB-092: draft PR #177 retained as donor; composed/adapted on PR #187.
 - #188 LAB-101: explicit bootstrap + authenticated confirmation bridge and composition regressions are on PR #187; exact execution remains.
@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Rechecked PR #187 against actual current main `0d1e410a...`. PR head remains `5bfdbdbd...`; compare from merge base/base snapshot `2c72b76b...` to actual main now reports 147 post-base commits. Every returned current-main changed path remains under `research/*` or `state/CURRENT.md`; PR #187's 44 changed files remain under `experiments/*` or `tests/*`. Inline review threads remain empty. Therefore there is still no path overlap or concrete review defect supporting a source-level conflict, rebase, merge, or authority-patch expansion. Evidence: `research/2026-09-16-pr187-current-main-overlap-recheck-1617.md`, main commit `4f5e15c71a4c4b054aac53f6a51d486da60984e6`. Exact execution is not claimed.
+Rechecked PR #187 against actual current main `0f7ae991...` before this run's evidence commits. PR head remains `5bfdbdbd...`; compare from merge base/base snapshot `2c72b76b...` to actual main reported 149 post-base commits. Every returned current-main changed path remains under `research/*` or `state/CURRENT.md`; PR #187's 44 changed files remain under `experiments/*` or `tests/*`. PR discussion was re-read and no new concrete requested change/review defect was observed. Therefore there is still no path overlap or concrete review defect supporting a source-level conflict, rebase, merge, or authority-patch expansion. Evidence: `research/2026-09-16-pr187-current-main-overlap-recheck-1716.md`, evidence commit `84dbb6a558e16b62798abc6ee8618905da69bf27`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
