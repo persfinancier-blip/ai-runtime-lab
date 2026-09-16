@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 ## Active objective
 LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, maintain executable-readiness closure for LAB-094/#179 + LAB-095/#180 + LAB-096/#181 on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-PR #187 was rechecked against actual main `851545ab7ad293ece6802ba8b47d989c8cb4ebbf`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; inspected PR discussion contains no new concrete requested change/review defect. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 161 commits and behind by 0; every returned changed path is `research/*` or `state/CURRENT.md`, so there is still no new source/test path overlap with PR #187's `experiments/*` + `tests/*` implementation surface. GitHub still reports `mergeable=false`; that boolean alone is not treated as source-conflict proof. Evidence: `research/2026-09-16-pr187-current-main-overlap-recheck-2319.md`, evidence commit `1f35e56fc42e61d7f5a248d19d24fef708a52c23`. Exact execution is not claimed.
+PR #187 was rechecked against actual main `78dbfe2edac633659903348177efe2436bf7fcfe`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; open issue/PR inspection exposed no new concrete source-level defect requiring branch mutation. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 163 commits and behind by 0; every returned changed path is `research/*` or `state/CURRENT.md`, so there is still no new source/test path overlap with PR #187's `experiments/*` + `tests/*` implementation surface. GitHub still reports `mergeable=false`; that boolean alone is not treated as source-conflict proof. Evidence: `research/2026-09-17-pr187-current-main-overlap-recheck-0015.md`, evidence commit `e4b5d449d73e131ad20a6839a1f10488d93b820e`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
