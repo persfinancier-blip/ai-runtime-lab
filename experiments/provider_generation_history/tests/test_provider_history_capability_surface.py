@@ -68,6 +68,17 @@ class ProviderHistoryCapabilitySurfaceTests(unittest.TestCase):
             with self.assertRaises(AttributeError):
                 history.extra_capability = object()
 
+            # The retained trust root is construction-bound even if internal state
+            # is reached by Python introspection; verification must keep using g1.
+            internal = ledger._history()
+            self.assertEqual(internal.bootstrap.generation_id, g1.generation_id)
+            with self.assertRaises(AttributeError):
+                internal.bootstrap = g2
+            with self.assertRaises(AttributeError):
+                internal._bootstrap_generation = g2
+            self.assertEqual(internal.bootstrap.generation_id, g1.generation_id)
+            self.assertTrue(internal.verify_durable())
+
             # A caller may still possess the ledger connection, but the delegated
             # public history surface supplies no locked mutation primitive to pair it with.
             q = ledger._con()
