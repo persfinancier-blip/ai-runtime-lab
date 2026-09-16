@@ -7,7 +7,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 
 ## Active issue / branch / PR
 - #163 / LAB-086: draft PR #165; keep draft.
-- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. `get_pr_info` still reports stale base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974`, while direct `/branches/main` read in the latest run reports actual main tip `917a8411c8643e82f0a990c2ae84e6b8841df0e4`. The synthetic merge ref/base metadata remain stale and are not current mergeability evidence.
+- #179 LAB-094 + #180 LAB-095 + #181 LAB-096: branch `lab-095-database-identity-red-intent`, draft PR #187; observed head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; keep draft. `get_pr_info` still reports stale base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974`, while direct `/branches/main` read in the latest run reports actual main tip `0d1e410a6824e2a5d8f2654216eb78385627c9fa`. Synthetic merge/base metadata are not sufficient current mergeability evidence.
 - #169 LAB-090: draft PR #175 retained as donor; composed on PR #187.
 - #176 LAB-092: draft PR #177 retained as donor; composed/adapted on PR #187.
 - #188 LAB-101: explicit bootstrap + authenticated confirmation bridge and composition regressions are on PR #187; exact execution remains.
@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. Direct clone failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Rechecked PR #187 against actual current main `917a8411...`. PR head remains `5bfdbdbd...`; compare from merge base/base snapshot `2c72b76b...` to actual main now reports 145 post-base commits. Every returned current-main changed path remains under `research/*` or `state/CURRENT.md`; PR #187's 44 changed files remain under `experiments/*` or `tests/*`. Inline review threads remain empty. Therefore there is still no path overlap or concrete review defect supporting a source-level conflict, rebase, merge, or authority-patch expansion. Evidence: `research/2026-09-16-pr187-current-main-overlap-recheck-1518.md`, main commit `0230f90057ed4a171afc4d847b980e8e0bdfc757`. Exact execution is not claimed.
+Rechecked PR #187 against actual current main `0d1e410a...`. PR head remains `5bfdbdbd...`; compare from merge base/base snapshot `2c72b76b...` to actual main now reports 147 post-base commits. Every returned current-main changed path remains under `research/*` or `state/CURRENT.md`; PR #187's 44 changed files remain under `experiments/*` or `tests/*`. Inline review threads remain empty. Therefore there is still no path overlap or concrete review defect supporting a source-level conflict, rebase, merge, or authority-patch expansion. Evidence: `research/2026-09-16-pr187-current-main-overlap-recheck-1617.md`, main commit `4f5e15c71a4c4b054aac53f6a51d486da60984e6`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
@@ -25,7 +25,7 @@ Rechecked PR #187 against actual current main `917a8411...`. PR head remains `5b
 - LAB-095 exact no-stub reconstruction/hash verification and execution remain pending.
 - LAB-094/095/096 construction-bound authority graph is source-closed for bootstrap root, canonical path, and provider-history strategy; exact behavioral/downstream gates remain pending.
 - LAB-090/LAB-092/LAB-101 composed gates remain source-audited but not exact-executed.
-- PR #187's synthetic merge ref and `get_pr_info` base snapshot are stale relative to actual main. Do not use them alone as current conflict/mergeability signals.
+- PR #187 `get_pr_info` merge/base metadata are stale relative to actual main. Do not use them alone as current conflict/mergeability signals.
 
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
