@@ -26,6 +26,26 @@ class ProviderHistoryInspectionView:
 
 
 class CoordinatorOnlyProviderHistory(CanonicalDatabaseBinding, IntegratedProviderHistory):
+    _BOOTSTRAP_SLOT = "_bootstrap_generation"
+
+    def __setattr__(self, name, value):
+        if name in {"bootstrap", self._BOOTSTRAP_SLOT} and hasattr(self, self._BOOTSTRAP_SLOT):
+            raise AttributeError("bootstrap trust root is construction-bound")
+        super().__setattr__(name, value)
+
+    @property
+    def bootstrap(self):
+        try:
+            return object.__getattribute__(self, self._BOOTSTRAP_SLOT)
+        except AttributeError as exc:
+            raise AttributeError("bootstrap trust root is not initialized") from exc
+
+    @bootstrap.setter
+    def bootstrap(self, value):
+        if hasattr(self, self._BOOTSTRAP_SLOT):
+            raise AttributeError("bootstrap trust root is construction-bound")
+        object.__setattr__(self, self._BOOTSTRAP_SLOT, value)
+
     def rotate(self, *args, **kwargs):
         raise PendingRotationBlocked("integrated provider rotation must use SupportedHistoricalSharedAnchorLedger.rotate_provider()")
 
