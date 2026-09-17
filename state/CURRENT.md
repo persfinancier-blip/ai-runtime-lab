@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-PR #187 was rechecked against actual main `9bf864a2c7ae14ded36c1363f7ef893855e3d0d6`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; inline review threads remain empty. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 173 commits and behind by 0; no concrete new source/test overlap requiring PR #187 mutation was identified. Evidence: `research/2026-09-17-pr187-current-main-overlap-recheck-0518.md`, evidence commit `10ecf6cc9aaee3287c574f3a548b69d11a049792`. Exact execution is not claimed.
+PR #187 was rechecked against actual main `0c36b474201a7c939cdc2cd4344b394d36568c45`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 175 commits and behind by 0; returned changed paths remain research records plus `state/CURRENT.md`, with no new `experiments/*` or `tests/*` overlap requiring PR #187 mutation. Evidence: `research/2026-09-17-pr187-current-main-overlap-recheck-0618.md`, evidence commit `7a08f94a58242e5768198746a19fdd4bab59b994`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because shell DNS cannot resolve GitHub and no supported connector-to-filesystem byte-preserving bridge is exposed.
