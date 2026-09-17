@@ -14,12 +14,12 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first. `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` did not reach git/repository execution because the container runtime returned `GatewaySelectionError`; no LAB-086 PASS is claimed.
+LAB-086 was probed first. `git ls-remote https://github.com/persfinancier-blip/ai-runtime-lab.git HEAD` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-PR #187 was rechecked against actual main `3d5d9b423373c42f981bedbd09ac2f526a18a059`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 205 commits and behind by 0. The complete returned changed-file inventory contains only `research/*` additions plus `state/CURRENT.md`; no `experiments/*` or `tests/*` overlap is present. PR discussion showed no newly observed concrete review defect requiring source mutation. GitHub currently reports mergeable=false, but this metadata is not standalone conflict evidence. Evidence: `research/2026-09-17-pr187-current-main-overlap-recheck-2118.md`, evidence commit `50679bf485b42e13ce492e1fd148735b0be67d73`. Exact execution is not claimed.
+PR #187 was rechecked against actual main `88bd05cdbd1bb38b06f2bbc1e494ffa207296240`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. Fresh compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 207 commits and behind by 0. The complete returned changed-file inventory contains only `research/*` additions plus `state/CURRENT.md`; no `experiments/*` or `tests/*` overlap is present. GitHub currently reports mergeable=false, but this metadata is not standalone conflict evidence. Evidence: `research/2026-09-17-pr187-current-main-overlap-recheck-2219.md`, evidence commit `62d3bfadfa0d68d2be03de7b3e9f5ce2ae217abc`. Exact execution is not claimed.
 
 ## Known failures / blockers
-- LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed at runtime gateway selection before git execution.
+- LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed on DNS resolution before repository execution.
 - Exact PR #187 repository pytest/compileall remains unavailable for the same materialization reason; committed/source-reviewed regressions are not a GREEN claim.
 - PRs #165/#172/#173/#175/#177/#186/#187 remain draft until retained exact gates execute.
 - LAB-095 exact no-stub reconstruction/hash verification and execution remain pending.
