@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 ## Active objective
 LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, maintain executable-readiness closure for LAB-094/#179 + LAB-095/#180 + LAB-096/#181 on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
@@ -16,7 +16,7 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 ## Last completed step
 LAB-086 was probed first. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval of authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` remains unsuitable as a safe byte-preserving executable materialization path.
 
-PR #187 was rechecked against actual main `ae4e3a11036ae753ecb5bd1143a7a79f6528f0b3`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. Fresh compact compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 257 commits and behind by 0. The complete compact changed-file inventory contains only `research/*` additions plus `state/CURRENT.md`; no `experiments/*` or `tests/*` overlap is present. GitHub currently reports `mergeable=false`, which is not treated as concrete conflict evidence. GitHub review collection is empty; no new concrete source/test review defect was observed. Evidence: `research/2026-09-18-pr187-current-main-overlap-recheck-2315.md`, evidence commit `98019725eb31b53b044fb186768688eb47448fd8`. Exact execution is not claimed.
+PR #187 was rechecked against actual main `099741bea19b862e2e032fe334e2acc4ca722a09`. PR remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`. Fresh compact compare from reported base snapshot `2c72b76b2f1ffbee520e3871d4f1e0e878fe7974` to actual main reports main ahead by 259 commits and behind by 0. The complete compact changed-file inventory contains only `research/*` additions plus `state/CURRENT.md`; no `experiments/*` or `tests/*` overlap is present. GitHub currently reports `mergeable=false`, which is not treated as concrete conflict evidence. PR discussion was re-read; no new concrete source/test review defect was observed. Evidence: `research/2026-09-19-pr187-current-main-overlap-recheck-0017.md`, evidence commit `0b303c20cdb92a0f54a22e803d5810f58ca438bb`. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed on DNS resolution before repository execution.
