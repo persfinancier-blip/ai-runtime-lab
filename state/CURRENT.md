@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime23` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
+LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime24` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
 
-Control-plane state was then re-read. Actual `main` before this state write is `0ff307073c3b2aa69860bbae6e69e316f41c53b2`; its only change from the prior main observation is state/CURRENT.md transport/control-plane bookkeeping, not source/test content. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=false`. No concrete new source/test overlap, head drift, or review defect was found, so no periodic overlap report was created. Exact execution is not claimed.
+Control-plane state was then re-read. Actual `main` before this state write is `27237e3d9a0500527824a8069e14cec9dea72f2b`; its only recent changes are state/CURRENT.md transport/control-plane bookkeeping, not source/test content. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=false`; submitted reviews remain empty. No concrete new source/test overlap, head drift, or review defect was found, so no periodic overlap report was created. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed on DNS resolution before repository execution.
@@ -30,7 +30,7 @@ Control-plane state was then re-read. Actual `main` before this state write is `
 ## Exact next action
 Probe LAB-086 first. Execute its complete gate only if authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` can be placed byte-for-byte into an executable filesystem.
 
-If LAB-086 remains transport-blocked, read actual `main` tip and PR #187 head/reviews. React only to concrete source/test overlap, head drift, or a new review defect; do not create another periodic overlap report when neither main nor PR head changed. If byte-exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Do not claim executable GREEN from source inspection.
+If LAB-086 remains transport-blocked, read actual `main` tip and PR #187 head/reviews. React only to concrete source/test overlap, head drift, or a new review defect; do not create another periodic overlap report when neither main source/test nor PR head changed. If byte-exact materialization becomes available, verify retained blob/hash identity first, execute the focused/composed/LAB-080/LAB-081 inventory in `research/2026-09-16-lab094-096-closure-inventory.md`, then full pytest and compileall. Do not claim executable GREEN from source inspection.
 
 ## Backlog
 - #163 LAB-086 — IN_PROGRESS; exact executable gate pending.
