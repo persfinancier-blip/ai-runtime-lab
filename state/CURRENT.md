@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime52` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
+LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime53` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
 
-Control-plane state was then re-read. Actual `main` before this state write is `3c68b87441c27ab956d36ea46c9827f5f030d7f8`; recent main changes remain state-only bookkeeping. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; submitted reviews remain empty and GitHub currently reports `mergeable=false`. Open issue inventory still has LAB-086/#163 as IN_PROGRESS priority and no newly observed source/test drift or review defect was found, so no periodic overlap report was created. Exact execution is not claimed.
+Control-plane state was then re-read. Actual `main` before this state write is `427109c04353900dcf337740740f8d14faa996bf`; its latest change is state-only bookkeeping. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=false`. No newly observed source/test drift or review defect was found, so no periodic overlap report was created. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed on DNS resolution before repository execution.
