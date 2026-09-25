@@ -7,7 +7,10 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
+)
+from experiments.provider_generation_history.activation import FencedActivationProvider
+from experiments.provider_generation_history.activation_schema_migration import (
+    migrate_activation_schema_v1,
 )
 from experiments.provider_generation_history.protocol import (
     GenerationDescriptor,
@@ -22,7 +25,7 @@ class AuditRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "shared.db"
             key = b"provider-key-1"
-            provider = SignedAnchorProvider("anchor-A", 1, key, value=0)
+            provider = FencedActivationProvider("anchor-A", 1, key, value=0)
             attested = AttestedCatchup(
                 provider,
                 AttestationVerifier(
@@ -30,7 +33,8 @@ class AuditRegressionTests(unittest.TestCase):
                 ),
             )
             bootstrap = GenerationDescriptor("anchor-A", 1, key.hex())
-            ledger = SupportedHistoricalSharedAnchorLedger(path, attested, bootstrap)
+            ledger = migrate_activation_schema_v1(path, attested, bootstrap)
+            self.assertEqual(provider.value, 1)
             ledger.execute(Intent("old", "component-A", "migration", {"v": 1}))
 
             q = sqlite3.connect(path)
