@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-25
+Last updated: 2026-09-27
 
 ## Active objective
 LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, maintain executable-readiness closure for LAB-094/#179 + LAB-095/#180 + LAB-096/#181 on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime12` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
+LAB-086 was probed first in the current run. Direct `git clone https://github.com/persfinancier-blip/ai-runtime-lab.git /tmp/airuntime_auto11` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed. Connector retrieval remains unsuitable as a safe byte-preserving executable materialization path for authoritative pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`.
 
-Control-plane state was then re-read. `main` is unchanged from durable commit `8155d403e78dbfb46ba5794433333924c0dab586` (compare reports identical, zero commits/files). PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=false`. PR comments expose no newer source/test change than the retained head and no submitted review defect was observed. Because neither main source/test nor PR head changed, no periodic overlap report was created. Exact execution is not claimed.
+Control-plane state was then re-read. `main` is unchanged from durable commit `47afbb80f159f39f567927e0567d84add4fc2808` (compare reports identical, zero commits/files). PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=true`. Submitted reviews and review threads are empty. Because neither main source/test nor PR head changed, no periodic overlap report was created. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; the direct container probe failed on DNS resolution before repository execution.
