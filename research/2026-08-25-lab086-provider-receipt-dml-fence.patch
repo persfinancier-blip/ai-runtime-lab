@@ -1,0 +1,75 @@
+diff --git a/experiments/asymmetric_break_glass_history/strict_fence.py b/experiments/asymmetric_break_glass_history/strict_fence.py
+--- a/experiments/asymmetric_break_glass_history/strict_fence.py
++++ b/experiments/asymmetric_break_glass_history/strict_fence.py
+@@
+ POST_CUTOFF_EVIDENCE_FREEZE_TRIGGERS = {
+@@
+ }
++
++# LAB-082 historical receipts are append-only authenticated evidence.  New
++# request IDs must remain insertable after cutoff, but an already committed
++# receipt may never be rewritten, deleted, REPLACE'd, or UPSERT-mutated.  The
++# lower durable verifier re-authenticates every row and binds CONFIRMED ledger
++# entries to these receipts, so mutable receipt history is a persistent
++# fail-closed DML/availability gap.
++PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS = (
++    "lab086_provider_receipt_no_replace",
++    "lab086_provider_receipt_is_immutable",
++    "lab086_provider_receipt_is_not_deletable",
++)
+@@
+ def _all_post_cutoff_evidence_trigger_names():
+@@
+     )
++
++
++def _all_provider_receipt_trigger_names():
++    return PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
+@@
+ def _install_post_cutoff_evidence_freeze_locked(q):
+@@
+         _install_history_immutability(
+             q, table, update_name, delete_name, "post-cutoff evidence history"
+         )
++
++
++def _install_provider_receipt_freeze_locked(q):
++    tables = _table_names(q)
++    for name in _all_provider_receipt_trigger_names():
++        q.execute(f"DROP TRIGGER IF EXISTS {name}")
++    if "asymmetric_provider_receipts" not in tables:
++        return
++    insert_name, update_name, delete_name = PROVIDER_RECEIPT_HISTORY_FREEZE_TRIGGERS
++    q.execute(
++        f"""CREATE TRIGGER {insert_name}
++        BEFORE INSERT ON asymmetric_provider_receipts
++        WHEN EXISTS(
++          SELECT 1 FROM provider_asymmetric_break_glass_boundary WHERE singleton=1
++        )
++         AND EXISTS(
++          SELECT 1 FROM asymmetric_provider_receipts WHERE request_id=NEW.request_id
++        )
++        BEGIN
++          SELECT RAISE(ABORT,'LAB-086 committed provider receipt cannot be replaced');
++        END"""
++    )
++    _install_history_immutability(
++        q,
++        "asymmetric_provider_receipts",
++        update_name,
++        delete_name,
++        "provider receipt history",
++    )
+@@
+ def install_public_mutation_fence_locked(q):
+@@
+     _install_migration_metadata_fence_locked(q)
+     _install_post_cutoff_evidence_freeze_locked(q)
++    _install_provider_receipt_freeze_locked(q)
+@@
+ def assert_public_mutation_fence_locked(q):
+@@
+     missing |= evidence_required - names
++    if "asymmetric_provider_receipts" in tables:
++        missing |= set(_all_provider_receipt_trigger_names()) - names
+     obsolete = set(OBSOLETE_PUBLIC_MUTATION_TRIGGER_NAMES) & names
