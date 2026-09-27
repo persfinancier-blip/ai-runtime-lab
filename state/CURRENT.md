@@ -1,6 +1,6 @@
 # Current Lab State
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Active objective
 LAB-086 remains priority #1: execute the exact asymmetric break-glass history migration gate from authoritative executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0`. When byte-exact materialization remains unavailable, maintain executable-readiness closure for LAB-094/#179 + LAB-095/#180 + LAB-096/#181 on draft PR #187. LAB-099 PREPARED authority waits on LAB-095 completion.
@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first. Direct clone into `/tmp/airuntime_auto15` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
+LAB-086 was probed first in this run. Direct clone of the authoritative repository and checkout of exact executable pin `1fa85a0e34c9ae67da57f1e64dadccf211feacc0` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Control-plane was re-read through the GitHub connector. Open issues/PRs were inspected; PR #187 review submissions and review threads remain empty. Comparison against its retained head showed no concrete new source/test or review defect requiring action. No duplicate periodic overlap report was created. Exact execution is not claimed.
+The authoritative branch manifest was re-read through the GitHub connector. It still records the strict/thaw subgate at pin `1fa85a0e...` as 31/31 PASS + compileall, and identifies the remaining merge gate as the complete branch-local LAB-080→086 real-ledger suite, unsafe legacy-promotion expected-failure seed, full compileall, and final security/reconciliation audit. The connector remains readable, but this run did not establish a supported byte-preserving connector-to-executable-filesystem path for the whole dependency closure.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; direct clone failed on DNS resolution before repository execution.
