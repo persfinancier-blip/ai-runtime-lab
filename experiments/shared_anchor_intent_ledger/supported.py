@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from experiments.database_binding import CanonicalDatabaseBinding
 from experiments.shared_anchor_intent_ledger.protocol import (
     IntentSubstitution,
     ProviderMismatch,
@@ -7,7 +8,7 @@ from experiments.shared_anchor_intent_ledger.protocol import (
 )
 
 
-class SupportedSharedAnchorLedger(SharedAnchorLedger):
+class SupportedSharedAnchorLedger(CanonicalDatabaseBinding, SharedAnchorLedger):
     """Audited LAB-080 surface with restart-time durable-state verification."""
 
     def __init__(self, path, attested):

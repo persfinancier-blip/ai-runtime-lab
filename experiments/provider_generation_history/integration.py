@@ -141,6 +141,18 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         super().__init__(path, attested)
         self._require_runtime_matches_durable_head()
 
+    def _history(self) -> IntegratedProviderHistory:
+        """Return the construction-bound internal history strategy when present.
+
+        Supported subclasses bind ``_provider_history`` and may expose a narrower
+        public ``provider_history`` inspection view. Base LAB-081 instances retain
+        their historical public strategy for backwards compatibility.
+        """
+        try:
+            return object.__getattribute__(self, "_provider_history")
+        except AttributeError:
+            return object.__getattribute__(self, "provider_history")
+
     @staticmethod
     def _descriptor_from_attested(attested: AttestedCatchup):
         expected = attested.verifier.expected
@@ -151,7 +163,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
 
     def _require_runtime_matches_durable_head(self):
         runtime = self._descriptor_from_attested(self.attested)
-        durable = self.provider_history.current()
+        durable = self._history().current()
         if runtime.generation_id != durable.generation_id:
             raise CurrentGenerationRequired("runtime provider generation is not durable current head")
         return durable
@@ -185,7 +197,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             if pending:
                 raise PendingIntent("another anchor intent is unresolved")
 
-            durable = self.provider_history._current_locked(q)
+            durable = self._history()._current_locked(q)
             predecessor = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
             ).fetchone()[0]
@@ -251,7 +263,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
             ).fetchone()[0]
             if observed.position != reserved:
                 raise InvalidTransition("new provider position does not match durable ledger tail")
-            self.provider_history._rotate_locked(q, new, proof)
+            self._history()._rotate_locked(q, new, proof)
             q.commit()
         except:
             if q.in_transaction:
@@ -265,7 +277,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         return new
 
     def _runtime_matches_entry(self, entry: LedgerEntry):
-        durable = self.provider_history.current()
+        durable = self._history().current()
         runtime = self._descriptor_from_attested(self.attested)
         if runtime.generation_id != durable.generation_id:
             raise CurrentGenerationRequired("runtime provider is stale relative to durable history")
@@ -289,12 +301,12 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         )
 
     def _reauthenticate(self, entry: LedgerEntry):
-        durable = self.provider_history.current()
+        durable = self._history().current()
         if (entry.provider_id, entry.provider_generation) != (
             durable.provider_id,
             durable.generation,
         ):
-            receipt = self.provider_history.load_receipt(entry.request_id)
+            receipt = self._history().load_receipt(entry.request_id)
             if (
                 receipt.provider_id != entry.provider_id
                 or receipt.generation != entry.provider_generation
@@ -317,7 +329,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         if verified.position != entry.position or verified.request_id != entry.request_id:
             raise UnexplainedAdvance("provider result does not bind ledger position/request")
         receipt = self._historical_from_observation(verified)
-        binding = self.provider_history.store_receipt(receipt)
+        binding = self._history().store_receipt(receipt)
         if binding != self._stable_receipt(verified):
             raise IntentSubstitution("historical receipt identity mismatch")
         return binding
@@ -332,7 +344,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
         q = self._con()
         try:
             q.execute("BEGIN")
-            head = self.provider_history._verify_durable_locked(q)
+            head = self._history()._verify_durable_locked(q)
             meta = q.execute(
                 "SELECT reserved_position FROM shared_anchor_meta WHERE singleton=1"
             ).fetchall()
@@ -362,7 +374,7 @@ class HistoricalSharedAnchorLedger(SupportedSharedAnchorLedger):
                     ):
                         raise ProviderMismatch("PREPARED intent belongs to historical provider generation")
                 else:
-                    receipt = self.provider_history._load_receipt_locked(q, entry.request_id)
+                    receipt = self._history()._load_receipt_locked(q, entry.request_id)
                     if receipt.stable_binding != entry.receipt_binding:
                         raise IntentSubstitution("confirmed ledger receipt/history mismatch")
                     if (
