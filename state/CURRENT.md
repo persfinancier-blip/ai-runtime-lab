@@ -14,9 +14,9 @@ LAB-086 remains priority #1: execute the exact asymmetric break-glass history mi
 - #184 LAB-099: draft PR #186; blocked on LAB-095 completion.
 
 ## Last completed step
-LAB-086 was probed first. Direct clone into `/tmp/airuntime_auto13` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
+LAB-086 was probed first. Direct clone into `/tmp/airuntime_auto14` failed before repository execution with `Could not resolve host: github.com`, exit 128; no LAB-086 PASS is claimed.
 
-Control-plane was re-read through the GitHub connector. Open issue inventory still contains LAB-086/088/090-101. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=true`. Submitted reviews and review threads are empty. No concrete source/test or review drift was observed, so no duplicate periodic overlap report was created. Exact execution is not claimed.
+Control-plane was re-read through the GitHub connector. PR #187 remains open/draft at unchanged head `5bfdbdbd64d2281206b1c3d1e9a00db8bdbd4057`; GitHub currently reports `mergeable=true`. Submitted reviews and review threads are empty. No concrete source/test or review drift was observed, so no duplicate periodic overlap report was created. Exact execution is not claimed.
 
 ## Known failures / blockers
 - LAB-086 complete real-ledger gate remains unexecuted because no supported byte-preserving path from authoritative GitHub source into an executable filesystem succeeded in this run; direct clone failed on DNS resolution before repository execution.
