@@ -154,7 +154,6 @@ def verify_threshold(authority: RotationAuthority, intent: ProviderRotationInten
     for sig in proof.signatures:
         if sig.signer_id in seen:
             continue
-        seen.add(sig.signer_id)
         if sig.signer_id in revoked:
             continue
         hx = authority.keys.get(sig.signer_id)
@@ -162,6 +161,7 @@ def verify_threshold(authority: RotationAuthority, intent: ProviderRotationInten
             continue
         expected = mac(bytes.fromhex(hx), intent.payload)
         if hmac.compare_digest(expected, sig.signature):
+            seen.add(sig.signer_id)
             valid.append(sig.signer_id)
     if len(valid) < authority.threshold:
         raise ThresholdNotMet(f"valid={len(valid)} threshold={authority.threshold}")
@@ -328,9 +328,9 @@ class DurableRotationAuthority:
             for sig in sigs:
                 if sig.signer_id in seen or sig.signer_id in set(a.revoked):
                     continue
-                seen.add(sig.signer_id)
                 hx = a.keys.get(sig.signer_id)
                 if hx and hmac.compare_digest(mac(bytes.fromhex(hx), payload), sig.signature):
+                    seen.add(sig.signer_id)
                     good.append(sig.signer_id)
             if len(good) < a.threshold:
                 raise ThresholdNotMet()
@@ -456,9 +456,9 @@ class DurableRotationAuthority:
                 for sig in sigs:
                     if sig.signer_id in seen or sig.signer_id in set(a.revoked):
                         continue
-                    seen.add(sig.signer_id)
                     hx = a.keys.get(sig.signer_id)
                     if hx and hmac.compare_digest(mac(bytes.fromhex(hx), payload), sig.signature):
+                        seen.add(sig.signer_id)
                         valid += 1
                 if valid < a.threshold:
                     raise ThresholdNotMet("persisted authority transition below threshold")

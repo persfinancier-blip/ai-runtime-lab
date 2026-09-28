@@ -88,13 +88,13 @@ def verify_enablement(authority: RotationAuthority, enablement: ThresholdEnablem
     for sig in enablement.signatures:
         if sig.signer_id in seen:
             continue
-        seen.add(sig.signer_id)
         if sig.signer_id in revoked:
             continue
         hx = authority.keys.get(sig.signer_id)
         if hx is None:
             continue
         if hmac.compare_digest(mac(bytes.fromhex(hx), enablement.payload), sig.signature):
+            seen.add(sig.signer_id)
             valid.append(sig.signer_id)
     if len(valid) < authority.threshold:
         raise ThresholdNotMet(
