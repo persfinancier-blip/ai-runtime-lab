@@ -8,8 +8,8 @@ from experiments.anchor_attestation.protocol import (
     AttestationVerifier,
     AttestedCatchup,
     ProviderIdentity,
-    SignedAnchorProvider,
 )
+from experiments.provider_generation_history.activation import FencedActivationProvider as SignedAnchorProvider
 from experiments.provider_generation_history.protocol import (
     CurrentGenerationRequired,
     GenerationDescriptor,
